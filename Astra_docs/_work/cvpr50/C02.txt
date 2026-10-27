@@ -1,0 +1,1048 @@
+=== PAGE 1 ===
+Understanding Fine-tuning CLIP for Open-vocabulary Semantic Segmentation in
+Hyperbolic Space
+Zelin Peng1, Zhengqin Xu1, Zhilin Zeng1, Changsong Wen1, Yu Huang1,
+Menglin Yang2, Feilong Tang3,4, and Wei Shen1(B)
+1MoE Key Lab of Artificial Intelligence, AI Institute, Shanghai Jiao Tong University
+2Hong Kong University of Science and Technology (Guangzhou) 3MBZUAI, 4Monash University.
+https://github.com/SJTU-DeepVisionLab/HyperCLIP
+Abstract
+CLIP , a foundational vision-language model, has emerged as
+a powerful tool for open-vocabulary semantic segmentation.
+While freezing the text encoder preserves its powerful embed-
+dings, recent studies show that fine-tuning both the text and
+image encoders jointly significantly enhances segmentation
+performance, especially for classes from open sets. In this
+work, we explain this phenomenon from the perspective of
+hierarchical alignment, since during fine-tuning, the hier-
+archy level of image embeddings shifts from image-level to
+pixel-level. We achieve this by leveraging hyperbolic space,
+which naturally encoders hierarchical structures. Our key
+observation is that, during fine-tuning, the hyperbolic ra-
+dius of CLIP’s text embeddings decreases, facilitating better
+alignment with the pixel-level hierarchical structure of vi-
+sual data. Building on this insight, we propose HyperCLIP , a
+novel fine-tuning strategy that adjusts the hyperbolic radius
+of the text embeddings through scaling transformations. By
+doing so, HyperCLIP equips CLIP with segmentation capa-
+bility while introducing only a small number of learnable
+parameters. Our experiments demonstrate that HyperCLIP
+achieves state-of-the-art performance on open-vocabulary
+semantic segmentation tasks across three benchmarks, while
+fine-tuning only approximately 4% of the total parameters
+of CLIP . More importantly, we observe that after adjustment,
+CLIP’s text embeddings exhibit a relatively fixed hyperbolic
+radius across datasets, suggesting that the granularity re-
+quired for this segmentation task might be quantified using
+the hyperbolic radius.
+1. Introduction
+The goal of open-vocabulary semantic segmentation is to
+develop a segmentation model capable of labeling each
+B Corresponding Author: wei.shen@sjtu.edu.cn
+“Cat”
+Radius Center
+Edge
+Image-level
+Patch-level
+Pixel-level
+Figure 1. Visualization of hyperbolic space by a Poincar´e ball
+model: The height of points reflects the hierarchical level of input
+data. The black segments refer to the shortest path between the
+points in the Poincar´e ball model. The red arrow line denotes the
+hyperbolic radius of text embeddings. Embeddings closer to the
+center have a smaller radius, representing low-level visual informa-
+tion (e.g., pixels), while points farther from the center have a larger
+radius, representing high-level visual information (e.g., images).
+During fine-tuning, the hyperbolic radius of text embeddings is ad-
+justed to match the radius associated with pixels, thereby endowing
+CLIP with segmentation ability (Best viewed in color).
+pixel in an image with categories that extend beyond a pre-
+defined closed set, based on textual descriptions. Vision-
+language foundation models [7, 12, 13, 15, 22, 23, 26, 28, 32–
+35, 39, 43, 44, 46, 51, 52, 55, 63], particularly CLIP [ 46],
+are frequently employed to provide open-vocabulary recog-
+nition capabilities. Consequently, open-vocabulary seman-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+4562
+
+
+=== PAGE 2 ===
+tic segmentation fundamentally involves transferring these
+vision-language foundation models, originally trained with
+image-level supervision, to achieve pixel-level predictions.
+Current methods [ 9, 59, 62, 65] typically fine-tune
+CLIP on a closed set with segmentation annotations, i.e.,
+COCO [4], to equip it with the segmentation capability. A
+prevailing opinion is that simply freezing CLIP’s text en-
+coder maximally preserves the powerful text embeddings
+of a vast array of classes, which is believed to be beneficial
+for good generalization on open sets. Many studies follow
+this opinion [31, 37, 62]. However, recent studies [9, 42, 59]
+offer an alternative perspective on fine-tuning: simultane-
+ously fine-tuning both the image and text encoders results
+in superior segmentation performance on open sets com-
+pared to former approaches. To explain and resolve this
+seemingly paradoxical phenomenon, we first leverage a non-
+Euclidean manifold—specifically, hyperbolic space [ 5]—to
+understand why fine-tuning the text encoder appears to im-
+prove segmentation performance on open sets. Building on
+this understanding, our objective is to design an explainable
+fine-tuning strategy with a minimal number of introduced
+tunable parameters, which is able to equip CLIP with strong
+segmentation performance while minimizing the loss of its
+generalization ability.
+Existing research [ 1] has found that images inherently
+exhibit hierarchical structures, consisting of multiple levels:
+pixels, patches, objects, entire scenes, etc. Given that, in
+open-vocabulary semantic segmentation, CLIP’s image em-
+beddings transition from image level to pixel level, we infer
+that the performance improvement brought by the recent
+studies [9, 59] could be attributed to adjusting CLIP’s text
+embeddings from their original hierarchical level to better
+align with the level represented by pixels, thereby enhancing
+cross-modal alignment. However, most existing fine-tuning
+methods operate in Euclidean space, which makes it chal-
+lenging to quantify such a transition through different hier-
+archical levels. Hyperbolic spaces have gained significant
+interest in recent years, owing to their ability to naturally
+and compactly encode hierarchical structures [ 47, 48, 57],
+as shown in Fig. 1. The hyperbolic radius, defined as the
+distance from a point to the center in hyperbolic space, rep-
+resents its hierarchical level [50]. Points closer to the center
+(smaller radius) correspond to low-level visual embeddings,
+e.g., those from pixels, while points near the edge (larger ra-
+dius) correspond to high-level visual embeddings, e.g., those
+from images.
+Motivated by this, we project the text embeddings into hy-
+perbolic space and visualize the changes in their radii before
+and after fine-tuning, as shown in Fig. 2. This fine-tuning
+is realized using the state-of-the-art method provided in [9].
+Specifically, one can observe that the radius after fine-tuning
+is smaller than that of pre-trained CLIP. In particular, we
+identify a pattern during fine-tuning: the hierarchical level of
+Figure 2. Understanding fine-tuning CLIP’s text encoder from
+the perspective of hyperbolic radius. We use hyperbolic radius
+to illustrate the change in the hierarchical level of 171 classes after
+fine-tuning. We observe that the hyperbolic radius of each class
+becomes smaller, suggesting that adjusting the hyperbolic radius
+equips CLIP with segmentation ability (Best viewed in color).
+the text embeddings adjusts in conjunction with the hierarchi-
+cal level of the embeddings provided by the image encoder.
+Our finding brings a novel perspective for fine-tuning CLIP:
+Adjusting the hyperbolic radius of text embeddings from
+edge to center endowed CLIP with segmentation ability.
+Building on the analysis above, we propose a novel fine-
+tuning strategy for CLIP in hyperbolic space, termed Hy-
+perCLIP. HyperCLIP aims to directly adjust the hyperbolic
+radius of CLIP’s embeddings to facilitate alignment with the
+appropriate hierarchical level for segmentation tasks. Specif-
+ically, we introduce several block-diagonal scaling matrices.
+Multiplying these matrices with CLIP’s feature represen-
+tations using a M ¨obius matrix multiplication operation is
+equivalent to performing scaling transformations that adjust
+the radius of CLIP’s embeddings. This enables the adjust-
+ment of their hierarchical levels, ultimately enhancing the
+model’s performance. As a result, HyperCLIP can equip
+CLIP with segmentation ability with only a small number of
+introduced learnable parameters.
+Extensive experiments demonstrate that our method sets
+new state-of-the-art results in open-vocabulary semantic seg-
+mentation across three benchmarks, while fine-tuning only
+approximately 4% of the total parameters of CLIP. More
+importantly, we observe that after adjustment, CLIP’s text
+embeddings maintain a relatively fixed hyperbolic radius
+across different datasets. This suggests that the granular-
+ity of the segmentation task might be quantified using the
+hyperbolic radius, warranting further exploration.
+2. Related Work
+2.1. Open-vocabulary Semantic Segmentation
+Prior works on open-vocabulary semantic segmentation typi-
+cally tackle this task by leveraging CLIP [46]. Early efforts,
+4563
+
+
+=== PAGE 3 ===
+e.g., [68], directly fine-tune CLIP on mainstream segmen-
+tation datasets, like COCO [4]. However, these approaches
+argue that fully fine-tuning CLIP’s encoder significantly
+diminishes its ability to generalize to unseen classes. To
+mitigate this issue, some methods [11, 17, 60, 61] take the
+opposite approach, fine-tuning an additional mask genera-
+tor [8] for segmentation while keeping CLIP frozen to pre-
+serve its generalization capabilities. However, this approach,
+with its frozen parameter space, lacks segmentation aware-
+ness, leading to a misalignment between regions and text
+descriptions [37]. Other studies [ 9, 62, 65] propose more
+sophisticated solutions that fine-tune only specific parame-
+ters, e.g., certain layers of CLIP, enabling pixel-level pre-
+dictions while keeping the majority of CLIP’s parameters
+fixed to minimize the loss of generalization. While these
+approaches show significant advantages, they often rely on
+very small learning rates, implicitly promoting minimal devi-
+ations from the pre-trained CLIP, which limits segmentation
+performance. In summary, there is still limited understand-
+ing of how fine-tuning influences CLIP’s representations
+and why fine-tuning CLIP’s text encoder appears to enhance
+segmentation performance. In this paper, we aim to pro-
+vide several new insights that reveal the underlying logic by
+incorporating a novel perspective: hyperbolic space.
+2.2. Learning in Hyperbolic Spaces
+Unlike Euclidean geometry, hyperbolic space can be viewed
+as the continuous analog of a tree [2], enabling a hierarchical
+understanding of knowledge structures. Previous research
+has demonstrated the advantages of representing such hierar-
+chical relationships in various domains, including molecular
+structures [66], 3D data [6, 56], text data [16, 70], and im-
+ages [18, 27]. Furthermore, several studies have investigated
+hyperbolic learning in vision tasks to model hierarchical rela-
+tionships across different modalities [10, 30, 47], showcasing
+the benefits of capturing the semantic hierarchy among var-
+ious data types. Nevertheless, while most studies typically
+leverage the intrinsic hierarchical properties of hyperbolic
+space, this paper seeks to capture the detailed changes in
+semantics reflected by the hyperbolic radius. This approach
+potentially complements current fine-tuning efforts in open-
+vocabulary tasks by offering a novel hyperbolic perspective.
+3. Preliminary Background
+3.1. Hyperbolic geometry
+Hyperbolic geometry often has constant negative curvature
+and is fundamentally different to the Euclidean or spheri-
+cal geometry which has zero or constant positive curvature,
+respectively. This enables unique properties such as the di-
+vergence of parallel lines and the exponential volume growth
+towards the boundary. Hyperbolic geometry has five differ-
+ent analytic models to build the hyperbolic space [5]. In this
+work, we utilize the classical Poincar´e ball model as its effec-
+tiveness in capturing hierarchical structures [16, 20, 41, 47].
+3.2. The Poincar´e Ball Model
+The Poincar´e ball model (Dn
+c , gDc ) with radius 1/√c and
+negative curvature −c(c > 0) is a Riemannian manifold
+Dn
+c := {x ∈ Rn : c∥x∥ < 1} with the metric gDc = λ2
+c,xgE,
+where λc,x = 2
+1−c∥x∥2 is the conformal factor, and gE = In
+is the Euclidean metric tensor. The vectorial structure opera-
+tions defined in Euclidean space can not be directly used in
+hyperbolic space due to the differential of the space proper-
+ties. Therefore, we introduce the framework of gyrovector
+spaces [53, 54] to provide non-associative algebraic opera-
+tions for hyperbolic space. According to special relativity,
+when adding speed vectors belonging to the Poincar ´e ball
+of radius c, these added speed vectors remain in the ball by
+the gyrovector spaces operation, also known as the M¨obius
+operation. For instance, the addition and multiplication oper-
+ations are defined as follows:
+M¨obius addition operation. For x, y ∈ Dn
+c , the M ¨obius
+addition operation is defined as:
+x⊕cy := (1 + 2c⟨x, y⟩ + c∥y∥2)x + (1 − c∥x∥2)y
+1 + 2c⟨x, y⟩ + c2∥x∥2∥y∥2 . (1)
+M¨obius scalar multiplication operation. For a scalar r ∈
+R and a vector x ∈ Dn
+c , the M ¨obius scalar multiplication
+operation is defined as:
+r ⊗c x := (1/√c)tanh(rtanh−1(√c∥x∥)) x
+∥x∥ . (2)
+The operation satisfies r ⊗c 0 := 0, r ⊗c x = x ⊕c · · · ⊕c x
+(r additions), (r′ + r) ⊗c x = r ⊗ x ⊕c r′ ⊗c x, (r′r) ⊗c x =
+r ⊗c (r′ ⊗c x) and (|r| ⊗c x)/∥r ⊗c x∥ = x/∥x∥.
+M¨obius matrix multiplication operation. Refer to the rela-
+tion definition in [27], for a matrix M ∈ Rn×n and a vector
+x ∈ Dn
+c , if Mx ̸= 0, the M ¨obius matrix multiplication
+operation is defined as:
+M ⊗c x := ( 1√c )tanh
+ ∥Mx∥
+∥x∥ tanh−1(√c∥x∥)
+ Mx
+∥Mx∥ .
+The distance of x, y ∈ Dn
+c is defined as:
+dD
+c (x, y) = (2 /√c)tanh−1(√c∥ − x ⊕c y∥). (3)
+The tangent space T c
+x Dn
+c at a point x ∈ Dn
+c is the first
+order approximation of Dn
+c , which is an n-dimensional Eu-
+clidean space. The tangent space T c
+x Dn
+c and Dn
+c are mapped
+to each other by exponential (T c
+x Dn
+c 7→ Dn
+c : expD,c
+x (·)) and
+logarithmic (Dn
+c 7→ T c
+x Dn
+c : logD,c
+x (·)) maps, respectively.
+For any x, y ∈ Dn
+c and v ∈ T c
+x Dn
+c , the mapping functions
+4564
+
+
+=== PAGE 4 ===
+DecoderHyperbolic SpaceFeature Embedding
+𝑺𝟏…𝑺𝟐𝑺𝑲
+𝑺𝟏…𝑺𝟐𝑺𝑲dd
+Exponential MapLogarithmic Map
+⨂!
+⨂! ⨂!
+Möbius Multiplication 
+Fine-tuned Scaling MatricesF
+F F
+ “Cat”ℝ𝔻!" ℝ𝔻!"ℝ𝔻!"ℝ𝔻!"
+Figure 3. A schematic representation of HyperCLIP. In the HyperCLIP framework, we fine-tune CLIP in hyperbolic space by minimizing
+its embeddings’ hyperbolic radii using several tunable block-diagonal scaling matrices.
+are given for v ̸= 0 and y ̸= x by:
+expD,c
+x (v) = x ⊕c
+
+tanh
+√c λc,x∥v∥
+2
+ v√c∥v∥
+
+, (4)
+logD,c
+x (y) = 2√cλc,x
+tanh−1  √c∥ − x ⊕c y∥
+ −x ⊕c y
+∥ − x ⊕c y∥ .
+(5)
+4. Methodology
+In this section, we introduce HyperCLIP for open-vocabulary
+semantic segmentation. HyperCLIP is based on the Poincar´e
+ball model, which aims to adjust the hyperbolic radius of
+CLIP’s embeddings, thereby equipping CLIP with segmen-
+tation ability.
+4.1. Fine-tuning in Hyperbolic Space
+The core technique in HyperCLIP involves linear transfor-
+mations, i.e., scaling, in the hyperbolic space. One of the
+primary methods [64] to learn the weights of linear trans-
+formations in hyperbolic space is hyperLoRA [64]. Given
+a feature embedding z in Euclidean space, this method first
+maps z to the hyperbolic space at a local reference point,
+typically the center, using the exponential map (e.g., Eq. 4).
+Linear transformations with learnable weight matrix W is
+then applied to z within the hyperbolic space to obtain the
+hyperbolic representation. Then, a logarithmic map (e.g.,
+Eq. 5) is applied to map the hyperbolic representation back
+to the Euclidean space. Formally, in the Poincar´e ball model,
+this process is realized as:
+Wz = log D,c
+0 (W ⊗c expD,c
+0 (z)), (6)
+where ⊗c is the m¨obius matrix multiplication operation. The
+primary aim of this method [64] is to capture more intricate
+hierarchical relationships within hyperbolic space. In con-
+trast, our goal is to directly adjust the hyperbolic radius of
+CLIP’s embeddings, leading to a scaling transformation.
+4.2. Hyperbolic Radius Adjustment
+The objective of HyperCLIP is to introduce a scaling trans-
+formation to directly adjust the hyperbolic radii of CLIP’s
+embeddings in hyperbolic space, thereby equipping CLIP
+with segmentation ability. Concretely, it necessitates the
+utilization of a diagonal matrix, denoted as S, to scale a
+CLIP’s feature embeddingz ∈ Rb×d, where d is the feature
+dimension of z, b is the spatial dimension of input images
+or number of classes. When extending this process to hyper-
+bolic space, S can directly adjust the hyperbolic radius of
+z (this deviation can be found in Sec. 4.3). Specifically, we
+realize the diagonal matrix S in a block-wise manner,
+S = diag(S1, S2, . . . ,SK), (7)
+where Sk ∈ Rn×n denotes a square matrix of the k-th block,
+and the block number K is calculated by K = d/n. By
+adjusting the size of n, we can achieve a transition between
+naive scaling transformation (n = 1, i.e., modifying only the
+diagonal elements) and arbitrary transformation (n = d, i.e.,
+fully fine-tuning in hyperbolic space). The ablation study of
+n is presented in Sec. 5.3.
+Overall Fine-tuning. During the fine-tuning phase, Hyper-
+CLIP introduces a similar process to Eq. 6 is incorporated
+into CLIP’s encoder. Specifically, HyperCLIP uses the fol-
+lowing forward pass:
+Sz = log D,c
+0 (S ⊗c expD,c
+0 (z)). (8)
+Concurrently, the original components of CLIP load their
+weights from the pre-trained checkpoint, with their parame-
+ters remaining frozen.
+Parameter complexity. For an K-block diagonal matrix,
+the number of parameters is d2/K, resulting in a complexity
+of O
+ 
+d2/K
+
+. We can optionally share the block matrix to
+reduce the number of parameters, i.e., Sk = Sj, ∀k ̸= j.
+This reduces the parameter complexity to O
+ 
+d2/K 2
+. We
+can further reduce parameter complexity by setting n = 1,
+which transforms the block-diagonal matrix into a diagonal
+4565
+
+
+=== PAGE 5 ===
+Model VLM Additional Backbone Fine-tuning Space A-847 PC-459 A-150 PC-59 PAS-20 PAS-20b
+Partial Fine-Tuning
+ZS3Net [3] - ResNet-101 E - - - 19.4 38.3 -
+LSeg [31] CLIP ViT-B/32 ResNet-101 E - - - - 47.4 -
+OpenSeg [17] ALIGN ResNet-101 E 4.4 7.9 17.5 40.1 - 63.8
+ZegFormer [11] CLIP ViT-B/16 ResNet-101 E 4.9 9.1 16.9 42.8 86.2 62.7
+ZSseg [61] CLIP ViT-B/16 ResNet-101 E 7.0 - 20.5 47.7 88.4 -
+OVSeg [37] CLIP ViT-B/16 ResNet-101c E 7.1 11.0 24.8 53.3 92.6 -
+ZegCLIP [69] CLIP ViT-B/16 - E - - - 41.2 93.6 -
+Selective Fine-Tuning
+SED [59] CLIP ConvNeXt-B - E 11.4 18.6 31.6 57.3 94.4 -
+CAT-Seg [9] CLIP ViT-B/16 - E 12.0 19.0 31.8 57.5 94.6 77.3
+Parameter-efficient Fine-Tuning
+SAN [62] CLIP ViT-B/16 Side Adapter E 10.1 12.6 27.5 53.8 94.0 -
+Ours CLIP ViT-B/16 - H 12.3 19.2 32.1 58.5 95.6 78.9
+Partial Fine-Tuning
+LSeg [31] CLIP ViT-B/32 ViT-L/16 E - - - - 52.3 -
+OpenSeg [17] ALIGN Eff-B7 E 8.1 11.5 26.4 44.8 - 70.2
+OVSeg [37] CLIP ViT-L/14 Swin-B E 9.0 12.4 29.6 55.7 94.5 -
+SAN [62] CLIP ViT-L/14 - E 12.4 15.7 32.1 57.7 94.6 -
+ODISE [60] CLIP ViT-L/14 Stable Diffusion E 11.1 14.5 29.9 57.3 - -
+FC-CLIP [65] CLIP ConvNeXt-L - E 14.8 18.2 34.1 58.4 95.4 -
+Selective Fine-Tuning
+SED [59] CLIP ConvNeXt-L - E 13.9 22.6 35.2 60.6 96.1 -
+CAT-Seg [9] CLIP ViT-L/14 - E 16.0 23.8 37.9 63.3 97.0 82.5
+Parameter-efficient Fine-Tuning
+SAN [62] CLIP ViT-L/14 Side Adapter E 12.4 15.7 32.1 57.7 94.6 -
+Ours CLIP ViT-L/14 - H 16.3 24.1 38.2 64.2 98.3 84.3
+Table 1. Comparison with state-of-the-art methods on standard benchmarks. The best-performing results are presented in bold, while
+the second-best results are underlined. “E”: Euclidean Space. “H”: Hyperbolic Space.
+matrix. In this case, the number of parameters becomes d, re-
+sulting in a complexity of O (d). Despite all these strategies
+to improve parameter efficiency, we note that the resulting
+matrix S remains to realize scaling transformations, thereby
+allowing it to adjust the radius of CLIP’s embeddings.
+4.3. Theoretical Analysis
+To further demonstrate the effectiveness of the proposed
+HyperCLIP method, we conduct a theoretical analysis of the
+scaling transformation. Theorem 1 reveals that the employed
+scaling matrix can directly adjust the hyperbolic radius, thus
+enabling transferring through different hierarchical levels.
+Detailed proof refers to the supplementary.
+Theorem 1 (Scaling). According to the definitions of the
+classical Poincar´e Ball model and the hyperbolic tangent, for
+a point x ∈ Dn
+c in hyperbolic space, its hyperbolic radius is
+defined as:
+Radx := dD
+c (x, 0) = ( 2√c )tanh−1(√c∥x∥), (9)
+where 0 is the center of the hyperbolic space. Let s is a
+scaling parameter, combine with Eq. 2 and Eq. 9, the radius
+of the point xs = Tx(s) := s ⊗c x which changed by the
+scaling transformation Tx(s) is obtained by:
+Radx,s(s) = 2√ctanh−1(√c∥xs∥)
+= 2√ctanh−1(√c
+
+
+tanh( s√c
+2 Radx)x√c∥x∥
+
+). (10)
+It is noticed that the Radx,s(s) satisfies the monotonicity
+criteria, therefore, we can adjust the hyperbolic radius by
+changing the scaling parameter s. Refer to the definition
+of the M ¨obius matrix multiplication operation in [ 27], the
+scaling matrix S also has the ability to adjust the hyperbolic
+radius via the scaling transformation Tx(S). ■
+5. Experiments
+5.1. Experimental Setup
+Datasets. Following prior works [9, 59], we use the COCO-
+Stuff dataset [4] as our training set. This dataset consists
+of around 118,000 densely annotated images, covering 171
+distinct semantic categories. For inference, we compare our
+4566
+
+
+=== PAGE 6 ===
+Methods Space for Fine-tuning APBase
+50 APNovel
+50
+CLIP - 21.6 36.4
+Other Fine-Tuning
+CLIM [58] E 25.7 42.5
+CAT-Seg [9] E 25.2 42.3
+Parameter-efficient Fine-Tuning
+LoRA [21] E 24.4 41.5
+HyperLoRA [64] H 25.1 42.0
+Ours H 26.3 42.7
+Table 2. Comparisons on open-vocabulary object detection task
+on the COCO [38] dataset. Results are measured by the box AP at
+IoU threshold 0.5. “E”: Euclidean space. “H”: hyperbolic space.
+method against state-of-the-art approaches across several se-
+mantic segmentation benchmarks, including ADE20K [67],
+PASCAL VOC [14], and PASCAL-Context [40].
+• ADE20K [67] is a well-established semantic segmentation
+dataset with approximately 20,000 training images and
+2,000 validation images. It also includes two separate test
+sets: A-150, consisting of 150 common categories, and
+A-847, which contains 847 categories.
+• PASCAL VOC [14] is a smaller dataset for semantic seg-
+mentation, consisting of 1464 training images and 1449
+validation images, covering 20 different foreground cat-
+egories. We refer to this dataset as PAS-20. In line
+with [9], we also report scores on PAS-20b, which in-
+cludes the “background” as the 21st category.
+• PASCAL-Context [40] is an extended version of the orig-
+inal PASCAL VOC dataset. It provides two test sets:
+PC-59 and PC-459, containing 59 and 459 categories
+respectively, for evaluation purposes.
+Evaluation Metric. Consistent with prior studies [ 9, 59],
+we use mean Intersection over Union (mIoU) to evaluate the
+semantic segmentation performance on these benchmarks.
+Implementation Details. We implement our method using
+the Transformer-based CLIP model. Following the protocol
+established in [9], we evaluate our results on two versions
+of the CLIP model: ViT-B/16 and ViT-L/14. For training,
+we follow the same experimental setup as [9]. Besides, we
+use the Adam optimizer [29] with an initial learning rate of
+1 × 10−5 for CLIP, and a weight decay of 10−4. Training
+is conducted with one image per mini-batch. We apply the
+block-diagonal learnable weight in the self-attention module
+in each layer of CLIP. We employ the cost-based approach
+from [9] as our decoder. The curvature c of Poincar´e ball
+model is set to 0.01. All models are trained for 80,000
+iterations using 4 NVIDIA A800 GPUs.
+5.2. Comparisons with State-of-the-art Methods
+Here, we compare our proposed method with several state-
+of-the-art methods, as shown in Table 1, using six test sets
+Method ODISE [60] FC-CLIP [65] MAFT+ [25] Ours
+PQ 23.4 26.8 27.1 29.2
+Table 3. Comparisons on open-vocabulary panoptic segmenta-
+tion task on the ADE20K [67] dataset. “PQ”: Panoptic quality.
+n Param. (M) A-847 PC-459 A-150 PC-59 PAS-20 b
+1 0.04 5.9 9.4 27.4 52.4 74.9
+8 0.35 10.1 15.4 29.9 54.2 75.6
+16 0.70 11.4 17.4 31.0 55.9 76.2
+32 1.41 11.7 18.1 31.7 56.6 76.7
+64 2.81 11.9 18.7 32.0 57.8 77.8
+128 5.63 12.3 19.2 32.1 58.5 78.9
+256 11.25 12.2 19.0 31.9 58.8 79.3
+Table 4. Ablation on the size of diagonal blocks n. The base
+model is ViT-B/16. The best-performing results are presented in
+bold, while the second-best results are underlined.
+Methods OVSeg [37] CAT-Seg [9] SAN [62] Ours
+Param. (M) 147.2 39.5 8.4 5.6
+Table 5. Efficiency comparison in terms of learnable parameters
+for fine-tuning CLIP. The base model is ViT-B/16.
+across three benchmarks. Overall, we achieve the best re-
+sults. Most existing open-vocabulary semantic segmentation
+methods follow partial fine-tuning strategies, i.e., fine-tuning
+CLIP’s image encoder. Although these methods provide suf-
+ficient flexibility for aligning with text descriptions generated
+by the text encoder, they fail to adjust the text embeddings
+to the appropriate hierarchical level for effective text-to-
+image alignment, often leading to suboptimal segmentation
+performance. Differently, CAT-Seg [9] simultaneously fine-
+tunes both the text encoder and image encoder of CLIP,
+achieving performance comparable to ours on some of the
+datasets. However, its fine-tuning scheme is manually con-
+trolled through different layer combinations, necessitating
+a careful design to balance generalization and segmenta-
+tion ability, while ours does not suffer from such an issue.
+Then, compared to SAN [ 62], another parameter-efficient
+fine-tuning method that introduces only a limited number
+of tunable parameters, our approach significantly outper-
+forms it, achieving improvements of 6.6% on the PC-459
+dataset and 4.7% on the PC-59 dataset with ViT-B/16 as
+the base model. These results demonstrate the effectiveness
+of our method in preserving generalization while mastering
+segmentation capability.
+Efficiency comparison. We compare the efficiency of our
+method with other approaches, including OVSeg [37], CAT-
+Seg [9], and SAN [ 62], all of which utilize a ViT version
+of CLIP. The comparison, summarized in Table 5, shows
+4567
+
+
+=== PAGE 7 ===
+Image SAN [62] CAT-Seg [9] Ours Ground Truth
+Figure 4. Comparison of qualitative reults on ADE20K [67] with 847 categories. We compare our method with other two state-of-the-art
+methods, i.e., SAN [62] and CAT-Seg [9]. The results show our method performs more precise segmentation in different scenarios.
+Method Image encoder Text encoder Param. (M) A-847 PC-459 A-150 PC-59 PAS-20 PAS-20 b
+Freeze ✗ ✗ 0 4.4 6.6 24.8 49.4 92.5 71.9
+Parameter-efficient Fine-Tuning
+LoRA [21] ✓ ✓ 7.5 11.4 17.6 28.6 55.1 94.2 76.7
+OFT [45] ✓ ✓ 3.8 10.9 18.0 30.2 53.7 93.7 74.3
+VPT [24] ✓ ✓ 2.2 5.7 10.2 23.7 54.3 93.8 75.1
+Adapter [19] ✓ ✓ 7.5 10.4 16.5 28.8 54.9 94.2 75.2
+SSF [36] ✓ ✓ 0.6 6.9 15.2 28.6 52.1 93.2 72.8
+HyperLoRA [64] ✓ ✓ 7.5 11.4 18.2 29.7 55.8 94.3 77.2
+✓ ✗ 3.4 10.3 16.8 30.5 57.6 94.4 78.0
+HyperCLIP (Ours) ✗ ✓ 2.2 11.1 17.5 29.8 55.1 93.7 76.1
+✓ ✓ 5.6 12.3 19.2 32.1 58.5 95.6 78.9
+Table 6. Ablation study on the fine-tuning encoder in HyperCLIP and comparison of universal PEFT methods, including “LoRA” [21],
+“OFT” [45], “VPT” [24], “Adapter” [19], “LST” [49], “SSF” [36] and “HyperLoRA” [64] which is a recent PEFT method fine-tunes large
+language models in hyperbolic space. For a clear comparison, we ignore the segmentation decoder when calculating the number of learnable
+parameters. The base model is ViT-B/16. ✓: Fine-tuning. ✗: Freezing.
+that our method uses the fewest trainable parameters while
+equipping CLIP with segmentation ability. Since we do not
+introduce any extra architectures, and the logarithmic and
+exponential maps can be completed within linear complex-
+ity [64], the inference overhead is negligible.
+Application to other tasks. Here, we further carry out extra
+experiments in two other tasks. In an open-vocabulary object
+detection task, CLIP’s image embeddings are transitioned
+from the image level to the object level. We follow a recent
+work [58] to investigate open-vocabulary object detection on
+the COCO dataset [38]. As shown in Table 2, the superior
+results demonstrate that HyperCLIP can effectively general-
+ize to other tasks that require aligning text embeddings with
+embeddings from arbitrary hierarchical levels, e.g., object-
+level alignment. Furthermore, the open-vocabulary panoptic
+segmentation results presented in Table 3 further corroborate
+this conclusion.
+Qualitative results. Here, we visualize our method’s rep-
+resentative example segmentation results against prevailing
+methods, i.e., CAT-Seg [9] and SAN [ 62], in the A-847
+4568
+
+
+=== PAGE 8 ===
+dataset. As shown in Fig. 4, we can observe that our method
+can make more accurate predictions on object location and
+category. Even if objects are small and the background is
+complicated, our method still performs well.
+5.3. Ablation Study
+Ablation of fine-tuning CLIP.We assess the efficacy of var-
+ious fine-tuning design choices for HyperCLIP. As shown in
+Table 6, we freeze one of CLIP’s encoders and compare the
+performance with several commonly-used PEFT methods,
+e.g., LoRA [ 21]. Compared to fully freezing CLIP’s en-
+coders (row 1), fine-tuning either encoder independently al-
+lows for minimizing its hyperbolic radius, thereby equipping
+the corresponding encoder with segmentation ability. How-
+ever, one modality’s hierarchical level remains at the image
+level, which hinders CLIP from fully acquiring segmenta-
+tion ability. Consequently, jointly fine-tuning both encoders
+aligns the hierarchical levels at the pixel level, resulting in op-
+timal performance. We also compare our method with exist-
+ing PEFT strategies. Most of these methods, which operate
+in Euclidean space, struggle to capture the transition between
+different hierarchical levels. Notably, HyperLoRA [64] also
+updates parameters in hyperbolic space. However, because
+HyperLoRA does not specifically adjust the hyperbolic ra-
+dius, it fails to fully endow CLIP with segmentation ability,
+resulting in inferior performance compared to our method.
+Ablation of the size of diagonal blocks. The size of the
+diagonal block in our scaling transformations determines the
+number of parameters required to equip CLIP with segmenta-
+tion ability. To investigate its impact, we conduct an ablation
+study on the scaling transformations by systematically vary-
+ing the size of the diagonal block. As shown in Table 4, accu-
+racy improves incrementally on datasets with fewer classes.
+However, on datasets with more classes (e.g., A-847), the
+accuracy performance reaches a saturation point around a
+block size of 128. This suggests that increasing the dimen-
+sionality of the diagonal block introduces more trainable
+parameters, which may lead to over-fitting on a closed set.
+Effect of the hyperbolic radius of text embeddings. In or-
+der to closely examine the effect of the hyperbolic radius on
+equipping CLIP with segmentation ability, we apply a mean
+squared error (MSE) loss during fine-tuning. This MSE loss
+encourages the average hyperbolic radius of the text embed-
+dings to converge towards different target values. As shown
+in Fig. 5, the initial value of the average hyperbolic radius
+is approximately 7.5, which is subsequently minimized to
+around 6.0 to achieve the optimal value for segmentation.
+Deviating from this value, either by increasing or decreasing
+the expected radius, results in diminished performance. This
+observation offers a new insight: the hyperbolic radius re-
+quired for a vision task might be relatively fixed, suggesting
+that it could serve as a metric to quantify the granularity of
+different vision tasks.
+M¨obius. A-847 PC-459 A-150 PC-59 PAS-20 b
+✗ 11.1 18.2 30.2 57.3 77.5
+✓ 12.3 19.2 32.1 58.5 78.9
+Table 7. Ablation on the necessity of M¨obius matrix multiplica-
+tion. “M¨obius.”: M¨obius matrix multiplication.
+2 4 6 8
+Average hyperbolic radius of text embeddings
+15
+20
+25
+30mIoU (%)
+Initial average hyperbolic radius
+A-847
+PC-459
+A-150
+Figure 5. Visualization on the effect of different average hy-
+perbolic radii of text embeddings. The controlling of different
+hyperbolic radii is achieved via a mean squared error (MSE) loss
+that enforces a constraint between the expected radius and the mean
+radius of the text embeddings during fine-tuning.
+Necessity of M ¨obius matrix multiplication. We ablate
+this experiment to validate the influence of the M¨obius ma-
+trix multiplication operation. In Table 7, “ ✗” means that
+we use standard matrix multiplication. It achieves worse
+performance compared with “✓”, which indicates that the
+M¨obius matrix multiplication is essential for minimizing the
+hyperbolic radius of CLIP’s embeddings.
+6. Conclusion
+In this paper, we propose HyperCLIP, a novel fine-tuning
+strategy for CLIP tailored to open-vocabulary semantic seg-
+mentation. Recognizing the hierarchical structure of images,
+we hypothesize that aligning the hierarchical level of CLIP’s
+text encoder with pixel-level representations is crucial for
+accurate pixel-level predictions. HyperCLIP achieves this by
+adjusting the hierarchical level in hyperbolic space through
+scaling transformations applied to CLIP’s embeddings, en-
+abling precise cross-modal alignment. Extensive experi-
+ments demonstrate that HyperCLIP sets new state-of-the-art
+results in open-vocabulary semantic segmentation. More
+importantly, we observe that after adjustment, CLIP’s text
+embeddings maintain a relatively fixed hyperbolic radius
+across datasets. This suggests that the segmentation task’s
+granularity may be quantified using the hyperbolic radius,
+offering a promising direction for future research.
+4569
+
+
+=== PAGE 9 ===
+Acknowledgments
+This work was supported by the NSFC under Grant
+62322604, 62176159 and 62401361, and in part
+by the Shanghai Municipal Science and Technol-
+ogy Major Project under Grant 2021SHZDZX0102.
+References
+[1] Irving Biederman. Recognition-by-components: a theory of
+human image understanding. Psychological review, 94(2):
+115, 1987. 2
+[2] Martin R Bridson and Andr ´e Haefliger. Metric spaces of
+non-positive curvature. Springer Science & Business Media,
+2013. 3
+[3] Maxime Bucher, Tuan-Hung Vu, Matthieu Cord, and Patrick
+P´erez. Zero-shot semantic segmentation. Advances in Neural
+Information Processing Systems, 32, 2019. 5
+[4] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. InProceedings of the
+IEEE conference on computer vision and pattern recognition,
+pages 1209–1218, 2018. 2, 3, 5
+[5] James W Cannon, William J Floyd, Richard Kenyon, Walter R
+Parry, et al. Hyperbolic geometry. Flavors of geometry, 31
+(59-115):2, 1997. 2, 3
+[6] Jiaxin Chen, Jie Qin, Yuming Shen, Li Liu, Fan Zhu, and Ling
+Shao. Learning attentive and hierarchical representations for
+3d shape recognition. In Computer Vision–ECCV 2020: 16th
+European Conference, Glasgow, UK, August 23–28, 2020,
+Proceedings, Part XV 16, pages 105–122. Springer, 2020. 3
+[7] Yen-Chun Chen, Linjie Li, Licheng Yu, Ahmed El Kholy,
+Faisal Ahmed, Zhe Gan, Yu Cheng, and Jingjing Liu. Uniter:
+Universal image-text representation learning. In European
+conference on computer vision , pages 104–120. Springer,
+2020. 1
+[8] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexander
+Kirillov, and Rohit Girdhar. Masked-attention mask trans-
+former for universal image segmentation. In Proceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 1290–1299, 2022. 3
+[9] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag Arnab,
+Paul Hongsuck Seo, and Seungryong Kim. Cat-seg: Cost ag-
+gregation for open-vocabulary semantic segmentation, 2024.
+2, 3, 5, 6, 7
+[10] Karan Desai, Maximilian Nickel, Tanmay Rajpurohit, Justin
+Johnson, and Shanmukha Ramakrishna Vedantam. Hyper-
+bolic image-text representations. In International Conference
+on Machine Learning, pages 7694–7731. PMLR, 2023. 3
+[11] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 11583–11592, 2022. 3, 5
+[12] Zi-Yi Dou, Aishwarya Kamath, Zhe Gan, Pengchuan Zhang,
+Jianfeng Wang, Linjie Li, Zicheng Liu, Ce Liu, Yann Le-
+Cun, Nanyun Peng, et al. Coarse-to-fine vision-language
+pre-training with fusion in the backbone. Advances in neural
+information processing systems, 35:32942–32956, 2022. 1
+[13] Zi-Yi Dou, Yichong Xu, Zhe Gan, Jianfeng Wang, Shuohang
+Wang, Lijuan Wang, Chenguang Zhu, Pengchuan Zhang, Lu
+Yuan, Nanyun Peng, et al. An empirical study of training
+end-to-end vision-and-language transformers. In Proceedings
+of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 18166–18176, 2022. 1
+[14] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge. International journal of computer
+vision, 88:303–338, 2010. 6
+[15] Zhe Gan, Yen-Chun Chen, Linjie Li, Chen Zhu, Yu Cheng,
+and Jingjing Liu. Large-scale adversarial training for vision-
+and-language representation learning. Advances in Neural
+Information Processing Systems, 33:6616–6628, 2020. 1
+[16] Octavian Ganea, Gary B´ecigneul, and Thomas Hofmann. Hy-
+perbolic neural networks. Advances in neural information
+processing systems, 31, 2018. 3
+[17] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scaling
+open-vocabulary image segmentation with image-level labels.
+In European Conference on Computer Vision, pages 540–557.
+Springer, 2022. 3, 5
+[18] Yunhui Guo, Xudong Wang, Yubei Chen, and Stella X Yu.
+Clipped hyperbolic classifiers are super-hyperbolic classifiers.
+In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 11–20, 2022. 3
+[19] Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna
+Morrone, Quentin De Laroussilhe, Andrea Gesmundo, Mona
+Attariyan, and Sylvain Gelly. Parameter-efficient transfer
+learning for nlp. In International conference on machine
+learning, pages 2790–2799. PMLR, 2019. 7
+[20] Chengyang Hu, Ke-Yue Zhang, Taiping Yao, Shouhong
+Ding, and Lizhuang Ma. Rethinking generalizable face anti-
+spoofing via hierarchical prototype-guided distribution refine-
+ment in hyperbolic space. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition ,
+pages 1032–1041, 2024. 3
+[21] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-
+Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen.
+LoRA: Low-rank adaptation of large language models. In
+International Conference on Learning Representations, 2022.
+6, 7, 8
+[22] Ming Hu, Kun Yuan, Yaling Shen, Feilong Tang, Xiaohao Xu,
+Lin Zhou, Wei Li, Ying Chen, Zhongxing Xu, Zelin Peng,
+et al. Ophclip: Hierarchical retrieval-augmented learning
+for ophthalmic surgical video-language pretraining. arXiv
+preprint arXiv:2411.15421, 2024. 1
+[23] Zhicheng Huang, Zhaoyang Zeng, Yupan Huang, Bei Liu,
+Dongmei Fu, and Jianlong Fu. Seeing out of the box: End-to-
+end pre-training for vision-language representation learning.
+In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 12976–12985, 2021. 1
+[24] Menglin Jia, Luming Tang, Bor-Chun Chen, Claire Cardie,
+Serge Belongie, Bharath Hariharan, and Ser-Nam Lim. Visual
+prompt tuning. In European Conference on Computer Vision,
+pages 709–727. Springer, 2022. 7
+[25] Siyu Jiao, Hongguang Zhu, Jiannan Huang, Yao Zhao, Yun-
+chao Wei, and Humphrey Shi. Collaborative vision-text rep-
+resentation optimizing for open-vocabulary segmentation. In
+4570
+
+
+=== PAGE 10 ===
+European Conference on Computer Vision, pages 399–416.
+Springer, 2024. 6
+[26] Aishwarya Kamath, Mannat Singh, Yann LeCun, Gabriel Syn-
+naeve, Ishan Misra, and Nicolas Carion. Mdetr-modulated
+detection for end-to-end multi-modal understanding. In Pro-
+ceedings of the IEEE/CVF International Conference on Com-
+puter Vision, pages 1780–1790, 2021. 1
+[27] Valentin Khrulkov, Leyla Mirvakhabova, Evgeniya Ustinova,
+Ivan Oseledets, and Victor Lempitsky. Hyperbolic image
+embeddings. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pages 6418–6428,
+2020. 3, 5
+[28] Wonjae Kim, Bokyung Son, and Ildoo Kim. Vilt: Vision-and-
+language transformer without convolution or region supervi-
+sion. In International conference on machine learning, pages
+5583–5594. PMLR, 2021. 1
+[29] Diederik P Kingma and Jimmy Ba. Adam: A method for
+stochastic optimization. arXiv preprint arXiv:1412.6980 ,
+2014. 6
+[30] Fanjie Kong, Yanbei Chen, Jiarui Cai, and Davide Mod-
+olo. Hyperbolic learning with synthetic captions for open-
+world detection. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 16762–
+16771, 2024. 3
+[31] Boyi Li, Kilian Q Weinberger, Serge Belongie, Vladlen
+Koltun, and Rene Ranftl. Language-driven semantic seg-
+mentation. In International Conference on Learning Repre-
+sentations, 2022. 2, 5
+[32] Junnan Li, Ramprasaath Selvaraju, Akhilesh Gotmare, Shafiq
+Joty, Caiming Xiong, and Steven Chu Hong Hoi. Align
+before fuse: Vision and language representation learning
+with momentum distillation. Advances in neural information
+processing systems, 34:9694–9705, 2021. 1
+[33] Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi. Blip:
+Bootstrapping language-image pre-training for unified vision-
+language understanding and generation. In International
+conference on machine learning, pages 12888–12900. PMLR,
+2022.
+[34] Liunian Harold Li, Pengchuan Zhang, Haotian Zhang, Jian-
+wei Yang, Chunyuan Li, Yiwu Zhong, Lijuan Wang, Lu Yuan,
+Lei Zhang, Jenq-Neng Hwang, et al. Grounded language-
+image pre-training. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+10965–10975, 2022.
+[35] Xiujun Li, Xi Yin, Chunyuan Li, Pengchuan Zhang, Xiaowei
+Hu, Lei Zhang, Lijuan Wang, Houdong Hu, Li Dong, Furu
+Wei, et al. Oscar: Object-semantics aligned pre-training for
+vision-language tasks. In Computer Vision–ECCV 2020: 16th
+European Conference, Glasgow, UK, August 23–28, 2020,
+Proceedings, Part XXX 16, pages 121–137. Springer, 2020. 1
+[36] Dongze Lian, Daquan Zhou, Jiashi Feng, and Xinchao Wang.
+Scaling & shifting your features: A new baseline for efficient
+model tuning. Advances in Neural Information Processing
+Systems, 35:109–123, 2022. 7
+[37] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+7061–7070, 2023. 2, 3, 5, 6
+[38] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+Pietro Perona, Deva Ramanan, Piotr Doll´ar, and C Lawrence
+Zitnick. Microsoft coco: Common objects in context. In
+Computer Vision–ECCV 2014: 13th European Conference,
+Zurich, Switzerland, September 6-12, 2014, Proceedings, Part
+V 13, pages 740–755. Springer, 2014. 6, 7
+[39] Jiasen Lu, Dhruv Batra, Devi Parikh, and Stefan Lee. Vilbert:
+Pretraining task-agnostic visiolinguistic representations for
+vision-and-language tasks. Advances in neural information
+processing systems, 32, 2019. 1
+[40] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and
+semantic segmentation in the wild. In Proceedings of the
+IEEE conference on computer vision and pattern recognition,
+pages 891–898, 2014. 6
+[41] Maximillian Nickel and Douwe Kiela. Learning continuous
+hierarchies in the lorentz model of hyperbolic geometry. In
+International conference on machine learning, pages 3779–
+3788. PMLR, 2018. 3
+[42] Zelin Peng, Zhengqin Xu, Zhilin Zeng, Yaoming Wang,
+Lingxi Xie, Qi Tian, and Wei Shen. Parameter-efficient fine-
+tuning in hyperspherical space for open-vocabulary semantic
+segmentation. arXiv preprint arXiv:2405.18840, 2024. 2
+[43] Zelin Peng, Zhengqin Xu, Zhilin Zeng, Lingxi Xie, Qi Tian,
+and Wei Shen. Parameter efficient fine-tuning via cross block
+orchestration for segment anything model. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 3743–3752, 2024. 1
+[44] Zelin Peng, Zhengqin Xu, Zhilin Zeng, Xiaokang Yang, and
+Wei Shen. Sam-parser: Fine-tuning sam efficiently by pa-
+rameter space reconstruction. In Proceedings of the AAAI
+Conference on Artificial Intelligence, pages 4515–4523, 2024.
+1
+[45] Zeju Qiu, Weiyang Liu, Haiwen Feng, Yuxuan Xue, Yao
+Feng, Zhen Liu, Dan Zhang, Adrian Weller, and Bernhard
+Sch¨olkopf. Controlling text-to-image diffusion by orthogo-
+nal finetuning. Advances in Neural Information Processing
+Systems, 36:79320–79362, 2023. 7
+[46] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. In International conference on machine learning, pages
+8748–8763. PMLR, 2021. 1, 2
+[47] Sameera Ramasinghe, Violetta Shevchenko, Gil Avraham,
+and Ajanthan Thalaiyasingam. Accept the modality gap:
+An exploration in the hyperbolic space. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 27263–27272, 2024. 2, 3
+[48] Frederic Sala, Chris De Sa, Albert Gu, and Christopher R ´e.
+Representation tradeoffs for hyperbolic embeddings. In Inter-
+national conference on machine learning, pages 4460–4469.
+PMLR, 2018. 2
+4571
+
+
+=== PAGE 11 ===
+[49] Yi-Lin Sung, Jaemin Cho, and Mohit Bansal. Lst: Ladder
+side-tuning for parameter and memory efficient transfer learn-
+ing. Advances in Neural Information Processing Systems, 35:
+12991–13005, 2022. 7
+[50] D´ıdac Sur´ıs, Ruoshi Liu, and Carl V ondrick. Learning the
+predictability of the future. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition ,
+pages 12607–12617, 2021. 2
+[51] Hao Tan and Mohit Bansal. Lxmert: Learning cross-modality
+encoder representations from transformers. arXiv preprint
+arXiv:1908.07490, 2019. 1
+[52] Feilong Tang, Zile Huang, Chengzhi Liu, Qiang Sun, Harry
+Yang, and Ser-Nam Lim. Intervening anchor token: Decoding
+strategy in alleviating hallucinations for mllms. In The Thir-
+teenth International Conference on Learning Representations.
+1
+[53] Abraham A Ungar. Hyperbolic trigonometry and its appli-
+cation in the poincar ´e ball model of hyperbolic geometry.
+Computers & Mathematics with Applications, 41(1-2):135–
+147, 2001. 3
+[54] Abraham Albert Ungar. A gyrovector space approach to
+hyperbolic geometry. Synthesis Lectures on Mathematics and
+Statistics, 1(1):1–194, 2008. 3
+[55] Jianfeng Wang, Xiaowei Hu, Zhe Gan, Zhengyuan Yang,
+Xiyang Dai, Zicheng Liu, Yumao Lu, and Lijuan Wang.
+Ufo: A unified transformer for vision-language representation
+learning. arXiv preprint arXiv:2111.10023, 2021. 1
+[56] Sijie Wang, Qiyu Kang, Rui She, Wei Wang, Kai Zhao, Yang
+Song, and Wee Peng Tay. Hypliloc: Towards effective lidar
+pose regression with hyperbolic fusion. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 5176–5185, 2023. 3
+[57] Melanie Weber, Manzil Zaheer, Ankit Singh Rawat, Aditya K
+Menon, and Sanjiv Kumar. Robust large-margin learning in
+hyperbolic space. Advances in Neural Information Processing
+Systems, 33:17863–17873, 2020. 2
+[58] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Wentao Liu,
+and Chen Change Loy. Clim: Contrastive language-image
+mosaic for region representation. In Proceedings of the AAAI
+Conference on Artificial Intelligence, pages 6117–6125, 2024.
+6, 7
+[59] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and Yanwei
+Pang. Sed: A simple encoder-decoder for open-vocabulary
+semantic segmentation, 2023. 2, 5, 6
+[60] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panoptic
+segmentation with text-to-image diffusion models. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 2955–2966, 2023. 3, 5, 6
+[61] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. In European Conference on Computer Vi-
+sion, pages 736–753. Springer, 2022. 3, 5
+[62] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xiang
+Bai. Side adapter network for open-vocabulary semantic
+segmentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 2945–
+2954, 2023. 2, 3, 5, 6, 7
+[63] Haochen Xue, Feilong Tang, Ming Hu, Yexin Liu, Qidong
+Huang, Yulong Li, Chengzhi Liu, Zhongxing Xu, Chong
+Zhang, Chun-Mei Feng, et al. Mmrc: A large-scale bench-
+mark for understanding multimodal large language model in
+real-world conversation. arXiv preprint arXiv:2502.11903,
+2025. 1
+[64] Menglin Yang, Aosong Feng, Bo Xiong, Jihong Liu, Irwin
+King, and Rex Ying. Hyperbolic fine-tuning for large lan-
+guage models. arXiv preprint arXiv:2410.04010, 2024. 4, 6,
+7, 8
+[65] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip. In NeurIPS,
+2023. 2, 3, 5, 6
+[66] Zhen Yu, Toan Nguyen, Yaniv Gal, Lie Ju, Shekhar S Chan-
+dra, Lei Zhang, Paul Bonnington, Victoria Mar, Zhiyong
+Wang, and Zongyuan Ge. Skin lesion recognition with class-
+hierarchy regularized hyperbolic embeddings. In Interna-
+tional conference on medical image computing and computer-
+assisted intervention, pages 594–603. Springer, 2022. 3
+[67] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset. International
+Journal of Computer Vision, 127:302–321, 2019. 6, 7
+[68] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. In European Conference on Computer
+Vision, pages 696–712. Springer, 2022. 3
+[69] Ziqin Zhou, Yinjie Lei, Bowen Zhang, Lingqiao Liu, and
+Yifan Liu. Zegclip: Towards adapting clip for zero-shot
+semantic segmentation. Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition (CVPR),
+2023. 5
+[70] Yudong Zhu, Di Zhou, Jinghui Xiao, Xin Jiang, Xiao Chen,
+and Qun Liu. Hypertext: Endowing fasttext with hyperbolic
+geometry. arXiv preprint arXiv:2010.16143, 2020. 3
+4572

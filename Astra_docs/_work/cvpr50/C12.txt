@@ -1,0 +1,1191 @@
+=== PAGE 1 ===
+Semantic Library Adaptation:
+LoRA Retrieval and Fusion for Open-Vocabulary Semantic Segmentation
+Reza Qorbani3* Gianluca Villani1,2∗ Theodoros Panagiotakopoulos1,5
+Marc Botet Colomer1 Linus H¨arenstam-Nielsen6,7 Mattia Segu1,9 Pier Luigi Dovesi1,4†
+Jussi Karlgren1,4 Daniel Cremers6,7 Federico Tombari6,8 Matteo Poggi10
+1The Good AI Lab 2University of Toronto 3KTH 4AMD Silo AI
+5King 6Technical University of Munich 7Munich Center for Machine Learning
+8Google 9ETH Zurich 10University of Bologna
+https://thegoodailab.org/semla
+Abstract
+Open-vocabulary semantic segmentation models asso-
+ciate vision and text to label pixels from an undefined set
+of classes using textual queries, providing versatile perfor-
+mance on novel datasets. However, large shifts between
+training and test domains degrade their performance, re-
+quiring fine-tuning for effective real-world applications. We
+introduce Semantic Library Adaptation (SemLA) , a novel
+framework for training-free, test-time domain adaptation.
+SemLA leverages a library of LoRA-based adapters indexed
+with CLIP embeddings, dynamically merging the most rel-
+evant adapters based on proximity to the target domain
+in the embedding space. This approach constructs an ad-
+hoc model tailored to each specific input without additional
+training. Our method scales efficiently, enhances explain-
+ability by tracking adapter contributions, and inherently
+protects data privacy, making it ideal for sensitive applica-
+tions. Comprehensive experiments on a 20-domain bench-
+mark built over 10 standard datasets demonstrate SemLA ’s
+superior adaptability and performance across diverse set-
+tings, establishing a new standard in domain adaptation for
+open-vocabulary semantic segmentation.
+1. Introduction
+Semantic segmentation aims to classify images at the pixel
+level, assigning a label to each pixel in an image. Tra-
+ditionally, models are trained to recognize a fixed set of
+classes, but recent advances have led to open-vocabulary
+(OV) semantic segmentation, where models identify cate-
+gories from an undefined and unbounded set using textual
+queries. This task leverages the synergy between text and
+∗ Joint first authorship † Project Lead
+custom
+LoRA
+MODEL
+CLIP
+LoRA fusionweighted on proximity
+LoRA library in CLIP space
+SemLA adapts to unseen
+domains by dynamicallymerging LoRA adapters
+indexed in CLIP space.
+Figure 1. Overview of SemLA . During test-time, SemLA uses
+CLIP as a domain navigator, to retrieve and fuse relevant adapters,
+to get a LoRA tailored to the target domain.
+visual embeddings [51], enabling flexible and dynamic la-
+beling [10, 71]. However, like all models, OV semantic
+segmentation models are vulnerable to domain shifts – sit-
+uations where the model encounters data distributions dif-
+ferent from those it was trained on, leading to degraded per-
+formance. This issue is significant because it impacts both
+segmentation accuracy and open-vocabulary generalization
+capabilities, which are crucial in real-world applications.
+Data is plentiful but heterogeneous – varying in labels,
+annotation styles, and other factors – and often contains sen-
+sitive information, limiting its accessibility. Consequently,
+we find ourselves in a paradox where an abundance of data
+does not necessarily translate into robust models capable
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+9804
+
+
+=== PAGE 2 ===
+of handling domain shifts [67]. Although several domain
+adaptation methods have been proposed, they have not been
+applied to OV semantic segmentation settings.
+Classic domain adaptation approaches are limited: they
+usually focus on a single target domain, require access to
+source data during adaptation, involve slow and expensive
+processes, and often deteriorate performance on the source
+dataset [21, 23, 64, 68, 87]. Test-time and online adapta-
+tion address some issues but are usually too slow for real-
+time applications and lack explainability [3, 49]. Drawing
+inspiration from recent developments in Large Language
+Models (LLMs) and the use of Parameter-Efficient Fine-
+Tuning (PEFT) techniques enriched with metadata – such
+as adapters in Hugging Face and Civit-ai – we aim to trans-
+fer this idea to the field of OV semantic segmentation, by
+integrating external information beyond what was found in
+the static training data through retrieval mechanisms [84].
+We propose a training-free test-time adaptation ap-
+proach for OV semantic segmentation, Semantic Library
+Adaptation ( SemLA), achieved through adapter retrieval
+and merging. Our approach begins with creating a set
+of adapters using Low-Rank Adaptation (LoRA) [26, 42].
+However, simply having a collection of adapters is insuf-
+ficient, as the model still can’t discern which adapter to
+select. Just as a collection of books requires an indexing
+system to become a functional library, we introduce an in-
+dexing mechanism to guide retrieval. Specifically, we em-
+ploy Contrastive Language-Image Pretraining (CLIP) [51]
+to represent each LoRA adapter as the centroid of the CLIP
+embeddings of its training data. At test time, we can then
+select the most relevant adapters based on the proximity of
+the target image embedding to these centroids.
+Real-world domains are, however, far too numerous to
+rely on single adapters for every possible scenario due to
+the inherent combinatorial complexity of the domain space.
+To address this, we aggregate the most relevant adapters
+based on their proximity to the target domain. Just as in a
+library where the exact book you seek may not be available,
+the necessary knowledge can still be gathered by consulting
+multiple related sources. By fusing several adapters based
+on their relevance to the target image, we effectively con-
+struct an ad-hoc model fine-tuned for each situation. Figure
+1 presents an overview of SemLA at test-time.
+This is training-free, scales well to any library size, and
+accommodates vastly different domains and label sets, with
+adaptation happening almost instantaneously through CLIP
+inference and LoRA merging. Moreover, our approach
+enhances explainability by identifying which adapters are
+most useful for certain target domains, allowing us to un-
+derstand the model’s reasoning and capabilities.
+Our main contributions are summarized as follows:
+• Training-free test-time adaptation for OV semantic
+segmentation: We introduce the first method for adap-
+tation in OV segmentation. It requires no training at test
+time, enabling adaptive responses to diverse input images.
+Our framework is simple, scalable with large adapter li-
+braries, and backbone-agnostic.
+• Novel benchmark for OV domain adaptation : We
+provide comprehensive experiments with a 20-domain
+benchmark, built over 10 popular datasets, showcasing
+performances over vastly different datasets and superior
+performance compared to zero-shot and naive adapter
+merging [35] approaches.
+• Explainability and LoRA contribution analysis : Our
+approach is inherently transparent and controllable even
+at test time, easily scaling to new targets. The adaptation
+phase occurs without accessing source data, thereby pro-
+tecting data privacy. We present analyses showing how
+adapters synergize and how we can measure their contri-
+butions and influence over the adaptation process.
+2. Related Work
+Our work intersects the following research areas:
+Semantic Segmentation. Deep learning techniques
+have led to increasingly effective semantic segmentation
+models. Fully Convolutional Networks (FCN) [41] and
+SegNet [1] extended convolutional neural networks with
+upsampling layers (deconvolution) to produce pixel-wise
+predictions. Subsequent works improved both speed [46,
+76] and accuracy [7–9]. Enhancements in accuracy in-
+volved enlarging the receptive field [7–9, 74, 83], design-
+ing refinement modules [20, 22, 86], introducing boundary
+cues [6, 14, 59], and exploiting attention mechanisms [19,
+36, 65] and Vision Transformers [72, 73, 78].
+With the introduction of vision-language models like
+CLIP [51], open-vocabulary (OV) semantic segmenta-
+tion [10, 71] has emerged as a new approach to segmen-
+tation, where the set of classes can be arbitrarily defined at
+any time through textual queries. This flexibility, however,
+introduces additional sources of domain shifts, such as vo-
+cabulary misalignment across different domains.
+Domain Adaptation. Domain adaptation focuses on
+adapting a model pre-trained on a source domain to perform
+well on a new, unlabeled target domain [82]. Adaptation can
+be performed either offline or during deployment. In the
+offline case, usually known as unsupervised domain adap-
+tation (UDA), early approaches used style transfer strate-
+gies [16, 23, 37, 68, 75, 87] or self-training to adapt the
+model, for example by carefully retrieving reliable pseudo-
+labels for the target domain by exploiting the confidence
+of the model itself [43, 89, 90], class balancing [24, 88], or
+prototypes [5, 79, 80]. While the offline scenario usually fo-
+cuses on domain shifts occurring only once, such as moving
+from synthetic [52] to real [12] images, the deployment ap-
+proach aims to handle continuous adaptation to avoid catas-
+trophic forgetting of the source domain. Some methods as-
+9805
+
+
+=== PAGE 3 ===
+sume availability of data from the training domain and in-
+volve replay buffers [2, 31, 32], style transfer [17, 18, 69],
+contrastive learning [57, 62], or adversarial learning [70].
+Others consider a more constrained case, source-free or
+test-time adaptation, where no data from the source domain
+is available [56], and involve pseudo-source data genera-
+tion [40], partial freezing of the original model [38], feature
+alignment [39], batch norm retraining through entropy min-
+imization [63], or prototype adaptation [29]. Recently, on-
+line adaptation emerged to tackle multiple domain shifts oc-
+curring unpredictably during deployment [3, 49, 54, 58, 61].
+Although these strategies are flexible for unseen domains,
+they introduce significant overhead at deployment. Finally,
+training-free adaptation [35, 55] has been proposed to ad-
+dress domain shifts by aggregating parameters of differ-
+ent single-domain experts. This approach relies on linear
+mode connectivity to uniformly merge different models. We
+demonstrate that a careful selection of a few meaningful ex-
+perts allows for better results.
+Parameter-Efficient Fine-Tuning. The advent of
+large language models (LLMs) and vision-language mod-
+els (VLMs), with billions of parameters trained on vast
+datasets, unveiled the need for new fine-tuning paradigms
+to adapt them to specific use cases. Low-Rank Adaptation
+(LoRA) [25] was proposed to fine-tune LLMs by optimiz-
+ing new sets of low-rank weights to learn residuals over the
+original parameters, preserving the knowledge derived from
+large-scale datasets while reducing computational load dur-
+ing fine-tuning. Advanced strategies allow dynamically set-
+ting the rank of LoRA parameters [81]. Recently, the pos-
+sibility of merging different LoRAs learned for different
+tasks has gained popularity [27], yielding various policies
+for combining multiple LoRAs [42].
+Model Merging. Model merging has emerged as a strat-
+egy to fuse knowledge from multiple sources directly in the
+weight space, effectively representing an alternative to en-
+semble and federated learning [34]. In [67], merging pa-
+rameters of zero-shot and fine-tuned models improves out-
+of-distribution performance. Similarly, [28, 30] use linear
+interpolation for multi-task learning. While these methods
+interpolate all weights of the models, our method merges
+LoRA adapters, which are orders of magnitude smaller in
+size. Inspired by Model Soups [66], AdapterSoup [11] av-
+erages adapters in parameter space, automatically retriev-
+ing and uniformly merging them for adaptation to down-
+stream language tasks. LoraRetriever [84] introduced a sim-
+ilar pipeline but instead uses instruction fine-tuning to train
+a retriever for selecting the most relevant adapters. Com-
+pared to these methods, SemLA performs adapter retrieval
+and fusion simply relying on the powerful semantic index-
+ing capabilities of CLIP [51], which effectively serves as a
+domain navigator.
+Positioning Our Work. Our framework falls into the
+category of domain adaptation methods, as it actively
+adapts to new, unseen domains by modifying the model
+weights based on the input. However, we diverge from
+classical UDA, as our source dataset isn’t fixed but can be
+changed at test time. It is represented by the data used to
+train the model backbone and all the datasets employed in
+the training of the adapters composing our LoRA library.
+These effectively represent the points in the LoRA weight-
+space over which we interpolate to generate new models for
+every unseen target image.
+3. Method and Framework
+In this section, we introduce SemLA. It consists of two main
+stages: (1) Construction of the LoRA Adapters Library, and
+(2) Dynamic Test-Time Adaptation. We begin by detailing
+the backbone architecture and the integration of Low-Rank
+Adaptation (LoRA) into it, followed by the description of
+our library creation and the adaptation process.
+3.1. Backbone Architecture with LoRA Integration
+Our framework builds on the CAT-Segarchitecture [10], a
+state-of-the-art model designed for OV semantic segmenta-
+tion. It aligns visual and textual information by mapping
+images and textual queries into a shared semantic space us-
+ing CLIP embeddings [51]. This allows the model to per-
+form segmentation without being constrained to a prede-
+fined set of classes, enabling flexible and dynamic label-
+ing. SemLA can be deployed with any model enjoying these
+properties – thus not only CAT-Seg, as we will discuss later.
+To facilitate efficient and adaptable domain-specific tun-
+ing, we integrate Low-Rank Adaptation (LoRA) [26] into
+CAT-Seg. LoRA introduces learnable low-rank matrices
+to each linear layer, allowing for parameter-efficient fine-
+tuning without altering the original weights. Specifically,
+for each linear layer with weights W ∈ Rd×k, we augment
+it with low-rank matrices B ∈ Rd×r and A ∈ Rr×k, where
+r ≪ min(d, k). The adapted weights become:
+W′ = W + ∆W, ∆W = BA. (1)
+By training only the LoRA parameters (B, A) for each do-
+main, we create lightweight domain-specific adapters with-
+out the need to retrain the entire model. For consistency and
+to simplify the merging process, we use the same rank r for
+all LoRA adapters.
+Moreover, we denote a LoRA adapter with ∆Wi =
+(Bi, Ai), where Bi = {B1,i, . . . , Bm,i} and Ai =
+{A1,i, . . . , Am,i} denote all the LoRA parameters ap-
+plied across all m linear layers of the CAT-Seg model.
+Given a LoRA adapter ∆Wi, the corresponding adapted
+CAT-Seg model is denoted by CAT-Seg (∆Wi), or
+CAT-Seg(∆Wi, xt) if we wish to specify the dependence
+on the input image xt. In the following, we explain the pro-
+9806
+
+
+=== PAGE 4 ===
+Figure 2. Construction and Expansion of the LoRA Adapter Library.Each LoRA adapter is created by fine-tuning on a specific dataset
+and subsequently added to the library. The library index for each adapter is represented by the CLIP centroid of its training data.
+cedure for a single linear layer; updates for all other linear
+layers are performed analogously.
+3.2. Construction of the LoRA Adapters Library
+The first stage involves building a library of domain-specific
+LoRA adapters, each associated with a representative em-
+bedding in the CLIP space. This library serves as the foun-
+dation for our dynamic adaptation at test time. This stage,
+depicted in Figure 2, is performed offline and can be re-
+peated for each newly labeled domain that becomes avail-
+able for training.
+3.2.1. Domain Embeddings from CLIP
+For each training dataset (domain) Di, we compute a cen-
+troid embedding ci to represent the domain in the CLIP em-
+bedding space as follows:
+(a) Embedding Computation: For each image xj ∈ D i,
+we obtain its CLIP embedding ej:
+ej = CLIPimage(xj). (2)
+(b) Centroid Calculation: We calculate the centroid of
+the embeddings from the Ni images in Di:
+ci = 1
+Ni
+NiX
+j=1
+ej, (3)
+The centroid ci captures the semantic essence of Di, facili-
+tating efficient similarity comparisons during adaptation.
+3.2.2. Training Domain-Specific LoRA Adapters
+For each domain Di, we fine-tune the LoRA parameters
+∆Wi = (Bi, Ai) on CAT-Seg using Di, while keeping the
+original model weights W frozen. This results in a domain-
+specific adapter LoRA i = ∆ Wi, which, when combined
+with the centroid ci, forms a tuple (ci, ∆Wi) representing
+domain Di in our library.
+3.2.3. Assembly of the Adapters Library
+By collecting all domain-specific adapters and their cen-
+troids, we construct the LoRA Adapters Library:
+L = {(ci, ∆Wi) | i = 1, 2, . . . , M} , (4)
+where M is the total number of training domains. This li-
+brary enables the model to dynamically adapt to various do-
+mains by selecting and merging relevant adapters.
+3.2.4. Extending the Library
+Our approach is extremely scalable. In any point in the fu-
+ture, as soon as new annotated data become available for a
+new domain D∗, we can perform steps 3.2.1 and 3.2.2 to
+obtain (c∗, ∆W∗) and append it to L to enrich it
+L = L + (c∗, ∆W∗) (5)
+3.3. Dynamic Test-Time Adaptation
+The second stage focuses on adapting the model for each
+input image at test time by selecting and merging the most
+relevant adapters from the library, guided by CLIP.
+3.3.1. Computing the Test Image Embedding
+Given a test image xt, we compute its CLIP embedding et:
+et = CLIPimage(xt). (6)
+This embedding serves as a query to identify the most rele-
+vant adapters in the library.
+3.3.2. Selecting Relevant Adapters
+We measure the similarity between the test image embed-
+ding and each domain centroid, e.g. as Euclidean distance:
+di = ∥et − ci∥2 , ∀(∆Wi, ci) ∈ L. (7)
+We then select the top- K adapters with the smallest dis-
+tances, denoted by the index set K = {i1, i2, . . . , iK}.
+3.3.3. Computing Adapter Weights
+To quantify the relevance of each selected adapter, we apply
+a softmax function with temperature τ to the proximities,
+computed as distance reciprocals:
+wi =
+exp
+ 1
+di · τ
+
+P
+k∈K exp
+ 1
+dk · τ
+ , ∀i ∈ K. (8)
+These weights wi determine the contribution of each
+adapter in the fusion process.
+9807
+
+
+=== PAGE 5 ===
+3.3.4. Merging Adapters via Concatenation
+We specify here the merging procedure for a given linear
+layer adapter [42]. Since all adapters share the same rank r,
+the merging is straightforward:
+A′
+i = wiAi, ∀i ∈ K. (9)
+Afused =
+
+A′⊤
+i1 , A′⊤
+i2 , . . . ,A′⊤
+iK
+⊤
+∈ RrK ×d. (10)
+Bfused = [Bi1 , Bi2 , . . . ,BiK] ∈ Rk×rK . (11)
+∆Wfused = BfusedAfused. (12)
+This fused update∆Wfused integrates knowledge from mul-
+tiple domains, weighted by their relevance to the test image.
+3.3.5. Updating the Model and Prediction
+We update the model weights for each linear layer:
+W′ = W + ∆Wfused. (13)
+The adapted model is then used to segment the test image:
+ˆyt = CAT-Seg(∆Wfused, xt) . (14)
+This process is executed for each test image individually,
+enabling real-time, training-free adaptation.
+4. Experiment Setup and Results
+To evaluate SemLA’s performance in OV semantic segmen-
+tation under domain shifts, we design a benchmark with a
+diverse set of datasets covering substantial data and vocabu-
+lary variations. Unlike most of the adaptation literature, of-
+ten using limited domains or fixed label spaces, our bench-
+mark stress tests the OV capability of the network across
+varied scenarios, label sets, and weather conditions.
+Scalability is essential for practical deployment, so we
+constructed a large library of LoRA adapters to show that
+our method scales effectively even with several adapters.
+This setup mirrors real-world scenarios where models must
+handle numerous domains and conditions without compro-
+mising performance.
+4.1. Datasets
+Our benchmark consists of 20 diverse semantic segmenta-
+tion domains, derived from 10 datasets, selected to repre-
+sent a wide range of domains and to provide large data and
+vocabulary shifts. This includes:
+• Driving Datasets: Commonly used in adaptation scenar-
+ios, featuring complex urban scenes with varying condi-
+tions – Cityscapes (CS) [12], BDD100K (BDD) [77],
+Mapillary Vistas (MV) [47], and Indian Driving Dataset
+(IDD) [15].
+• Weather-Specific Datasets : Small but challenging
+datasets focusing on extreme weather conditions like fog,
+rain, and night-time scenarios – ACDC [53], MUSES [4].
+• General-Purpose Datasets: Datasets with a vast num-
+ber of classes, covering a broad spectrum of scenes
+and objects beyond driving scenarios – ADE20K [85]
+(ADE150), PC59 [44], NYU [45], and COCONutL [13].
+This diverse collection ensures that our benchmark cap-
+tures significant variations in both data distribution and la-
+bel spaces, providing a rigorous evaluation for OV semantic
+segmentation.
+4.2. Evaluation Protocol
+To adhere to common conventions from the adaptation lit-
+erature, we adopt a leave-one-out evaluation strategies
+1. For each dataset, we train an adapter on its training set.
+2. When evaluating on a particular dataset, we remove its
+corresponding adapter from the library, to prevent the
+model from leveraging any direct knowledge of it.
+3. We repeat the process for each dataset, ensuring that the
+model is always tested on unseen data, as it never ac-
+cesses to domain-specific adapters.
+4.2.1. Implementation Details
+For our SemLA method, we select the top K = 7 closest
+LoRA adapters based on CLIP embedding proximity, using
+a softmax temperature τ = 0.01 to weight the adapters dur-
+ing fusion. This configuration balances performance and
+computational efficiency. We refer to supplementary mate-
+rial for further details.
+4.3. Comparative Methods
+We compare the following methods:
+• Zero-Shot CAT-Seg [10]: The baseline model without
+any adaptation or LoRA integration.
+• Uniform LoRA Merging : In this approach, all LoRA
+adapters (excluding the one corresponding to the test
+dataset) are uniformly averaged without considering their
+relevance to the target domain – which can be seen as an
+adapters-variant of [35] revised to our setting with super-
+vised fine-tuning of the adapters.
+• SemLA (Ours): Our proposed method, which performs
+adaptive LoRA merging based on domain proximity.
+• Uniform (Late Fusion): Outputs from all LoRA adapters
+(excluding the one corresponding to the test dataset) are
+uniformly averaged at the softmax output level.
+• SemLA (Late Fusion ): Similar to SemLA, weights are
+computed based on domain proximity but applied to the
+softmax outputs. This method has higher computational
+complexity than SemLA (one forward pass per adapter).
+Furthermore, we report the performance achieved by each
+of the adapters trained on the specific dataset where we eval-
+uate, although such adapters had the unfair advantage of
+having access to training data from the target domain – ac-
+cordingly, we refer to them as Oracles.
+9808
+
+
+=== PAGE 6 ===
+Method ACDC MUSES CS BDD MV A150 IDD PC59 NYU COCONutL*h-meanrain snow fog nightclear (d) clear (n) rain (d) rain (n) fog (d) fog (n) snow (d) snow (n)Zero-shot [10] 46.53 48.04 47.09 37.9344.43 39.29 38.95 27.78 53.73 25.35 43.56 33.2947.11 47.95 25.69 37.83 35.39 63.33 49.38 (68.26)39.39Oracles 70.94 69.22 69.98 51.5569.36 57.09 54.28 52.11 75.85 61.26 66.25 54.3567.47 60.06 49.57 53.99 64.34 68.68 61.90 (70.44)61.05Uniform (Late Fusion) 64.58 64.76 69.64 48.5160.53 51.88 50.62 37.30 79.00 35.68 62.39 44.0461.82 57.08 30.34 36.04 37.43 63.24 47.39 (66.40)49.26SemLA (Late Fusion) 66.09 66.77 71.01 50.7962.69 55.70 53.27 45.71 68.86 45.65 65.20 49.7162.86 57.60 29.68 37.28 39.64 63.87 50.64 (65.84)52.09Uniform [35] 67.40 66.35 69.71 49.9858.28 55.78 54.70 45.0973.7545.16 61.02 49.0862.1858.19 31.5137.25 38.83 63.06 48.93 (67.62) 51.89SemLA (ours)67.71 68.95 71.92 51.7361.09 60.06 57.60 47.3572.9752.38 67.28 55.9263.9157.30 31.1238.18 40.16 64.75 51.35(67.26) 54.16+0.31 +2.60 +2.21 +1.75+2.81 +4.28 +2.90 +2.26 -0.78 +7.22 +6.26 +6.84+1.73 -0.89 -0.39 +0.93 +1.33 +1.69 +2.42 -0.36+2.27
+Table 1. Adaptation for OV semantic segmentation – CAT-Seg [10].Performance comparison across our 20-domain benchmark, leave-
+one-out setting. On MUSES, (d) and (n) stand for day and night. ( ) means excluded from h-mean. SemLA with τ = 0.05, and K = 5.
+4.4. Main Results and Discussion
+Table 1 presents the mean Intersection over Union (mIoU)
+scores for each method across all datasets. Our method,
+SemLA, consistently outperforms both the zero-shot base-
+line and the uniform merging approach [35] (improvements
+over the latter are shown in the last row), reaching close to
+the performance of the single adapters – and, sometimes,
+even outperforming them (e.g., on ACDC fog and night).
+One particular dataset, CoconutL (labeled with ∗),
+largely overlaps with the pretraining data of CAT-Seg. Eval-
+uating our performance on it – even in the leave-one-out
+protocol – would not fit the usual setting established for the
+adaptation task. Therefore, we exclude it from the final har-
+monic mean calculations. However, we provide its results
+in brackets for completeness, which show (unsurprisingly)
+an exceptional performance of the Zero-shot model.
+Performance Analysis. Our results demonstrate that
+SemLA significantly outperforms the zero-shot baseline
+across all datasets, highlighting the effectiveness of our do-
+main adaptation strategy. Uniform merging [35], despite
+its simplicity, already shows notable improvements over
+the zero-shot model, primarily due to linear mode connec-
+tivity, showing that LoRA merging is effective when one
+has access to a LoRA library without any target aware-
+ness – e.g., in domain generalization settings – as already
+proven in Li et al. [35]. However, the introduction of
+careful adapters weighting by SemLA leads to substantial
+performance gains. This underscores that selecting rele-
+vant adapters based on domain proximity is more impor-
+tant than merely scaling up the number of adapters avail-
+able in the library. Moreover, we observe that both Uni-
+form and SemLA ( Late Fusion) perform worse than their
+LoRA merging counterparts, despite their higher computa-
+tional complexity. These likely underperform because op-
+erating solely at the output level and cannot adjust internal
+model representations, unlike parameter-level fusion.
+Adapter Contribution Analysis. To understand how
+the adapters contribute across datasets, we analyze the se-
+lection patterns shown in Figure 3, where a heatmap indi-
+cates the frequency and weight of each adapter’s selection
+per test dataset. Adapter support is spread across the library,
+showing that the model benefits from multiple adapters
+rather than relying on a few only. On the one hand, we
+can appreciate high weights for strongly related domains –
+0
+1Sum of Weights
+LoRA Popularity
+acdc-rain
+acdc-snow
+acdc-fog
+acdc-night
+muses-clear-day
+muses-clear-night
+muses-rain-day
+muses-rain-night
+muses-fog-day
+muses-fog-night
+muses-snow-day
+muses-snow-night
+cs-normal
+bdd
+mv
+a150
+idd
+pc59
+nyu
+coconutL
+acdc-rain
+acdc-snow
+acdc-fog
+acdc-night
+muses-clear-day
+muses-clear-night
+muses-rain-day
+muses-rain-night
+muses-fog-day
+muses-fog-night
+muses-snow-day
+muses-snow-night
+cs-normal
+bdd
+mv
+a150
+idd
+pc59
+nyu
+coconutL
+0.2 0.2 0.2 0.2 0.2
+0.2 0.2 0.2 0.3 0.1
+0.2 0.2 0.1 0.1 0.2
+0.2 0.2 0.3 0.1
+0.2 0.1 0.1 0.2 0.1
+0.2 0.2 0.2 0.1 0.2
+0.2 0.1 0.1 0.2 0.2
+0.2 0.2 0.1 0.2
+0.2 0.1 0.2 0.2 0.2
+0.1 0.2 0.2 0.2 0.2
+0.2 0.1 0.2 0.1 0.2
+0.1 0.2 0.1 0.2 0.2
+0.2 0.1 0.2 0.1 0.1 0.2
+0.1 0.2 0.2 0.2
+0.1 0.1 0.1 0.1 0.1
+0.1 0.2 0.2 0.2 0.2
+0.1 0.2 0.2 0.1 0.2
+0.2 0.2 0.2 0.2
+0.1 0.2 0.2 0.2 0.2
+0.1 0.2 0.2 0.2 0.2
+Figure 3. Adapter contribution heatmap . Rows represent in-
+dividual test datasets, and columns correspond to specific LoRA
+adapters. The color intensity of each cell indicates the frequency
+and weight of selection (with values below 0.1 omitted). The di-
+agonal is empty due to the leave-one-out strategy.
+e.g., MUSES-snow-day heavily relies on ACDC-snow and
+vice-versa; in general, we can observe polarized selection
+for driving datasets (top left) or generic ones (bottom right).
+Nonetheless, even adapters from unrelated domains are of-
+ten selected, suggesting the existence of shared useful fea-
+tures, though each category still predominantly influences
+related datasets. By examining columns (and aggregating
+them in a histogram), certain adapters emerge as “popular”
+choices, highlighting their stronger influence.
+4.5. Analysing CLIP as a Domain Navigator
+A key assumption of our framework is that CLIP embed-
+dings provide a meaningful mapping of the domains and
+that proximity in the CLIP space correlates with segmenta-
+tion performance. To verify this assumption, we examine
+i) how our method navigates complex domains by combin-
+ing relevant adapters; and ii) whether proximity in the CLIP
+space is a good heuristic for predicting performance.
+9809
+
+
+=== PAGE 7 ===
+Method ACDC MUSES CS BDD MV A150 IDD PC59 NYU COCONutL*h-meanrain snow fog nightclear (d) clear (n) rain (d) rain (n) fog (d) fog (n) snow (d) snow (n)Oracles 70.94 69.22 69.98 51.5569.36 57.09 54.28 52.11 75.85 61.26 66.25 54.3567.47 60.0649.57 53.99 64.34 68.6861.90 (70.44) 61.05Uniform 67.76 66.69 69.91 50.4458.60 56.30 55.73 45.96 73.33 46.29 61.36 50.2762.77 58.42 32.87 38.48 39.89 63.77 50.12 (68.13)52.78SemLAτ= 0.00570.9769.40 70.94 51.6869.51 57.95 54.25 52.1475.8861.26 66.16 51.2267.52 60.2048.70 49.42 64.27 68.2762.68 (68.83) 60.57SemLAτ= 0.05 68.8270.43 73.38 53.0667.19 59.93 59.30 52.2172.4562.10 69.33 59.3867.49 58.18 38.06 44.20 49.49 67.45 57.93 (68.96)58.79
+Table 2. Adaptation for OV semantic segmentation – CAT-Seg [10], all-inclusive setting. Performance comparison across our 20-
+domain benchmark, when all domains are available in the LoRA Library, hence tosource. On MUSES, (d) and (n) stand for day and night.
+( ) means excluded from h-mean. SemLA with K = 5.
+muses-fog-day 24.4%
+muses-clear-night
+22.0%
+muses-snow-night
+16.4%
+muses-rain-night
+16.2%
+acdc-fog
+14.9%
+acdc-night
+6.1%
+muses-fog-night
+Figure 4. Adapter weight distribution for MUSES-Fog-Night.
+The fused adapter combines knowledge from foggy and night-time
+conditions by weighting relevant adapters. Adapters with a weight
+lower than 5% are not included.
+Domain Composition Analysis. We observe that CLIP
+effectively navigates the domain space, as shown in the
+adapter selection for MUSES-Fog-Night. This dataset,
+comprising foggy night images, lacks a direct match in our
+library. However, adapters trained on night and fog con-
+ditions are available. Examining LoRA contributions for
+MUSES-Fog-Night in Figure 4, we see that fog and night
+adapters dominate with around 40 % and 60 % contribu-
+tion respectively, with higher weights for MUSES adapters,
+around 80 %, likely due to shared camera characteristics.
+This illustrates our ability to combine relevant knowledge
+even when an exact match is absent and showcases the easy
+interpretability of our approach.
+CLIP Distance - Performance Correlation. Having
+observed that CLIP embeddings effectively guide adapter
+selection, we proceed to the second question: Is image-
+LoRA proximity in the CLIP space a good heuristic for pre-
+dicting segmentation performance? Figure 5 indicates that
+this is indeed the case. The negative slope of the regression
+line indicates an inverse relationship between CLIP distance
+and mIoU – i.e., smaller CLIP distances (higher proximity)
+generally correspond to better segmentation. This empiri-
+cal observation confirms that CLIP embedding distance is a
+good heuristic for predicting adapter effectiveness.
+4.6. All-Inclusive Settings
+We evaluate the – unlikely – scenario where all the LoRA
+adapters corresponding to the benchmark datasets are in-
+8 10 12 14 16
+image-to adapter distance
+20
+10
+0
+10
+20
+30
+40
+mIoU improvement
+Figure 5. CLIP-guidance effectiveness for LoRA selection on
+ACDC. Each point represents an image-adapter combination, with
+adapters separated by color. x-axis: distance from the correspond-
+ing image embedding to the adapter embedding. y-axis: improve-
+ment in mIoU when using the adapter relative to the zero-shot base
+network. The linear regression curve (dashed line) indicates that
+embedding similarity correlates with higher mIoU. We show the
+full adapter library, excluding those trained on ACDC.
+cluded in the library at test-time (i.e., in contrast with com-
+mon adaptation settings). Table 2 reports SemLA tested
+with two τ and Uniform [35] settings. The results reveal
+a two-fold effect: when the system is directed to prioritize
+the target-domain LoRA adapter, the model’s performance
+almost matches the Oracle. However, when the tempera-
+ture τ is higher, hence LoRA fusion is promoted, the model
+– while slightly lower on average – overcomes the Oracles
+on 14 domains over 20, primarily in highly related datasets.
+This finding underscores that LoRA synergies can extend
+beyond individual adapters, achieving performance that, in
+some cases, surpasses even the Oracle.
+4.7. Results with a Different Backbone: SED
+Our method is inherently backbone-agnostic, as we only op-
+erate on LoRA retrieval and adaptation, relying on simple
+and widespread methods. To empirically prove this claim,
+we generate another library based on SED [71], another
+popular open-vocabulary semantic segmentation model. In
+Table 3, we collect the outcome of this new evaluation, car-
+ried out once again on our 20-domain benchmark. All our
+achievements with CAT-Seg are confirmed when switching
+to SED, with SemLA clearly outperforming both the zero-
+shot model and the uniform merging strategy [35], thus con-
+firming the flexibility of our framework and the possibility
+of tailoring it around different OV semantic segmentation
+backbones.
+9810
+
+
+=== PAGE 8 ===
+Method ACDC MUSES CS BDD MV A150 IDD PC59 NYU COCONutL*h-meanrain snow fog nightclear (d) clear (n) rain (d) rain (n) fog (d) fog (n) snow (d) snow (n)Zero-shot [10]42.64 43.97 46.88 35.0638.05 35.01 35.18 27.87 48.09 19.53 42.63 23.5341.90 43.41 25.05 35.27 35.20 60.87 47.20 (66.36)35.56Oracles 61.70 68.25 69.33 48.3962.04 55.55 53.61 44.82 69.40 53.20 65.60 55.8568.48 58.61 47.28 50.66 63.15 66.55 60.60 (68.01)58.05Uniform [35]59.59 61.07 68.33 47.2758.79 53.87 50.65 37.1269.8235.52 61.46 44.0861.8554.78 30.3734.92 39.59 60.82 48.42 (64.05)48.60SemLA (ours)60.01 67.00 69.96 49.7060.98 54.79 55.15 38.8969.4638.25 66.80 48.8964.3554.40 28.9936.91 41.08 62.23 51.82 (65.46)50.57+0.42 +5.93 +1.63 +2.43+2.19 +0.92 +4.50 +1.77 -0.38 +2.70 +5.34 +4.81+2.50 -0.38 -1.38 +1.99 +1.59 +1.69 +3.40 +1.41+1.97
+Table 3. Adaptation for OV semantic segmentation – SED [71]. Performance comparison across 20-domain benchmark, leave-one-out
+setting. On MUSES, (d) and (n) stand for day and night. ( ) means excluded from h-mean. SemLA with τ = 0.05, and K = 5.
+RGB GT zero-shot uniform SemLa
+ACDCNYU V2
+Figure 6. Qualitative results on ACDC and NYU. From left to right: Input Image (RGB), ground-truth semantic masks (GT) and
+predictions by the Zero-Shot model [10], Uniform Merging [35], and SemLA.
+4.8. Qualitative Results
+Figure 6 presents qualitative comparisons between the pre-
+dictions by different methods – zero-shot CAT-Seg, uniform
+merged model [35] and ours. SemLA produces more accu-
+rate and detailed segmentation maks, demonstrating its su-
+periority over zero-shot and uniform merging models.
+4.9. Limitations and Future Work
+While our method demonstrates strong performance, sev-
+eral areas remain for future exploration. First, we do not
+explicitly address vocabulary alignment between source and
+target domains; incorporating vocabulary matching could
+enhance performance by ensuring compatibility with the
+target label space. Second, exploring automated domain
+discovery through CLIP clustering and unsupervised train-
+ing of new LoRA adapters could lead to a self-augmenting
+library, enhancing adaptability without manual intervention.
+Scaling SemLA to thousands of adapters introduces chal-
+lenges in recognizing and addressing library weaknesses
+and gaps; developing automated strategies to identify and
+mitigate them will be essential. Lastly, applying our ap-
+proach to multi-tasks settings, e.g. panoptic segmentation
+or depth estimation [50], could validate its versatility.
+5. Conclusion
+We have presented SemLA, a framework for training-free
+test-time adaptation in open-vocabulary semantic segmen-
+tation. By constructing a library of LoRA adapters in-
+dexed with CLIP embeddings and dynamically merging
+them based on domain proximity, our method effectively
+mitigates domain shifts. Extensive experiments show that
+SemLA outperforms zero-shot baselines, uniform adapter
+merging, and sometimes even fine-tuned models across di-
+verse datasets. We confirmed that CLIP embeddings reli-
+ably guide adapters selection and that proximity in the em-
+bedding space is a good heuristic for performance. With en-
+hanced explainability, scalability, and data privacy, SemLA
+is suitable for practical applications. Future work will ad-
+dress vocabulary alignment, automated domain discovery,
+and extending the framework to other tasks.
+9811
+
+
+=== PAGE 9 ===
+Ackonwledgments. The authors thank Hedvig Kjellstr ¨om for
+the helpful discussions and guidance, and acknowledge The Euro-
+pean High Performance Computing Joint Undertaking (EuroHPC
+JU), EuroCC National Competence Center Sweden (ENCCS) and
+the CINECA award under the ISCRA initiative for the availability
+of high-performance computing resources and support.
+This study was funded by the European Union – Next Gen-
+eration EU within the framework of the National Recovery and
+Resilience Plan NRRP – Mission 4 “Education and Research” –
+Component 2 - Investment 1.1 “National Research Program and
+Projects of Significant National Interest Fund (PRIN)” (Call D.D.
+MUR n. 104/2022) – PRIN2022 – Project reference: “River-
+Watch: a citizen-science approach to river pollution monitoring”
+(ID: 2022MMBA8X, CUP: J53D23002260006).
+References
+[1] Vijay Badrinarayanan, Alex Kendall, and Roberto Cipolla.
+Segnet: A deep convolutional encoder-decoder architecture
+for image segmentation. IEEE transactions on pattern anal-
+ysis and machine intelligence, 39(12):2481–2495, 2017. 2
+[2] Andreea Bobu, Judy Hoffman, Eric Tzeng, and Trevor Dar-
+rell. Adapting to continuously shifting domains. In ICLR
+2018 Workshop Program Chairs, 2018. 00000. 3
+[3] Marc Botet Colomer, Pier Luigi Dovesi, Theodoros Pana-
+giotakopoulos, Joao Frederico Carvalho, Linus H ¨arenstam-
+Nielsen, Hossein Azizpour, Hedvig Kjellstr ¨om, Daniel Cre-
+mers, and Matteo Poggi. To adapt or not to adapt? real-time
+adaptation for semantic segmentation. In IEEE International
+Conference on Computer Vision, 2023. ICCV . 2, 3, 6
+[4] Tim Br ¨odermann, David Bruggemann, Christos Sakaridis,
+Kevin Ta, Odysseas Liagouris, Jason Corkill, and Luc
+Van Gool. Muses: The multi-sensor semantic percep-
+tion dataset for driving under uncertainty. arXiv preprint
+arXiv:2401.12761, 2024. 5
+[5] Chaoqi Chen, Weiping Xie, Wenbing Huang, Yu Rong,
+Xinghao Ding, Yue Huang, Tingyang Xu, and Junzhou
+Huang. Progressive feature alignment for unsupervised do-
+main adaptation. In Proceedings of the IEEE/CVF Confer-
+ence on Computer Vision and Pattern Recognition , pages
+627–636, 2019. 2
+[6] Liang-Chieh Chen, Jonathan T Barron, George Papandreou,
+Kevin Murphy, and Alan L Yuille. Semantic image segmen-
+tation with task-specific edge detection using cnns and a dis-
+criminatively trained domain transform. In Proceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 4545–4554, 2016. 2
+[7] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L Yuille. Deeplab: Semantic image
+segmentation with deep convolutional nets, atrous convolu-
+tion, and fully connected crfs. IEEE transactions on pattern
+analysis and machine intelligence, 40(4):834–848, 2017. 2
+[8] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L. Yuille. Deeplab: Semantic im-
+age segmentation with deep convolutional nets, atrous con-
+volution, and fully connected crfs. IEEE Transactions on
+Pattern Analysis and Machine Intelligence , 40(4):834–848,
+2018.
+[9] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian
+Schroff, and Hartwig Adam. Encoder-decoder with atrous
+separable convolution for semantic image segmentation. In
+Proceedings of the European conference on computer vision
+(ECCV), pages 801–818, 2018. 2
+[10] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. In Proceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition (CVPR), pages 4113–
+4123, 2024. 1, 2, 3, 5, 6, 7, 8
+[11] Alexandra Chronopoulou, Matthew Peters, Alexander
+Fraser, and Jesse Dodge. AdapterSoup: Weight averaging
+to improve generalization of pretrained language models. In
+Findings of the Association for Computational Linguistics:
+EACL 2023, pages 2054–2063, Dubrovnik, Croatia, 2023.
+Association for Computational Linguistics. 3
+[12] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. In The
+IEEE Conference on Computer Vision and Pattern Recog-
+nition (CVPR), 2016. 2, 5
+[13] Xueqing Deng, Qihang Yu, Peng Wang, Xiaohui Shen, and
+Liang-Chieh Chen. Coconut: Modernizing coco segmenta-
+tion. In Proceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition, 2024. 5
+[14] Henghui Ding, Xudong Jiang, Ai Qun Liu, Nadia Magne-
+nat Thalmann, and Gang Wang. Boundary-aware feature
+propagation for scene segmentation. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision ,
+pages 6819–6829, 2019. 2
+[15] Shubham Dokania, AH Hafez, Anbumani Subramanian,
+Manmohan Chandraker, and CV Jawahar. Idd-3d: Indian
+driving dataset for 3d unstructured road scenes. In Proceed-
+ings of the IEEE/CVF Winter Conference on Applications of
+Computer Vision, pages 4482–4491, 2023. 5
+[16] A. Dundar, M. Y . Liu, Z. Yu, T. C. Wang, J. Zedlewski, and
+J. Kautz. Domain stylization: A fast covariance matching
+framework towards domain adaptation. IEEE Transactions
+on Pattern Analysis and Machine Intelligence , pages 1–1,
+2020. 2
+[17] Qi Fan, Mattia Segu, Yu-Wing Tai, Fisher Yu, Chi-Keung
+Tang, Bernt Schiele, and Dengxin Dai. Normalization per-
+turbation: A simple domain generalization method for real-
+world domain shifts. arXiv preprint arXiv:2211.04393 ,
+2022. 3
+[18] Qi Fan, Mattia Segu, Yu-Wing Tai, Fisher Yu, Chi-Keung
+Tang, Bernt Schiele, and Dengxin Dai. Towards robust ob-
+ject detection invariant to real-world domain shifts. In The
+Eleventh International Conference on Learning Representa-
+tions (ICLR 2023). OpenReview, 2023. 3
+[19] Jun Fu, Jing Liu, Haijie Tian, Yong Li, Yongjun Bao, Zhiwei
+Fang, and Hanqing Lu. Dual attention network for scene seg-
+mentation. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pages 3146–3154,
+2019. 2
+9812
+
+
+=== PAGE 10 ===
+[20] Jun Fu, Jing Liu, Yuhang Wang, Yong Li, Yongjun Bao, Jin-
+hui Tang, and Hanqing Lu. Adaptive context network for
+scene parsing. In Proceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision , pages 6748–6757,
+2019. 2
+[21] Yaroslav Ganin, Evgeniya Ustinova, Hana Ajakan, Pas-
+cal Germain, Hugo Larochelle, Franc ¸ois Laviolette, Mario
+Marchand, and Victor Lempitsky. Domain-adversarial train-
+ing of neural networks. The journal of machine learning
+research, 17(1):2096–2030, 2016. 2
+[22] Junjun He, Zhongying Deng, Lei Zhou, Yali Wang, and Yu
+Qiao. Adaptive pyramid context network for semantic seg-
+mentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 7519–
+7528, 2019. 2
+[23] Judy Hoffman, Eric Tzeng, Taesung Park, Jun-Yan Zhu,
+Phillip Isola, Kate Saenko, Alexei Efros, and Trevor Dar-
+rell. CyCADA: Cycle-consistent adversarial domain adapta-
+tion. In Proceedings of the 35th International Conference on
+Machine Learning , pages 1989–1998, Stockholmsm ¨assan,
+Stockholm Sweden, 2018. PMLR. 2
+[24] Lukas Hoyer, Dengxin Dai, and Luc Van Gool. Daformer:
+Improving network architectures and training strategies for
+domain-adaptive semantic segmentation. arXiv preprint
+arXiv:2111.14887, 2021. 2
+[25] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-
+Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen.
+Lora: Low-rank adaptation of large language models. arXiv
+preprint arXiv:2106.09685, 2021. 3
+[26] Edward J Hu, yelong shen, Phillip Wallis, Zeyuan Allen-
+Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen.
+LoRA: Low-rank adaptation of large language models. InIn-
+ternational Conference on Learning Representations , 2022.
+2, 3
+[27] Chengsong Huang, Qian Liu, Bill Yuchen Lin, Tianyu Pang,
+Chao Du, and Min Lin. Lorahub: Efficient cross-task gen-
+eralization via dynamic lora composition. arXiv preprint
+arXiv:2307.13269, 2023. 3
+[28] Gabriel Ilharco, Mitchell Wortsman, Samir Yitzhak Gadre,
+Shuran Song, Hannaneh Hajishirzi, Simon Kornblith, Ali
+Farhadi, and Ludwig Schmidt. Patching open-vocabulary
+models by interpolating weights. Advances in Neural Infor-
+mation Processing Systems, 35:29262–29277, 2022. 3
+[29] Yusuke Iwasawa and Yutaka Matsuo. Test-time classifier
+adjustment module for model-agnostic domain generaliza-
+tion. In Advances in Neural Information Processing Systems,
+2021. 3
+[30] Dong-Hwan Jang, Sangdoo Yun, and Dongyoon Han. Model
+stock: All we need is just a few fine-tuned models. In
+European Conference on Computer Vision, pages 207–223.
+Springer, 2025. 3
+[31] Yevhen Kuznietsov, Marc Proesmans, and Luc Van Gool.
+Towards unsupervised online domain adaptation for seman-
+tic segmentation. In Proceedings of the IEEE/CVF Winter
+Conference on Applications of Computer Vision, pages 261–
+271, 2022. 3
+[32] Qicheng Lao, Xiang Jiang, Mohammad Havaei, and
+Yoshua Bengio. Continuous domain adaptation with vari-
+ational domain-agnostic feature replay. arXiv preprint
+arXiv:2003.04382, 2020. 3
+[33] Junnan Li, Dongxu Li, Silvio Savarese, and Steven Hoi.
+Blip-2: Bootstrapping language-image pre-training with
+frozen image encoders and large language models. In In-
+ternational conference on machine learning , pages 19730–
+19742. PMLR, 2023. 3, 4
+[34] Weishi Li, Yong Peng, Miao Zhang, Liang Ding, Han Hu,
+and Li Shen. Deep model fusion: A survey, 2023. 3
+[35] Wenyi Li, Huan-ang Gao, Mingju Gao, Beiwen Tian, Rong
+Zhi, and Hao Zhao. Training-free model merging for multi-
+target domain adaptation. In European Conference on Com-
+puter Vision. Springer, 2024. 2, 3, 5, 6, 7, 8
+[36] Xia Li, Zhisheng Zhong, Jianlong Wu, Yibo Yang, Zhouchen
+Lin, and Hong Liu. Expectation-maximization attention net-
+works for semantic segmentation. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision ,
+pages 9167–9176, 2019. 2
+[37] Yunsheng Li, Lu Yuan, and Nuno Vasconcelos. Bidirec-
+tional learning for domain adaptation of semantic segmen-
+tation. 2019 IEEE/CVF Conference on Computer Vision and
+Pattern Recognition (CVPR), 2019. 2
+[38] Jian Liang, Dapeng Hu, and Jiashi Feng. Do we really need
+to access the source data? source hypothesis transfer for un-
+supervised domain adaptation. CoRR, 2020. 3
+[39] Yuejiang Liu, Parth Kothari, Bastien Germain van Delft,
+Baptiste Bellot-Gurlet, Taylor Mordan, and Alexandre Alahi.
+TTT++: When does self-supervised test-time training fail or
+thrive? In Advances in Neural Information Processing Sys-
+tems, 2021. 3
+[40] Yuang Liu, Wei Zhang, and Jun Wang. Source-free domain
+adaptation for semantic segmentation. 2021. 3
+[41] Jonathan Long, Evan Shelhamer, and Trevor Darrel. Fully
+convolutional networks for semantic segmentation. In IEEE
+Conference on Computer Vision and Pattern Recognition
+(CVPR), 2015. 2
+[42] Sourab Mangrulkar, Sylvain Gugger, Lysandre Debut,
+Younes Belkada, Sayak Paul, and Benjamin Bossan.
+Peft: State-of-the-art parameter-efficient fine-tuning meth-
+ods. https://github.com/huggingface/peft ,
+2022. 2, 3, 5
+[43] Ke Mei, Chuang Zhu, Jiaqi Zou, and Shanghang Zhang. In-
+stance adaptive self-training for unsupervised domain adap-
+tation. Lecture Notes in Computer Science , page 415–430,
+2020. 2
+[44] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and
+semantic segmentation in the wild. In Proceedings of the
+IEEE conference on computer vision and pattern recogni-
+tion, pages 891–898, 2014. 5
+[45] Pushmeet Kohli Nathan Silberman, Derek Hoiem and Rob
+Fergus. Indoor segmentation and support inference from
+rgbd images. In ECCV, 2012. 5
+[46] Vladimir Nekrasov, Chunhua Shen, and Ian Reid. Light-
+weight refinenet for real-time semantic segmentation. In
+British Conference on Computer Vision (BMVC), 2018. 2
+9813
+
+
+=== PAGE 11 ===
+[47] Gerhard Neuhold, Tobias Ollmann, Samuel Rota Bulo, and
+Peter Kontschieder. The mapillary vistas dataset for semantic
+understanding of street scenes. In Proceedings of the IEEE
+international conference on computer vision , pages 4990–
+4999, 2017. 5
+[48] Maxime Oquab, Timoth ´ee Darcet, Th´eo Moutakanni, Huy V
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel HAZIZA, Francisco Massa, Alaaeldin El-Nouby,
+et al. Dinov2: Learning robust visual features without su-
+pervision. Transactions on Machine Learning Research. 3,
+5, 6
+[49] Theodoros Panagiotakopoulos, Pier Luigi Dovesi, Linus
+H¨arenstam-Nielsen, and Matteo Poggi. Online domain adap-
+tation for semantic segmentation in ever-changing condi-
+tions. In European Conference on Computer Vision (ECCV),
+2022. 2, 3
+[50] Matteo Poggi and Fabio Tosi. Federated online adaptation
+for deep stereo. In Conference on Computer Vision and Pat-
+tern Recognition (CVPR), 2024. 8
+[51] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. In International conference on machine learning, pages
+8748–8763. PMLR, 2021. 1, 2, 3, 5, 6
+[52] Stephan R Richter, Vibhav Vineet, Stefan Roth, and Vladlen
+Koltun. Playing for data: Ground truth from computer
+games. In European conference on computer vision , pages
+102–118. Springer, 2016. 2
+[53] Christos Sakaridis, Dengxin Dai, and Luc Van Gool. Acdc:
+The adverse conditions dataset with correspondences for se-
+mantic driving scene understanding. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision ,
+pages 10765–10775, 2021. 5
+[54] Mattia Segu, Bernt Schiele, and Fisher Yu. Darth: Holistic
+test-time adaptation for multiple object tracking. InProceed-
+ings of the IEEE/CVF International Conference on Com-
+puter Vision, pages 9717–9727, 2023. 3
+[55] Mattia Segu, Alessio Tonioni, and Federico Tombari. Batch
+normalization embeddings for deep domain generalization.
+Pattern Recognition, 135:109115, 2023. 3
+[56] Serban Stan and Mohammad Rostami. Unsupervised model
+adaptation for continual semantic segmentation. In AAAI,
+2021. 3
+[57] Peng Su, Shixiang Tang, Peng Gao, Di Qiu, Ni Zhao, and
+Xiaogang Wang. Gradient regularized contrastive learning
+for continual domain adaptation. 2020. 00000. 3
+[58] Tao Sun, Mattia Segu, Janis Postels, Yuxuan Wang, Luc
+Van Gool, Bernt Schiele, Federico Tombari, and Fisher Yu.
+SHIFT: a synthetic driving dataset for continuous multi-task
+domain adaptation. In Computer Vision and Pattern Recog-
+nition, 2022. 3
+[59] Towaki Takikawa, David Acuna, Varun Jampani, and Sanja
+Fidler. Gated-scnn: Gated shape cnns for semantic segmen-
+tation. In Proceedings of the IEEE/CVF international con-
+ference on computer vision, pages 5229–5238, 2019. 2
+[60] Laurens Van der Maaten and Geoffrey Hinton. Visualizing
+data using t-sne. Journal of machine learning research , 9
+(11), 2008. 3
+[61] Riccardo V olpi, Pau de Jorge, Diane Larlus, and Gabriela
+Csurka. On the road to online adaptation for semantic image
+segmentation. In The IEEE Conference on Computer Vision
+and Pattern Recognition (CVPR), 2022. 3
+[62] Vibashan VS, Poojan Oza, and Vishal M. Patel. Towards on-
+line domain adaptive object detection. 2023 IEEE/CVF Win-
+ter Conference on Applications of Computer Vision (WACV),
+2023. 3
+[63] Dequan Wang, Evan Shelhamer, Shaoteng Liu, Bruno Ol-
+shausen, and Trevor Darrell. Tent: Fully test-time adaptation
+by entropy minimization. In International Conference on
+Learning Representations, 2021. 3
+[64] Haoran Wang, Tong Shen, Wei Zhang, Lingyu Duan, and
+Tao Mei. Classes matter: A fine-grained adversarial ap-
+proach to cross-domain semantic segmentation. In The Eu-
+ropean Conference on Computer Vision (ECCV), 2020. 2
+[65] Xiaolong Wang, Ross Girshick, Abhinav Gupta, and Kaim-
+ing He. Non-local neural networks. In Proceedings of the
+IEEE conference on computer vision and pattern recogni-
+tion, pages 7794–7803, 2018. 2
+[66] Mitchell Wortsman, Gabriel Ilharco, Samir Ya Gadre, Re-
+becca Roelofs, Raphael Gontijo-Lopes, Ari S Morcos,
+Hongseok Namkoong, Ali Farhadi, Yair Carmon, Simon
+Kornblith, and Ludwig Schmidt. Model soups: averaging
+weights of multiple fine-tuned models improves accuracy
+without increasing inference time. In Proceedings of the
+39th International Conference on Machine Learning , pages
+23965–23998. PMLR, 2022. 3
+[67] Mitchell Wortsman, Gabriel Ilharco, Jong Wook Kim,
+Mike Li, Simon Kornblith, Rebecca Roelofs, Raphael Gon-
+tijo Lopes, Hannaneh Hajishirzi, Ali Farhadi, Hongseok
+Namkoong, et al. Robust fine-tuning of zero-shot models.
+In Proceedings of the IEEE/CVF conference on computer vi-
+sion and pattern recognition, pages 7959–7971, 2022. 2, 3,
+6
+[68] Zuxuan Wu, Xintong Han, Yen-Liang Lin, Mustafa G ¨okhan
+Uzunbas, Tom Goldstein, Ser Nam Lim, and Larry S. Davis.
+Dcan: Dual channel-wise alignment networks for unsuper-
+vised scene adaptation. Lecture Notes in Computer Science,
+page 535–552, 2018. 2
+[69] Zuxuan Wu, Xin Wang, Joseph Gonzalez, Tom Goldstein,
+and Larry Davis. ACE: Adapting to changing environments
+for semantic segmentation. In 2019 IEEE/CVF International
+Conference on Computer Vision (ICCV), pages 2121–2130.
+IEEE, 2019. 3
+[70] Markus Wulfmeier, Alex Bewley, and Ingmar Posner. Incre-
+mental adversarial domain adaptation for continually chang-
+ing environments. 2018. 00000. 3
+[71] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. Sed: A simple encoder-decoder for open-
+vocabulary semantic segmentation. In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, 2024. 1, 2, 7, 8
+[72] Enze Xie, Wenjia Wang, Wenhai Wang, Peize Sun, Hang Xu,
+9814
+
+
+=== PAGE 12 ===
+Ding Liang, and Ping Luo. Segmenting transparent objects
+in the wild with transformer. In IJCAI, 2021. 2
+[73] Enze Xie, Wenhai Wang, Zhiding Yu, Anima Anandkumar,
+Jose M Alvarez, and Ping Luo. Segformer: Simple and
+efficient design for semantic segmentation with transform-
+ers. Advances in Neural Information Processing Systems ,
+34:12077–12090, 2021. 2
+[74] Maoke Yang, Kun Yu, Chi Zhang, Zhiwei Li, and Kuiyuan
+Yang. Denseaspp for semantic segmentation in street scenes.
+In Proceedings of the IEEE conference on computer vision
+and pattern recognition, pages 3684–3692, 2018. 2
+[75] Yanchao Yang and Stefano Soatto. FDA: Fourier domain
+adaptation for semantic segmentation. In 2020 IEEE/CVF
+Conference on Computer Vision and Pattern Recognition
+(CVPR), pages 4084–4094. IEEE, 2020. 2
+[76] Changqian Yu, Jingbo Wang, Chao Peng, Changxin Gao,
+Gang Yu, and Nong Sang. Bisenet: Bilateral segmentation
+network for real-time semantic segmentation. In Proceed-
+ings of the European conference on computer vision (ECCV),
+pages 325–341, 2018. 2
+[77] Fisher Yu, Haofeng Chen, Xin Wang, Wenqi Xian, Yingying
+Chen, Fangchen Liu, Vashisht Madhavan, and Trevor Dar-
+rell. Bdd100k: A diverse driving dataset for heterogeneous
+multitask learning. In Proceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition , pages
+2636–2645, 2020. 5
+[78] Yuhui Yuan, Xiaokang Chen, Xilin Chen, and Jingdong
+Wang. Segmentation transformer: Object-contextual repre-
+sentations for semantic segmentation. In European Confer-
+ence on Computer Vision (ECCV), 2020. 2
+[79] Pan Zhang, Bo Zhang, Ting Zhang, Dong Chen, Yong Wang,
+and Fang Wen. Prototypical pseudo label denoising and tar-
+get structure learning for domain adaptive semantic segmen-
+tation. 2021. 2
+[80] Qiming Zhang, Jing Zhang, Wei Liu, and Dacheng Tao. Cat-
+egory anchor-guided unsupervised domain adaptation for se-
+mantic segmentation. Advances in Neural Information Pro-
+cessing Systems, 2019. 2
+[81] Qingru Zhang, Minshuo Chen, Alexander Bukharin,
+Pengcheng He, Yu Cheng, Weizhu Chen, and Tuo Zhao.
+Adaptive budget allocation for parameter-efficient fine-
+tuning. In The Eleventh International Conference on Learn-
+ing Representations, 2023. 3
+[82] Youshan Zhang. A survey of unsupervised domain adapta-
+tion for visual recognition. arXiv:2112.06745, 2021. 2
+[83] Hengshuang Zhao, Jianping Shi, Xiaojuan Qi, Xiaogang
+Wang, and Jiaya Jia. Pyramid scene parsing network. In
+CVPR, 2017. 2
+[84] Ziyu Zhao, Leilei Gan, Guoyin Wang, Wangchunshu Zhou,
+Hongxia Yang, Kun Kuang, and Fei Wu. LoraRetriever:
+Input-aware LoRA retrieval and composition for mixed tasks
+in the wild. In Findings of the Association for Computational
+Linguistics: ACL 2024 , pages 4447–4462, Bangkok, Thai-
+land, 2024. Association for Computational Linguistics. 2,
+3
+[85] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ade20k dataset. In Proceedings of the IEEE conference on
+computer vision and pattern recognition , pages 633–641,
+2017. 5
+[86] Yizhou Zhou, Xiaoyan Sun, Zheng-Jun Zha, and Wenjun
+Zeng. Context-reinforced semantic segmentation. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 4046–4055, 2019. 2
+[87] Jun-Yan Zhu, Taesung Park, Phillip Isola, and Alexei A.
+Efros. Unpaired image-to-image translation using cycle-
+consistent adversarial networks. 2017 IEEE International
+Conference on Computer Vision (ICCV), 2017. 2
+[88] Yang Zou, Zhiding Yu, BVK Kumar, and Jinsong Wang.
+Unsupervised domain adaptation for semantic segmentation
+via class-balanced self-training. In Proceedings of the Eu-
+ropean conference on computer vision (ECCV) , pages 289–
+305, 2018. 2
+[89] Yang Zou, Zhiding Yu, Xiaofeng Liu, BVK Kumar, and
+Jinsong Wang. Confidence regularized self-training. In
+Proceedings of the IEEE/CVF International Conference on
+Computer Vision, pages 5982–5991, 2019. 2
+[90] Yang Zou, Zhiding Yu, Xiaofeng Liu, B. V . K. Vijaya Kumar,
+and Jinsong Wang. Confidence regularized self-training.
+2019 IEEE/CVF International Conference on Computer Vi-
+sion (ICCV), 2019. 2
+9815

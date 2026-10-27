@@ -1,0 +1,1145 @@
+=== PAGE 1 ===
+Reconstructing CLIP for Open-Vocabulary Dense Perception
+Yajie Liu1,2, Jinjin Zhang1,2, Qingjie Liu2,3, Di Huang1,2,3*
+1State Key Laboratory of Complex and Critical Software Environment,
+Beihang University, Beijing 100191, China
+2School of Computer Science and Engineering, Beihang University, Beijing 100191, China
+3Zhejiang Industrial Big Data and Robot Intelligent System Key Laboratory,
+Hangzhou Innovation Institute, Beihang University, China
+Abstract
+Large-scale vision–language models (VLMs) such as CLIP
+have excelled in zero-shot image classification, yet they
+struggle to achieve the dense cross-modal alignment re-
+quired by open-vocabulary dense perception (OVDP).
+While recent self-distillation methods address this by align-
+ing dense features with the generalizable global semantics,
+a key question remains: how should such dense features be
+constructed to achieve optimal alignment? To address this,
+we propose DenseRC, a principledDense Representations
+Construction framework that reconstructs CLIP for OVDP
+based on two key insights. First, by analyzing the internal
+semantics encoded in the global cls token, we identify that
+multi-layer value embeddings serve as an informative basis
+for dense features. Second, we reveal that spatial aggrega-
+tion tends to amplify semantic misalignment. Motivated by
+this, we design a lightweight Head-Selective Gating (HSG)
+module that adaptively reweights feature heads accord-
+ing to their intrinsic heterogeneity, enabling discriminative
+and alignment-friendly dense representations construction.
+Extensive experiments demonstrate that DenseRC delivers
+consistent and substantial gains across OVDP tasks includ-
+ing object detection and semantic segmentation, setting new
+state-of-the-art performance on multiple benchmarks.
+1. Introduction
+Large-scale vision–language models (VLMs) such as
+CLIP [28] have demonstrated strong transferable represen-
+tations for zero-shot image classification. This success has
+motivated their adaptation to open-vocabulary dense per-
+ception (OVDP), which aims to recognize a broad spectrum
+of visual concepts beyond a fixed set of categories.
+Most OVDP methods build on CLIP to leverage its gen-
+eralization capability for dense visual recognition at the re-
+*Corresponding author
+Image
+CLIPSelf
+DeCLIP
+semantic gap in 
+DeCLIP
+noisy semantic in 
+CLIPSelf
+teache
+student
+(a) local semantics
+(b) 
+feature
+coherence
+DenseRC
+(Ours) 
+teacher input
+student
+input
+Figure 1. Limitations of prior methods in local semantics and
+feature coherence.Left:CLIPSelf [37] suffers from semantic
+noise in dense embeddings due to residual connections, while De-
+CLIP [35] aggregates irrelevant patches (e.g., sky regions) when
+forming dense student features, leading to a semantic gap with
+the cropped teacher input.Right:The dense features from prior
+methods show weak feature coherence, exhibiting large intra-class
+variance and low inter-class separation, as reflected by the irrele-
+vant semantics activated by the given red point.
+gion or pixel level. However, CLIP is optimized for global
+image–text alignment, resulting in underwhelming dense
+representations, as noted in recent works [18, 35]. Specifi-
+cally, CLIP’s dense features suffer from weak cross-modal
+alignment with text and poor feature coherence [23].
+To equip CLIP with dense alignment capability that ben-
+efits various dense downstream tasks, existing works pri-
+marily follow two directions. The first line [14, 41] retrains
+CLIP with fine-grained region–text supervision. However,
+curating high-quality dense annotations is far more costly
+than collecting image–text pairs, limiting scalability. Al-
+ternatively, another line [35, 37] employs self-distillation to
+transfer CLIP’s global alignment capability towards dense
+level without supervision.
+These self-distillation methods use the global image rep-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+39208
+
+
+=== PAGE 2 ===
+resentation, theclstoken, as a bridge to guide dense align-
+ment with text. By aligning pooling student dense fea-
+tures with the frozenclstoken from corresponding image
+crops, they aim to instill generalizable semantics into the
+dense representations. Thus, constructing dense features
+that are consistent with theclstoken is essential. Neverthe-
+less, current implementations fall short. As shown in Fig. 1,
+CLIPSelf [37] directly uses CLIP’s final spatial output, but
+its residual connections inevitably inject noise [18]. De-
+CLIP [35] enhances patch semantics through self–self at-
+tention aggregation, but this mechanism inevitably intro-
+duces contamination from irrelevant patches, thereby lead-
+ing to a semantic gap. Meanwhile, the issue of feature co-
+herence remains insufficiently resolved. Although DeCLIP
+attempts to enforce coherence on their attention blocks, the
+final dense representations still suffer from limited category
+discriminability, particularly within stuff regions. Overall,
+how to effectively construct discriminative dense represen-
+tations well-aligned with the global semantics remains an
+open problem.
+To tackle these issues, we propose DenseRC, a novel
+framework for constructingcls-compatible dense represen-
+tations for OVDP. We decompose the construction into two
+key aspects: (1)whatfeatures to extract and (2)howto con-
+struct them. Forwhat, we reveal that the generalizable se-
+mantics ofclstoken are encoded within its multi-layer value
+embeddings, which therefore are employed as the informa-
+tive basis to construct dense features in DenseRC. Forhow,
+we re-examine the self-attention mechanism for OVDP by
+decoupling it along the spatial and head dimensions. Our
+analysis shows that apply spatial aggregation in dense fea-
+ture construction would increases the alignment error with
+theclstoken. Further, we observe strong heterogeneity
+across heads in terms of both cross-modal semantic contri-
+bution and locality preference, suggesting that uniform ag-
+gregation is suboptimal. These findings motivate the Head-
+Selective Gating (HSG) module, which employs learnable
+gating to adaptively reweight head-wise features based on
+their semantic and spatial characteristics, yielding more dis-
+criminative and alignment-friendly dense representations.
+To enhance feature coherence, we distill feature corre-
+lations from visual foundation models (VFM) [26] directly
+on the dense features. Unlike DeCLIP [35], which applies
+separate losses to decoupled attention (for feature coher-
+ence) and value (for dense alignment), our method enforces
+a unified constraint on a single feature stream. This integra-
+tion enforces dense features to simultaneously attain cross-
+modal alignment and feature coherence.
+We evaluate DenseRC on a range of OVDP tasks, in-
+cluding dense zero-shot classification [37], object detec-
+tion [9, 25], and semantic segmentation [4]. Extensive
+experiments show that our approach outperforms previous
+state-of-the-art methods by large margins across multiple
+OVDP benchmarks, demonstrating its strong capability in
+fine-grained visual understanding.
+In summary, our contributions are threefold:
+• We propose DenseRC, a framework for constructingcls-
+compatible dense representations for OVDP. We analyze
+the internal semantics encoded inclstoken and reveal that
+multi-layer value embeddings offer a semantically consis-
+tent basis to construct dense features.
+• We establish the limitation of spatial aggregation and
+highlight the importance of head-wise modeling in
+dense feature construction. Accordingly, we design a
+lightweight HSG module that adaptively integrates head-
+wise information to construct dense representations.
+• Extensive experiments on multiple open-vocabulary
+dense prediction benchmarks demonstrate the effective-
+ness and strong generalization capability of our approach.
+2. Related Work
+Open-Vocabulary Dense Perception.Large-scale vi-
+sion–language models such as CLIP [28] have demon-
+strated strong transferable representations for zero-shot im-
+age classification. This capability has motivated growing
+interest in OVDP [4, 9], which aims to detect or segment
+arbitrary concepts based on natural language descriptions.
+Most existing approaches [4, 13, 25] fine-tune CLIP on spe-
+cific downstream tasks using densely annotated data. While
+effective in specialized settings, these methods remain task-
+specific and do not address the fundamental limitations of
+CLIP in capturing fine-grained visual representations.
+Adapting VLMs for Dense Prediction.A separate line
+of work seeks to enhance CLIP during thepre-finetuning
+(upstream)stage, after VLM pre-training but before down-
+stream adaptation, to improve its ability to generate general-
+purpose dense representations that benefit a wide range of
+OVDP tasks. Existing methods in this category fall into two
+main paradigms: 1) Region-Supervised Retraining. Meth-
+ods [14, 41] collect large-scale region–text datasets to re-
+train CLIP with fine-grained alignment. For example, FG-
+CLIP constructs 40M region–caption pairs to enforce local
+correspondence. While these approaches improve localiza-
+tion, they require costly data curation and substantial com-
+putational resources, hindering their scalability and practi-
+cal deployment. 2) Self-Distillation without Extra Supervi-
+sion. As a more scalable alternative, this paradigm transfers
+global semantics from a frozen CLIP model to a trainable
+dense encoder via self-distillation. CLIPSelf [37] aligns
+student region features with CLIP’s image-level embed-
+dings extracted from cropped views. R-SC-CLIPSelf [27]
+further distills spatial structure from CLIP and introduces
+a refinement stage to enhance the teacher’s spatial aware-
+ness. DeCLIP [35] improves local discriminability by de-
+39209
+
+
+=== PAGE 3 ===
+coupling attention and value streams and enforcing spatial
+consistency regularization.
+While existing methods have made strides in improving
+either dense semantics or feature coherence, the core ques-
+tion of how toconstructdense representations that are in-
+trinsically consistent with CLIP’s global embedding space
+remains under-explored. In this work, we propose a princi-
+pled framework for buildingcls-compatible dense represen-
+tations that inherently align with global semantics, thereby
+facilitating effective dense alignment.
+3. Method
+In this section, we present DenseRC, a framework designed
+to construct dense representations that are structurally con-
+sistent with the global semantics in CLIP.
+3.1. Overview
+As illustrated in the upper left of Fig. 2, self-distillation
+framework [37] supervises the pooling region-level features
+Xdense ∈R N×D with the frozenclstokenc∈R D ex-
+tracted from the corresponding cropped image:
+Lsemantics
+ 
+RoIAlign(Xdense, b),c
+
+,(1)
+wherebdenotes a sampled region proposal,Nis the num-
+ber of patches, andDis the feature dimension. Although ef-
+fective, the paradigm leaves a fundamental question largely
+unexplored:whatvisual semantics does theclstoken ac-
+tually encode? We answer this by analyzing the internal
+semantics encoded in theclstoken and derive a principled
+guideline for constructing dense representations.
+3.2. Semantics encoded in theclsToken
+In CLIP’s vision transformer, theclstoken is updated at
+each layerlthrough self-attention and an MLP:
+c(l) =c (l−1) + Proj
+
+Attn(l) ·v (l)
+
+,(2)
+c(l) =c (l) + MLP
+
+c(l)
+
+,(3)
+wherev (l) ∈R N×D are the value embeddings. The MLP
+blocks mainly act as intra-token transformations, thus, to
+analyze where visual information originates, we isolate the
+attention pathway and rewrite it as:
+c(l) ←c (l−1) +A (l)v(l),(4)
+whereA (l) absorbs attention weights and projection param-
+eters, and←denotes information flow.
+Unrolling over allLlayers (excluding the constant ini-
+tializationc (0), which is data-agnostic) yields:
+c(L) ←
+LX
+l=1
+A(l)v(l).(5)
+This decomposition reveals that the the finalclsto-
+ken fundamentally aggregates information from multi-layer
+value embeddings. Motivated by this, we design the dense
+representations of student model to align with this aggrega-
+tion form:
+Xdense =
+LX
+l=1
+A(l)
+p ·v (l)
+p ,(6)
+wherev (l)
+p denotes value features, andA(l)
+p is a construction
+module.
+3.3. Head-Selective Gating
+Sec. 3.2 establishes the multi-layer value embeddings as a
+semantically consistent basis for dense feature construction.
+In pursuit of dense representations that facilitate semantic
+alignment while improving local discrimination, we exam-
+inehowto integrate these embeddings. In the original CLIP
+architecture, multi-head self-attention (MHSA) jointly per-
+forms feature aggregation across spatial and head dimen-
+sions. To investigate its role in dense alignment, we ex-
+plicitly decompose the process along the spatial and head
+dimensions and analyze each component separately.
+The Necessity of Spatial Aggregation forA p.As ob-
+served in Fig. 1, spatial aggregation would fuse unrelated
+semantics. To theoretically understand its effect on align-
+ment, we consider the following setup. Let the student pro-
+duce patch embeddings{v j}N
+j=1 ∈R D, and let the teacher
+provide a target representationc r for regionr. Without loss
+of generality, we assume:
+cr =
+LX
+l=1
+M(l)v(l)
+r +ε r,(7)
+whereM (l) ∈R D×D captures the teacher–student repre-
+sentation discrepancy, andε r is a small residual accounting
+for mismatched semantics or teacher noise. For simplicity,
+we present the derivation for asingle layerof value fea-
+tures. The extension to multiple layers is straightforward
+and omitted. We analyze two construction strategies:
+•Spatial–head fusion (S)aggregates features across spa-
+tial positions:
+˜v(S)
+r =
+NX
+j=1
+Srj P vj,(8)
+whereS rj is the spatial aggregation weight (P
+j Srj = 1)
+andP∈R D×D is a learnable projection.
+•Head-only Modeling (H)transforms each patch indepen-
+dently:
+˜v(H)
+r =W v r,(9)
+whereWperforms head-wise reweighting without spatial
+mixing.
+39210
+
+
+=== PAGE 4 ===
+  
+student
+  VLM
+teacher
+   VLM
+cls
+RoIAlign
+ 
+ 
+ 
+ 
+ 
+ 
+teacher
+   VFM
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+     
+ 
+     
+ 
+     
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+(
+ 
+)
+…
+ 
+ 
+(
+ 
+)
+ 
+ 
+ 
+ 
+ 
+ 
+C
+…
+…
+HSG
+ 
+ 
+  
+ 
+ 
+ 
+HSG
+…
+ 
+ 
+(
+ 
+)
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+(
+ 
+)
+C
+…
+…
+ 
+ 
+ 
+ 
+…
+  
+layernorm
+ 
+ 
+value projection
+ 
+ 
+head projection
+ 
+sigmoid
+multiply
+C
+concatenation
+align
+shared weights
+sum
+feature correlation
+feature correlation
+ℒ
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ℒ
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Figure 2. Overview of the proposed DenseRC framework.Left: DenseRC jointly imposes local semantic alignment and feature coherence
+distillation on dense representationsX dense.Right: The complete pipeline for dense representation construction, featuring the Head-
+Selective Gating (HSG) module.W H is appliedtoken-wise, not pooled, producingA p ∈R N×H .
+Using mean-squared error for the alignment process, the ex-
+pected losses are (See the Appendix for details):
+L(H) =E∥(W−M)v r∥2 +E∥ε r∥2,(10)
+L(S) =E∥(S rrP−M)v r∥2+
+X
+j∈Ur
+S2
+rj E∥P vj∥2
+| {z }
+∆L
++E∥εr∥2,
+(11)
+whereU r indexes spatial locations unrelated to regionr.
+Since bothWandS rrPare learnable with sufficient ca-
+pacity, gradient-based optimization can in principle reduce
+E∥(W−M)v r∥2 andE∥(S rrP−M)v r∥2 to similarly small
+values. The key difference arises from the additional in-
+terference term∆L, which is strictly positive when spatial
+aggregation assigns weight to off-target tokens:
+L(H) < L(S) if∃j∈ U r, S rj ̸= 0.(12)
+This underscores an inherent limitation of spatial aggrega-
+tion in this task: its inability to perfectly isolate relevant
+patches inevitably leads to the incorporation of off-target
+tokens, thereby increasing alignment error. Moreover, em-
+pirical observations (Fig. 3) show that spatial mixing affects
+patch gradient distribution. With spatial aggregation, a few
+dominant patches capture the majority of gradient flow, ex-
+hibiting extremely large magnitudes and leading to a low
+average magnitude (0.26). In contrast, head-only model-
+ing produces more uniform gradients across patches (mean:
+0.7), providing denser supervision and more stable learning.
+Head-Selective Gating (HSG).Having established that
+spatial aggregation is unnecessary inA p, we now explore
+the need for head-level modeling by analyzing thehead-
+wise characteristicsof the CLIP visual encoder. We fo-
+cus on two aspects critical for dense representations, with
+both metrics computed over 2,000 randomly sampled im-
+ages from the COCO dataset.
+(1) Contribution to cross-modal semantics.We quantify
+each head’s importance for cross-modal alignment by sum-
+ming its attention weights toward theclstoken layers. The
+resulting semantic importance scores for layers are shown
+in Fig. 4 (Upper).
+(2) Locality preference.To characterize the spatial focus
+of each head, we compute itsmean attention distancefol-
+lowing [29]. This metric averages pairwise pixel distances
+weighted by attention scores. A smaller value indicates a
+strong local bias, whereas a larger value implies a global-
+receptive field. Results for representative layers are pre-
+sented in Fig. 4 (Bottom).
+As shown in Fig. 4, different heads exhibit substantially
+diverse behaviors in both semantic contribution and local-
+ity preference, demonstrating that representation heads are
+functionally heterogeneous. This suggests that uniformly
+aggregating all heads may be suboptimal and motivates ex-
+plicit head-wise weighting for dense representation con-
+struction. To this end, we introduce a lightweightHead-
+Selective Gating (HSG)module that employs learnable
+gating to adaptively reweight head-wise features. Given in-
+put featuresx∈R N×D of a Transformer layer, the value
+embeddings and head gates are computed as:
+v=W v(LN(x))∈R H×N×(D/H) ,(13)
+Ap =σ(W H(LN(x)))∈R N×H ,(14)
+whereW v is the original CLIP value projection,W H ∈
+39211
+
+
+=== PAGE 5 ===
+0.0 0.2 0.4 0.6 0.8 1.00.0
+0.5
+1.0
+1.5
+2.0
+2.5
+3.0
+3.5
+4.0
+With spatial aggregation
+Without spatial aggregation
+10 20
+Gradient Magnitude
+Density
+Figure 3. Effect of spatial aggregation on patch gradient distribu-
+tion. With spatial aggregation, a few dominant patches capture the
+majority of gradient flow, exhibiting extremely large magnitudes
+(10) while the average gradient magnitude remains low (0.26). As
+a result, many patches that require optimization receive little su-
+pervision. In contrast, removing spatial aggregation yields a more
+uniform gradient distribution, providing denser signals for effec-
+tive dense cross-modal alignment.
+RD×H is a learnable head projection implemented as a sin-
+gle linear layer, andσ(·)is the sigmoid function producing
+per-head gating weights.W H is shared across all Trans-
+former layers, introducing minimal additional parameters.
+By operating solely along the head dimension, HSG mod-
+ulates cross-modal semantics and local preference to form
+discriminative and alignment-friendly representations. The
+right part of Fig. 2 illustrates the overall architecture of the
+proposed HSG module.
+Overall Objective.Our overall training objective com-
+bines a dense semantic alignment lossL semantics with a fea-
+ture coherence distillation lossL coherence, designed to jointly
+work on the dense representationX dense, as illustrated in
+the left of Fig. 2. The latter enhances the former by distill-
+ing patch-wise feature correlations from a frozen DINOv2
+model, which encourages the dense representations to ex-
+hibit intra-class compactness and inter-class separability.
+The overall objective is:
+Ltotal =L semantics +λL coherence,(15)
+whereλis a trade-off coefficient that balances semantic
+alignment and spatial structure distillation.
+4. Experiments
+4.1. Implementation Details
+All experiments are conducted on 4 NVIDIA A100 GPUs
+with a batch size of 4 per GPU. We train the model for 6
+epochs using the AdamW optimizer [24] with a learning
+rate of1×10 −5 and a weight decay of 0.1. Following stan-
+dard practice of self-distillation methods [35, 37], distilla-
+1 2 3 4 5 6 7 8 9 10 11 120.0
+0.2
+0.4
+0.6
+0.8
+1.0Head Semantic Importance
+1 2 3 4 5 6 7 8 9 10 11 12
+Head Index
+4
+6
+8
+10
+12
+14Mean Attention Distance
+1 2 3 4 5 6 7 8 9 10 11 120.0
+0.2
+0.4
+0.6
+0.8
+1.0Head Semantic Importance
+1 2 3 4 5 6 7 8 9 10 11 12
+Head Index
+4
+6
+8
+10
+12
+14Mean Attention Distance
+Figure 4. Head-wise characteristics of the CLIP visual encoder.
+The two columns present results for different layers and are not
+intended for cross-column comparison.Upper: Contribution of
+each head to theclstoken, highlighting differences in cross-modal
+semantic importance.Bottom: Head-wise mean attention dis-
+tance, indicating variability in locality preference across heads.
+tion is performed on the COCOtrain2017split [1]. Dur-
+ing training, each image is partitioned intom×ngrids,
+wheremandnare randomly sampled from{1, . . . ,6}for
+local alignment distillation. To ensure a fair comparison
+with prior work [35, 37], we adopt cosine similarity for
+the semantic alignment lossL semantics, and employ the mean
+squared error (MSE) for the feature coherence distillation
+lossL coherence. The trainable parameters in the student VLM
+are kept the same as in [35]. Unless otherwise specified, in-
+put images are resized to1024×1024for distillation, and
+the loss balancing coefficient is set toλ= 0.025in Eq. (15).
+Forv p, we extract the value embeddings from the last three
+Transformer layers, which empirically yields the most sta-
+ble and accurate alignment (see Sec. 4.3 for analysis).
+4.2. Open-vocabulary Dense Prediction
+We evaluate our approach across multiple downstream
+OVDP tasks, including region classification, object detec-
+tion, and semantic segmentation. In all settings, we sim-
+ply replace CLIP with our DenseRC in the downstream
+pipelines, without modifying any of their hyperparameters
+(See the Appendix for more details).
+Open-vocabulary Region Classification.We conduct
+dense-level zero-shot classification to assess region recog-
+nition capability, following the protocol in [37]. Region
+features are extracted from the COCO dataset using three
+standard settings:(i) Boxes: RoIAlign pooled from object
+bounding boxes;(ii) Thing Masks: mask pooling over in-
+stance regions; and(iii) Stuff Masks: mask pooling over
+stuff regions, where the latter two are derived from COCO
+Panoptic annotations. For a fair comparison, we also imple-
+ment DenseRC using region proposals generated by an RPN
+pretrained on COCOtrain2017, following [37]. Results are
+39212
+
+
+=== PAGE 6 ===
+reported in Tab. 1 using Top-1 and Top-5 mean Accuracy
+(mAcc). As shown, DenseRC consistently outperforms ex-
+isting baselines by a significant margin across all region set-
+tings and training protocols, demonstrating stronger open-
+vocabulary region discrimination and improved alignment.
+Open-vocabulary Detection.We evaluate our method
+for open-vocabulary object detection on the OV-COCO and
+OV-LVIS benchmarks using the two-stage detector F-ViT,
+following standard practice [37]. For OV-COCO, we re-
+port mean Average Precision (mAP) at an Intersection-over-
+Union (IoU) threshold of 0.5 on novel categories. OV-LVIS
+contains 1,203 categories, where only 461 common and
+405 frequent classes are available for training, while evalua-
+tion is performed on common, frequent, and rare categories.
+Following prior works [37], we report mAP on theraresplit
+averaged across IoU thresholds from 0.5 to 0.95.
+As shown in Tab. 2, DenseRC outperforms the previ-
+ous state-of-the-art method, DeCLIP, by 4.5% mAP on OV-
+COCO and 2.2% mAP on OV-LVIS [10] using a CLIP ViT-
+B/16 backbone, demonstrating stronger capability in rec-
+ognizing novel objects. To further evaluate cross-dataset
+generalization, we directly transfer models trained on OV-
+LVIS to COCO and Object365 [30] validation sets without
+any additional fine-tuning. Results in Tab. 3 show that our
+method consistently surpasses existing approaches, validat-
+ing its superior robustness and cross-domain transferability.
+Open-Vocabulary Semantic Segmentation.Following
+prior work [27, 35, 37], we evaluate DenseRC on open-
+vocabulary semantic segmentation (OVSS) using the state-
+of-the-art framework CAT-Seg. The segmentation model
+is trained on COCO-Stuff and evaluated across multiple
+standard OVSS benchmarks. We adopt mean Intersection-
+over-Union (mIoU) as the evaluation metric, following prior
+OVSS works [4]. As shown in Tab. 4, DenseRC consistently
+outperforms existing methods on all datasets, setting a new
+state of the art. These results further demonstrate the strong
+dense recognition capacity and superior generalization abil-
+ity of our approach.
+4.3. Ablation Study
+vp andA p.We first ablate the design of thev p. DenseRC
+employs value embeddings from multiple Transformer lay-
+ers (termedmulti-v), while prior methods construct dense
+representationsX dense using either the final spatial fea-
+tures [37] of CLIP (denoted asx+v) or a single last-layer
+value embedding [35] (denoted asv L). To ensure a fair
+comparison, no attention-based module is applied in this ex-
+periment. We evaluate all variants on both open-vocabulary
+detection (OVD) and open-vocabulary semantic segmenta-
+tion (OVSS). As shown in Tab. 5,multi-vconsistently out-
+performs alternative designs across all benchmarks, validat-
+0.2
+0.4
+0.6
+0.8
+0.2
+0.4
+0.6
+0.8Head Weights
+2 4 6 8 10 12
+Head Index
+0.2
+0.4
+0.6
+0.8
+Figure 5. Head weights learned by HSG in the last three Trans-
+former layers. The weights, computed over 2,000 COCOval2017
+samples, exhibit strong cross-sample consistency, revealing HSG
+effectively characterizes the intrinsic functional roles of different
+feature heads rather than image-specific patterns. The uneven dis-
+tributions across heads validate the necessity of explicit head-wise
+reweighting for dense representation construction.
+ing that employing multi-layer value embeddings facilitates
+more effective dense semantic alignment.
+We further analyze the impact of theA p by compar-
+ing four variants: (i) no attention (remove the attention
+block), (ii) vanilla self-attention (Q-K) as in CLIP, (iii)
+self-self attention (Q-Q) from DeCLIP, and (iv) our pro-
+posed HSG. All configurations are evaluated on identical
+OVD and OVSS benchmarks for a fair comparison. Re-
+sults in Tab. 5 show that introducing spatial aggregation,
+either self-attention or self-self attention, leads to perfor-
+mance degradation compared to the no-attention baseline,
+corroborating our analysis in Sec. 3.3. In contrast, HSG
+selectively models head-level characteristics without entan-
+gling noisy spatial correlations, yielding the best perfor-
+mance across all benchmarks. These results highlight its
+effectiveness in constructing discriminative dense represen-
+tations for open-vocabulary perception.
+Fig. 5 visualizes the head weights generated by the HSG
+module from the last three Transformer layers of the stu-
+dent visual encoder, using 2,000 randomly sampled im-
+ages from the COCOval2017. The results show strong
+cross-sample consistency in the learned head weights, in-
+dicating that HSG captures stable and semantically mean-
+ingful head preferences rather than image-specific patterns.
+This demonstrates that the head gating mechanism effec-
+tively characterizes the intrinsic functional roles of different
+feature heads, enabling reliable and structured feature con-
+struction. Moreover, the uneven weights distribution across
+heads reveals clear functional specialization, highlighting
+the necessity of explicit head-wise weighting instead of uni-
+form aggregation in dense representation construction.
+39213
+
+
+=== PAGE 7 ===
+Table 1.Zero-shot region classification of dense representation.We report Top1 and Top5 mean accuracy.
+Method Backbone RPN Proposals Boxes Thing Masks Stuff Masks
+Top1 Top5 Top1 Top5 Top1 Top5
+EV A-CLIP[32] ViT-B/16 - 18.2 33.2 20.6 36.5 18.4 43.5
+CLIPSelf[37] ViT-B/16 ✗ 72.1 91.3 74.4 91.8 46.8 80.2
+R-SC-CLIPSelf[27] ViT-B/16 ✗ 76.0 93.1 76.2 92.5 53.5 84.4
+DenseRC (Ours) ViT-B/16 ✗ 76.7 93.9 78.1 94.1 55.8 85.9
+R-SC-RegionText[27]ViT-B/16 ✓ 72.0 91.3 74.3 91.6 41.6 73.3
+CLIPSelf[37] ViT-B/16 ✓ 74.0 92.6 76.3 92.8 36.8 75.0
+R-SC-CLIPSelf[27] ViT-B/16 ✓ 77.3 94.0 78.9 94.2 52.6 83.9
+DenseRC (Ours) ViT-B/16 ✓ 78.2 94.8 79.8 94.8 56.2 86.9
+EV A-CLIP[32] ViT-L/14 - 56.7 78.0 59.0 79.8 20.8 41.9
+CLIPSelf[37] ViT-L/14 ✗ 77.1 93.3 78.7 93.7 44.4 78.3
+R-SC-CLIPSelf[27] ViT-L/14 ✗ 82.9 96.0 82.8 95.6 57.8 86.5
+DenseRC (Ours) ViT-L/14 ✗ 83.2 96.6 85.1 96.8 58.2 87.5
+CLIPSelf[37] ViT-L/14 ✓ 77.8 94.0 80.4 94.5 34.0 71.8
+R-SC-CLIPSelf[27] ViT-L/14 ✓ 81.7 95.8 82.9 95.9 52.5 83.9
+DenseRC (Ours) ViT-L/14 ✓ 82.9 96.9 84.9 97 61 89.2
+Table 2. Comparison with state-of-the-art methods for open-vocabulary object detection. Caption supervision denotes that the model is
+trained with additional image–text pairs, while CLIP supervision indicates semantic transfer from the original CLIP model. FineCLIP
+leverages CC2.5M to generate region–text pairs as supervision.
+(a) OV-COCO benchmark
+Method SupervisionBackboneAPNovel50
+ViLD [9] CLIP RN50 27.6Detic [53] Caption RN50 27.8OV-DETR [47] CLIP RN50 29.4BARON-KD [36] CLIP RN50 34.0SAS-Det [50] CLIP RN50 37.4OV-DQUO [34] CLIP RN50 39.2RegionCLIP [51] Captions RN50x4 39.3CORA [39] CLIP RN50x4 41.7
+F-ViT+FineCLIP [14] CC2.5M ViT-B/16 29.8F-ViT+CLIPSelf [37] CLIP ViT-B/16 37.6F-ViT [37]+R-SC-CLIPSelf[27]CLIP ViT-B/16 40.9F-ViT [37]+DeCLIP[35] CLIP ViT-B/16 41.1F-ViT [37]+DenseRC (Ours)CLIP ViT-B/16 45.6
+RO-ViT [16] CLIP ViT-L/16 33.0CFM-ViT [15] CLIP ViT-L/16 34.1F-ViT[37]+FineCLIP [14]CC2.5M ViT-L/14 40.0F-ViT[37]+CLIPSelf [37] CLIP ViT-L/14 44.3F-ViT [37]+R-SC-CLIPSelf[27]CLIP ViT-L/14 48.1F-ViT [37]+DeCLIP[35] CLIP ViT-L/14 46.2F-ViT [37]+DenseRC (Ours)CLIP ViT-L/14 54.8
+(b) OV-LVIS benchmark
+Method SupervisionBackbonemAPr
+ViLD [9] CLIP RN50 16.3OV-DETR [47] CLIP RN50 17.4BARON-KD [36] CLIP RN50 22.6RegionCLIP [51] Caption RN50x4 22.0OV-SAM [46] CLIP RN50x16 24.0
+CORA+[39] Caption RN50x4 28.1F-VLM [17] CLIP RN50x64 32.8Detic [53] Caption Swin-B 33.8
+F-ViT+FineCLIP [14] CC2.5M ViT-B/16 10.4F-ViT[37]+CLIPSelf [37] CLIP ViT-B/16 25.3F-ViT [37]+R-SC-CLIPSelf[27]CLIP ViT-B/16 27.5F-ViT [37]+DeCLIP[35] CLIP ViT-B/16 26.8F-ViT [37]+DenseRC (Ours)CLIP ViT-B/16 29.0
+RO-ViT [16] CLIP ViT-H/16 34.1F-ViT+FineCLIP [14] CC2.5M ViT-L/14 20.2F-ViT[37]+CLIPSelf [37] CLIP ViT-L/14 34.9F-ViT [37]+R-SC-CLIPSelf[27]CLIP ViT-L/14 37.2F-ViT [37]+DeCLIP[35] CLIP ViT-L/14 37.2F-ViT [37]+DenseRC (Ours)CLIP ViT-L/14 39.6
+Table 3. Zero-shot cross-dataset transfer evaluation of the LVIS-
+trained detector on COCO and Objects365.
+Method COCO Objects365 [30]
+AP AP 50 AP75 AP AP 50 AP75
+Supervised Baseline [9]46.5 67.6 50.9 25.6 38.6 28.0
+ViLD [9] 36.6 55.6 39.6 11.8 18.0 12.6DetPro [6] 34.9 53.8 37.4 12.1 18.8 12.9BARON [36] 36.2 55.7 39.1 13.6 21.0 14.5F-VLM [17] 37.9 61.6 41.2 16.2 27.4 17.5CoDet [25] 39.1 57.0 42.3 14.2 20.5 15.3RO-ViT [16] - - - 17.7 27.4 19.1
+F-ViT[37]+FineCLIP [14]33.6 52.7 36.1 12.1 19.8 12.6F-ViT[37]+CLIPSelf [37]40.5 63.8 44.3 19.5 31.3 20.7F-ViT[37]+DeCLIP[35]41.0 64.6 44.8 20.0 32.2 21.2F-ViT[37]+DenseRC (Ours)43.4 66.6 47.6 20.8 32.4 22.6
+The layers forvp.We conduct ablation studies on the lay-
+ers forv p, with results summarized in Tab. 6. Compared
+to the baseline, aggregating the last two or three layers im-
+proves performance. We find that using the last three Trans-
+former layers yields the best results for dense feature con-
+struction, while incorporating more layers leads to degra-
+dation. This trend aligns with the observation in [23] that
+the fourth-to-last layer exhibits a notable decline in seman-
+tic alignment. Early layers tend to have a lowersignal-
+to-noiseratio, making them less suitable for constructing
+dense representations. Moreover, aggregating these earlier
+layers, which capture heterogeneous features with the deep
+semantics, potentially results in gradient interference and
+reduced optimization stability. Based on these findings, we
+39214
+
+
+=== PAGE 8 ===
+Table 4. Comparison with state-of-the-art methods on open-vocabulary semantic segmentation across multiple benchmarks.
+Method Backbone Training Set A-847 PC-459 A-150 PC-59
+ZegFormer [5] ViT-B/16 COCO-Stuff 5.6 10.4 18.0 45.5
+ZSseg [43] ViT-B/16 COCO-Stuff 7.0 - 20.5 47.7
+CAT-Seg [4] ViT-B/16 COCO-Stuff 12.0 19.0 31.8 57.5
+CAT-Seg[4] +FineCLIP[14] ViT-B/16 COCO-Stuff 12.2 - 32.4 56.0
+CAT-Seg[4] +CLIPSelf[37] ViT-B/16 COCO-Stuff 9.3 - 29.0 58.0
+CAT-Seg[4] +R-SC-CLIPSelf[37]ViT-B/16 COCO-Stuff 12.2 - 32.0 57.2
+CAT-Seg[4] +DeCLIP[35] ViT-B/16 COCO-Stuff 15.3 21.4 36.3 60.6
+CAT-Seg[4] +DenseRC (Ours)ViT-B/16 COCO-Stuff 15.9 22.7 37.6 61.3
+OVSeg [20] ViT-L/14 COCO-Stuff 9.0 12.4 29.6 55.7
+SAN [44] ViT-L/14 COCO-Stuff 13.7 17.1 33.3 60.2
+ODISE [42] ViT-L/14 COCO-Panoptic 11.1 14.5 29.9 57.3
+MAFT [12] ConvNeXt-L COCO-Stuff 13.1 17.0 34.4 57.5
+FC-CLIP [45] ConvNeXt-L COCO-Panoptic 14.8 18.2 34.1 58.4
+FrozenSeg [3] ConvNeXt-L COCO-Panoptic 14.8 19.7 34.4 -
+CAT-Seg [4] ViT-L/14 COCO-Stuff 16.0 23.8 37.9 63.3
+CAT-Seg[4] +FineCLIP[14] ViT-L/14 COCO-Stuff 14.1 - 36.1 59.9
+CAT-Seg[4] +CLIPSelf[37] ViT-L/14 COCO-Stuff 12.4 - 34.5 62.3
+CAT-Seg[4] +R-SC-V[27] ViT-L/14 COCO-Stuff 16.6 - 38.4 63.6
+CAT-Seg[4] +DeCLIP[35] ViT-L/14 COCO-Stuff 17.6 25.9 40.7 63.9
+CAT-Seg[4] +DenseRC (Ours)ViT-L/14 COCO-Stuff 18.4 26.7 41.5 64
+Table 5. Ablation study onv p andA p. Each component is varied
+independently while keeping the other fixed. mAP is reported for
+OV-COCO, and mIoU for segmentation benchmarks. Our default
+method is highlighted in blue .
+vp A-847 PC-459 A-150 OV-COCO
+x+v 15.2 21.7 36.6 41.3
+v 15.4 22.1 36.7 41.9
+multi-v 15.7 22.3 37.2 44.4
+Ap A-847 PC-459 A-150 OV-COCO
+no attention 15.7 22.3 37.2 44.4
+self attention 14.7 21.3 36.0 39.1
+self-self attention15.4 21.9 36.7 42.3
+HSG 15.9 22.7 37.6 45.6
+Table 6. Ablation study on layers inv p.
+l A-847 PC-459 A-150OV-COCO
+L 15.6 22.4 37.0 42.3
+L−1 15.7 22.6 37.3 44.2
+L−2 15.9 22.7 37.6 45.6
+L−3 15.7 22.6 37.3 43.8
+L−4 15.7 22.3 37.1 43.6
+Table 7. Ablation study onλ.
+λ A-847 PC-459 A-150 PC-59
+0.01 15.8 22.6 37.3 61.1
+0.025 15.9 22.7 37.6 61.3
+0.04 15.7 22.3 37.3 61.4
+0.05 15.4 22.2 36.9 61.3
+0.1 15.4 22.1 36.8 61.0
+adopt the last three value embeddings inv p.
+λ.We ablate the effect of the balancing coefficientλ,
+which controls the trade-off between semantic alignment
+and feature coherence distillation in DenseRC. We evalu-
+ate performance on OVSS, with results reported in Tab. 7.
+The best overall performance is achieved atλ= 0.025.
+5. Conclusion
+In this paper, we present DenseRC, a self-distillation frame-
+work that advances dense representation construction for
+adapting CLIP to open-vocabulary dense perception. We
+investigate the internal semantics encoded in theclstoken
+and reveal that multi-layer value embeddings offer a seman-
+tically consistent basis for building dense features. By de-
+coupling the attention mechanism along spatial and head
+dimensions, we theoretically show that spatial aggregation
+introduces interference from unrelated regions, leading to
+increased alignment error during semantic transfer. Moti-
+vated by the functional heterogeneity across feature heads,
+we further propose a lightweight head-selective gating mod-
+ule to adaptively model head-wise characteristics, enabling
+more discriminative dense representations. Extensive ex-
+periments demonstrate that DenseRC achieves significant
+and consistent performance improvements across multiple
+open-vocabulary dense downstream tasks, validating the ef-
+fectiveness and generalizability of our design.
+Acknowledgements
+This work is partly supported by the National Key Research
+and Development Plan (2024YFB3309302), National Nat-
+ural Science Foundation of China (82441024), the Beijing
+Natural Science Foundation (L251073), the Research Pro-
+gram of State Key Laboratory of Complex and Critical Soft-
+ware Environment, and the Fundamental Research Funds
+for the Central Universities.
+39215
+
+
+=== PAGE 9 ===
+References
+[1] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. InProceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 1209–1218, 2018. 5, 2
+[2] Fangyi Chen, Han Zhang, Zhantao Yang, Hao Chen, Kai
+Hu, and Marios Savvides. Rtgen: Generating region-text
+pairs for open-vocabulary object detection.arXiv preprint
+arXiv:2405.19854, 2024. 2
+[3] Xi Chen, Haosen Yang, Sheng Jin, Xiatian Zhu, and
+Hongxun Yao. Frozenseg: Harmonizing frozen foundation
+models for open-vocabulary segmentation.arXiv preprint
+arXiv:2409.03525, 2024. 8
+[4] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-
+seg: Cost aggregation for open-vocabulary semantic seg-
+mentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 4113–
+4123, 2024. 2, 6, 8
+[5] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 11583–11592, 2022. 8
+[6] Yu Du, Fangyun Wei, Zihe Zhang, Miaojing Shi, Yue Gao,
+and Guoqi Li. Learning to prompt for open-vocabulary ob-
+ject detection with vision-language model. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 14084–14093, 2022. 7, 2
+[7] Mark Everingham, Luc van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge.International Journal of Computer
+Vision, 88(2):303–338, 2010. 2
+[8] Yossi Gandelsman, Alexei A Efros, and Jacob Steinhardt. In-
+terpreting clip’s image representation via text-based decom-
+position. InThe Twelfth International Conference on Learn-
+ing Representations, 2023. 4
+[9] Xiuye Gu, Tsung-Yi Lin, Weicheng Kuo, and Yin Cui.
+Open-vocabulary object detection via vision and language
+knowledge distillation.arXiv preprint arXiv:2104.13921,
+2021. 2, 7
+[10] Agrim Gupta, Piotr Dollar, and Ross Girshick. Lvis: A
+dataset for large vocabulary instance segmentation. InPro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 5356–5364, 2019. 6, 1, 2
+[11] Joonhyun Jeong, Geondo Park, Jayeon Yoo, Hyungsik Jung,
+and Heesu Kim. Proxydet: Synthesizing proxy novel classes
+via classwise mixup for open-vocabulary object detection.
+InProceedings of the AAAI Conference on Artificial Intelli-
+gence, pages 2462–2470, 2024. 2
+[12] Siyu Jiao, Yunchao Wei, Yaowei Wang, Yao Zhao, and
+Humphrey Shi. Learning mask-aware clip representations
+for zero-shot segmentation.Advances in Neural Information
+Processing Systems, 36:35631–35653, 2023. 8
+[13] Siyu Jiao, Hongguang Zhu, Jiannan Huang, Yao Zhao, Yun-
+chao Wei, and Humphrey Shi. Collaborative vision-text rep-
+resentation optimizing for open-vocabulary segmentation. In
+European Conference on Computer Vision, pages 399–416.
+Springer, 2025. 2
+[14] Dong Jing, Xiaolong He, Yutian Luo, Nanyi Fei, Wei
+Wei, Huiwen Zhao, Zhiwu Lu, et al. Fineclip: Self-
+distilled region-based clip for better fine-grained understand-
+ing.Advances in Neural Information Processing Systems,
+37:27896–27918, 2024. 1, 2, 7, 8
+[15] Dahun Kim, Anelia Angelova, and Weicheng Kuo. Con-
+trastive feature masking open-vocabulary vision transformer.
+In2023 IEEE/CVF International Conference on Computer
+Vision (ICCV), pages 15556–15566, 2023. 7, 2
+[16] Dahun Kim, Anelia Angelova, and Weicheng Kuo. Region-
+aware pretraining for open-vocabulary object detection with
+vision transformers. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+11144–11154, 2023. 7, 2
+[17] Weicheng Kuo, Yin Cui, Xiuye Gu, AJ Piergiovanni, and
+Anelia Angelova. F-vlm: Open-vocabulary object detec-
+tion upon frozen vision and language models.arXiv preprint
+arXiv:2209.15639, 2022. 7, 2
+[18] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+ence. InEuropean Conference on Computer Vision, pages
+143–160. Springer, 2024. 1, 2, 4
+[19] Yi Li, Hualiang Wang, Yiqun Duan, and Xiaomeng Li. Clip
+surgery for better explainability with enhancement in open-
+vocabulary tasks.arXiv e-prints, pages arXiv–2304, 2023.
+4
+[20] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+7061–7070, 2023. 8
+[21] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+Pietro Perona, Deva Ramanan, Piotr Doll´ar, and C Lawrence
+Zitnick. Microsoft coco: Common objects in context. In
+European conference on computer vision, pages 740–755.
+Springer, 2014. 1, 2
+[22] Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee.
+Improved baselines with visual instruction tuning. InPro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 26296–26306, 2024. 3
+[23] Yajie Liu, Guodong Wang, Jinjin Zhang, Qingjie Liu, and
+Di Huang. Unveiling the knowledge of clip for training-free
+open-vocabulary semantic segmentation. InProceedings of
+the AAAI Conference on Artificial Intelligence, pages 5649–
+5657, 2025. 1, 7
+[24] I Loshchilov. Decoupled weight decay regularization.arXiv
+preprint arXiv:1711.05101, 2017. 5
+[25] Chuofan Ma, Yi Jiang, Xin Wen, Zehuan Yuan, and Xiaojuan
+Qi. Codet: Co-occurrence guided region-word alignment for
+open-vocabulary object detection.Advances in Neural Infor-
+mation Processing Systems, 36, 2024. 2, 7
+[26] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+39216
+
+
+=== PAGE 10 ===
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 2
+[27] Congpei Qiu, Yanhao Wu, Wei Ke, Xiuxiu Bai, and Tong
+Zhang. Refining clip’s spatial awareness: A visual-centric
+perspective. InThe Thirteenth International Conference on
+Learning Representations, 2025. 2, 6, 7, 8
+[28] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen
+Krueger, and Ilya Sutskever. Learning transferable visual
+models from natural language supervision. InProceedings
+of the 38th International Conference on Machine Learning,
+pages 8748–8763. PMLR, 2021. 1, 2, 3
+[29] Maithra Raghu, Thomas Unterthiner, Simon Kornblith,
+Chiyuan Zhang, and Alexey Dosovitskiy. Do vision trans-
+formers see like convolutional neural networks?Advances
+in neural information processing systems, 34:12116–12128,
+2021. 4
+[30] Shuai Shao, Zeming Li, Tianyuan Zhang, Chao Peng, Gang
+Yu, Xiangyu Zhang, Jing Li, and Jian Sun. Objects365: A
+large-scale, high-quality dataset for object detection. InPro-
+ceedings of the IEEE/CVF international conference on com-
+puter vision, pages 8430–8439, 2019. 6, 7, 1, 2
+[31] Oriane Sim ´eoni, Huy V V o, Maximilian Seitzer, Federico
+Baldassarre, Maxime Oquab, Cijo Jose, Vasil Khalidov,
+Marc Szafraniec, Seungeun Yi, Micha ¨el Ramamonjisoa,
+et al. Dinov3.arXiv preprint arXiv:2508.10104, 2025. 3
+[32] Quan Sun, Yuxin Fang, Ledell Wu, Xinlong Wang, and Yue
+Cao. Eva-clip: Improved training techniques for clip at scale.
+arXiv preprint arXiv:2303.15389, 2023. 7
+[33] Michael Tschannen, Alexey Gritsenko, Xiao Wang, Muham-
+mad Ferjad Naeem, Ibrahim Alabdulmohsin, Nikhil
+Parthasarathy, Talfan Evans, Lucas Beyer, Ye Xia, Basil
+Mustafa, et al. Siglip 2: Multilingual vision-language en-
+coders with improved semantic understanding, localization,
+and dense features.arXiv preprint arXiv:2502.14786, 2025.
+3
+[34] Junjie Wang, Bin Chen, Bin Kang, Yulin Li, Weizhi Xian,
+Yichi Chen, and Yong Xu. Ov-dquo: Open-vocabulary detr
+with denoising text query training and open-world unknown
+objects supervision. InProceedings of the AAAI conference
+on artificial intelligence, pages 7762–7770, 2025. 7, 2
+[35] Junjie Wang, Bin Chen, Yulin Li, Bin Kang, Yichi Chen,
+and Zhuotao Tian. Declip: Decoupled learning for open-
+vocabulary dense perception. InProceedings of the Com-
+puter Vision and Pattern Recognition Conference, pages
+14824–14834, 2025. 1, 2, 5, 6, 7, 8
+[36] Size Wu, Wenwei Zhang, Sheng Jin, Wentao Liu, and
+Chen Change Loy. Aligning bag of regions for open-
+vocabulary object detection. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 15254–15264, 2023. 7, 2
+[37] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Xiangtai
+Li, Wentao Liu, and Chen Change Loy. CLIPSelf: Vision
+transformer distills itself for open-vocabulary dense predic-
+tion. InThe Twelfth International Conference on Learning
+Representations, 2024. 1, 2, 3, 5, 6, 7, 8
+[38] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Wentao
+Liu, and Chen Change Loy. Clim: Contrastive language-
+image mosaic for region representation. InProceedings of
+the AAAI Conference on Artificial Intelligence, pages 6117–
+6125, 2024. 2
+[39] Xiaoshi Wu, Feng Zhu, Rui Zhao, and Hongsheng Li. Cora:
+Adapting clip for open-vocabulary detection with region
+prompting and anchor pre-matching. InProceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 7031–7040, 2023. 7, 2
+[40] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. Sed: A simple encoder-decoder for open-
+vocabulary semantic segmentation. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 3426–3436, 2024. 2
+[41] Chunyu Xie, Bin Wang, Fanjing Kong, Jincheng Li, Dawei
+Liang, Gengshen Zhang, Dawei Leng, and Yuhui Yin.
+Fg-clip: Fine-grained visual and textual alignment. In
+Forty-second International Conference on Machine Learn-
+ing, 2025. 1, 2
+[42] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 2955–2966, 2023. 8
+[43] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. InEuropean Conference on Computer Vi-
+sion, pages 736–753. Springer, 2022. 8
+[44] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 2945–
+2954, 2023. 8
+[45] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip.Advances in
+Neural Information Processing Systems, 36, 2024. 8
+[46] Haobo Yuan, Xiangtai Li, Chong Zhou, Yining Li, Kai Chen,
+and Chen Change Loy. Open-vocabulary sam: Segment and
+recognize twenty-thousand classes interactively. InECCV,
+2024. 7
+[47] Yuhang Zang, Wei Li, Kaiyang Zhou, Chen Huang, and
+Chen Change Loy. Open-vocabulary detr with conditional
+matching. InEuropean Conference on Computer Vision,
+pages 106–122. Springer, 2022. 7, 2
+[48] Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and
+Lucas Beyer. Sigmoid loss for language image pre-training.
+InProceedings of the IEEE/CVF international conference on
+computer vision, pages 11975–11986, 2023. 3
+[49] Heng Zhang, Qiuyu Zhao, Linyu Zheng, Hao Zeng, Zhi-
+wei Ge, Tianhao Li, and Sulong Xu. Exploring region-
+word alignment in built-in detector for open-vocabulary ob-
+ject detection. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 16975–
+16984, 2024. 2
+39217
+
+
+=== PAGE 11 ===
+[50] Shiyu Zhao, Samuel Schulter, Long Zhao, Zhixing Zhang,
+Vijay Kumar B G, Yumin Suh, Manmohan Chandraker,
+and Dimitris N. Metaxas. Taming self-training for open-
+vocabulary object detection. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 13938–13947, 2024. 7, 2
+[51] Yiwu Zhong, Jianwei Yang, Pengchuan Zhang, Chun-
+yuan Li, Noel Codella, Liunian Harold Li, Luowei Zhou,
+Xiyang Dai, Lu Yuan, Yin Li, et al. Regionclip: Region-
+based language-image pretraining. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 16793–16803, 2022. 7, 2
+[52] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset.International
+Journal of Computer Vision, 127(3):302–321, 2019. 2
+[53] Xingyi Zhou, Rohit Girdhar, Armand Joulin, Philipp
+Kr¨ahenb¨uhl, and Ishan Misra. Detecting twenty-thousand
+classes using image-level supervision. InEuropean Confer-
+ence on Computer Vision, pages 350–368. Springer, 2022. 7,
+2
+39218

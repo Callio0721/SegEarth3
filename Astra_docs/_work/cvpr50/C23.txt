@@ -1,0 +1,1000 @@
+=== PAGE 1 ===
+Weakly Supervised Semantic Segmentation via Progressive Confidence Region
+Expansion
+Xiangfeng Xu1* Pinyi Zhang1* Wenxuan Huang1 Yunhang Shen2 Haosheng Chen1
+Jingzhong Lin1 Wei Li3 Gaoqi He1 Jiao Xie1 Shaohui Lin1,4B
+1East China Normal University 2Xiamen University 3Huawei Noah’s Ark Lab
+4Key Laboratory of Advanced Theory and Application in Statistics and Data ScienceMinistry of Education, China
+Abstract
+Weakly supervised semantic segmentation (WSSS) has gar-
+nered considerable attention due to its effective reduction of
+annotation costs. Most approaches utilize Class Activation
+Maps (CAM) to produce pseudo-labels, thereby localizing
+target regions using only image-level annotations. How-
+ever, the prevalent methods relying on vision transform-
+ers (ViT) encounter an “over-expansion” issue, i.e., CAM
+incorrectly expands high activation value from the target
+object to the background regions, as it is difficult to learn
+pixel-level local intrinsic inductive bias in ViT from weak
+supervisions. To solve this problem, we propose a Pro-
+gressive Confidence Region Expansion (PCRE) framework
+for WSSS, it gradually learns a faithful mask over the tar-
+get region and utilizes this mask to correct the confusion in
+CAM. PCRE has two key components: Confidence Region
+Mask Expansion (CRME) and Class-Prototype Enhance-
+ment (CPE). CRME progressively expands the mask in the
+small region with the highest confidence, eventually encom-
+passing the entire target, thereby avoiding unintended cov-
+erage of background areas. CPE aims to enhance mask gen-
+eration in CRME by leveraging the similarity between the
+learned, dataset-level class prototypes and patch features
+as supervision to optimize the mask output from CRME. Ex-
+tensive experiments demonstrate that our method outper-
+forms the existing single-stage and multi-stage approaches
+on the PASCAL VOC and MS COCO benchmark. Our code
+is available at https://github.com/xxf011/WSSS-PCRE.
+1. Introduction
+Weakly supervised semantic segmentation (WSSS), which
+predicts precise pixel-level object masks using weak anno-
+tations, has received a great deal of research focus in re-
+cent years. These weak annotations include image-level
+labels [1, 2], points [3], scribbles [4, 5], and bounding
+boxes [6, 7]. Among them, image-level annotation is one of
+*Equal contribution. BCorresponding author.
+Figure 1. (a) Comparison of generated CAM and segmenta-
+tion maps between previous methods and ours. Our PCRE
+approach effectively addresses incorrect segmentation caused by
+over-expanded activations propagating from the target object re-
+gion. ‘Seg.’ denotes segmentation maps. (b) Cosine similarity
+between the patch with a red star (★) and other patches. Ob-
+ject regions and backgrounds have high similarities (white color)
+in the late training process.
+the most attractive and challenging options due to its easy
+acquisition with the least amount of information. This work
+also focuses on WSSS with image-level labels, aiming to
+explore how to achieve high-quality pixel-level predictions.
+Prevalent WSSS methods [2, 8–10] typically employ
+Class Activation Maps (CAMs) [11] to extract localization
+maps as pseudo labels. These methods adopt multi-stage
+pipelines: generating initial pseudo labels via CAMs with
+CNNs, refining them, and finally training fully supervised
+segmentation models with these refined labels. However,
+the complicating multi-stage training slows down the ef-
+ficiency. Therefore, many studies [10, 12–14] have pro-
+posed a one-stage training way to produce pseudo labels
+and learn a segmentation head simultaneously. Meanwhile,
+CNNs fail to effectively model the global feature relations,
+which hinders the activation of the entire object regions.
+Recently, WSSS methods [15] adapt vision transformer
+(VIT) architectures to capture long-range relationships with
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+9829
+
+
+=== PAGE 2 ===
+self-attention blocks, improving the accuracy of pseudo la-
+bels [12, 13, 16]. For example, Rossettiet al. [16] leverages
+global max pooling into the ViT features in the last layer
+to optimizing CAMs and ToCo [12] employs contrastive
+learning to extract local semantic information from image
+patches.
+Despite these advancements, a significant challenge re-
+mains that these methods tend to incorrectly expand CAM
+from the target object region to the background with high
+activation values. We call this phenomenon as over-
+expansion of CAM. As shown in Fig. 1 (a), the target bird
+region easily spreads to the adjacent tree trunk ( i.e., back-
+ground) in the generated CAM after training. This is due
+to that the weak annotations fail to learn inductive biases in
+modeling local feature structures, which is lacking in ViT,
+and high feature similarities between the target and back-
+ground result in unreliable pseudo labels of background. In
+Fig. 1 (b), as training proceeds, the high feature similarity
+expands from the target inferior to its exterior background,
+further intensifying the over-expansion in CAM.
+To solve the above issue, we propose a novel weakly
+supervised semantic segmentation framework via Progres-
+sive Confidence Region Expansion (PCRE), which gradu-
+ally generates an accuracy and complete target mask for ef-
+fective WSSS. As illustrated in Fig. 2, the proposed PCRE
+consists of two modules, Confidence Region Mask Ex-
+pansion (CRME) and Class-Prototype Enhancement (CPE).
+Specifically, CRME incrementally expands the scope of the
+segmentation mask in small steps to constrain the mask to
+diffuse background areas. It begins by selecting a mask
+over the region with the highest confidence. After that, it
+restricts the mask generation range at each expansion step
+to progressively incorporate additional masks based on their
+patch confidence levels, which produces an accurate refined
+mask over the entire target. However, relying solely on the
+CRME mask expansion strategy still struggles to fully cap-
+ture the semantic precision of target regions. To address
+this, we propose CPE to further guide the CRME expansion
+process. We observe that shallow layers in the early stages
+can capture discriminative local features relevant to the tar-
+get, but these features tend to be overly smoothed under the
+global attention mechanism as training progresses. As such,
+CPE introduces the EMA to preserve these early-stage dis-
+criminative features, which optimizes dense similarity maps
+through class prototype alignment to capture fine-grained
+semantic correlations across images.
+Our main contributions can be summarized as:
+• We propose Progressive Confidence Region Expansion
+(PCRE) to address the over-expansion issue for effective
+WSSS. By progressively expanding high-confidence re-
+gions, PCRE significantly improves CAM pseudo labels
+and segmentation performance.
+• We design a CRME module that incrementally expands
+the mask’s scope in small steps, effectively avoiding un-
+intended background coverage. Additionally, we develop
+a CPE module to learn rich, dataset-level representations
+for each class, generating the prototypical CAM for ef-
+fective supervision.
+• Experimental results demonstrate that the superior perfor-
+mance of our method. For example, on the COCO 2014
+benchmark dataset [17], the proposed PCRE outperforms
+SOTA single-stage DIAL [14] and multi-stage PCSS [18]
+by 2.8% mIoU and 1.5%, respectively.
+2. Related work
+Weakly-Supervised Semantic Segmentation. Traditional
+WSSS [2, 8] primarily relies on CNN to localize target re-
+gions through CAM [11]. However, CAM typically only
+covers the most distinctive parts of the objects [19, 20]. To
+address this limitation, researchers have proposed methods
+such as adversarial erasing [21–23], auxiliary tasks [24–
+26], and CRF [27] to expand activation regions and im-
+prove the quality of pseudo labels. With the emergence
+of ViT [15], researchers have explored the application of
+ViT in WSSS, leveraging the global semantic aggregation
+capability of the class token to enhance the model’s com-
+prehensive focus on target regions. For example, the works
+in [28, 29] introduce multiple class-specific tokens and uti-
+lized cross-attention maps between class tokens and patch
+tokens to acquire positional cues. the works in [12, 30] con-
+trast class tokens from full-image labels with those from
+cropped uncertain regions. DIAL [14] incorporates cross-
+modal contrastive learning to maximize similarity between
+class tokens and target text embeddings. CTI [31] enhances
+the consistency and class specificity of CAM by injecting
+class tokens across different augmentations of the same im-
+age and between different images. However, these meth-
+ods either employ a single class token for the entire image,
+limiting effective class differentiation in multi-class scenar-
+ios, or introduce multiple class tokens with cross-attention
+mechanisms that introduce noise due to their indirect as-
+sociation with the optimization objective. We propose the
+CPE module to extract both nuanced semantic information
+and representative, dataset-level prototypes for each class.
+Progressive Expansion. In the computer vision liter-
+ature, the concept of progressive expansion has been ex-
+plored in various tasks, but with motivations and imple-
+mentations very different from our approach. For instance,
+PDEN [32] progressively expands from single to multi-
+ple domains to simulate various photometric and geometric
+transforms in unseen domains. PSS [33] progressively en-
+larges the training set to enhance model resilience against
+out-of-distribution classes. BungeeNeRF [34] incremen-
+tally expands the training dataset, enabling the model to
+robustly capture radiance representations across varying
+scales within a scene. ToE [35] progressively expands to-
+9830
+
+
+=== PAGE 3 ===
+Figure 2. (a) The overall framework of the proposed PRCE. It comprises two inputs: an image and C learnable class tokens. Initially,
+a CLS layer is employed to generate an initial CAM. CRME incrementally broadens the segmentation mask’s scope based on each patch’s
+confidence, ultimately producing a refined mask over the entire target region. CPE first utilizes the initial CAM to guide the similarity
+between the learnable class tokens and patch features, ensuring the derivation of representative class tokens. Subsequently, it applies an
+EMA to create robust, dataset-level prototypes for each class. The similarity between patch features and these prototypes serves as a
+pseudo-label, optimizing the refined mask to improve the effectiveness of CRME. Finally, the final CAM is produced by taking the average
+of the refined mask and the initial CAM. (b) An illustration of CRME. It comprises three branches, which leverages the joint confidence
+from patch and class brach into the mask expansion to generate the refined mask.
+kens from a limited set to a full set during training to achieve
+training acceleration. Different from previous works, our
+method leverages progressive expansion based on each
+patch’s confidence to reduce model confusion when han-
+dling difficult-to-segment regions in images, such that miti-
+gating the risk of misclassifying these regions into the same
+class in CAM.
+3. Methods
+3.1. Preliminaries
+We define X as an input image and y as its correspond-
+ing class label, where y ∈ { 0, 1}C indicates the one-hot
+vector with the total C classes. In recent WSSS meth-
+ods [13, 14], initial pseudo-labels are usually generated
+from the features extracted from ViT by CAM [11]. specifi-
+cally, the image feature mapF ∈ Rhw×d is extracted by the
+backbone, where h, w, and d represent the height, width,
+and dimension of the feature map, respectively. Note that
+hw also presents the total token number in ViT. Subse-
+quently, the image feature F is multiplied by the weights
+W cls ∈ RC×d of the classification layer to generate initial
+CAMinit ∈ RC×hw, which is formulated as:
+CAMinit = Norm(ReLU(W clsF ⊤)), (1)
+where Norm(·) denotes the min-max normalization by scal-
+ing CAM to the range of [0, 1]. Generally, the pseudo labels
+are generated by a threshold β to differentiate between the
+foreground and background regions.
+3.2. Overview
+As presented in Fig. 2, the proposed PCRE aims to re-
+duce the over-expansion problem, which comprises two key
+components: Confidence Region Mask Expansion (CRME)
+and Class-Prototype Enhancement (CPE). CRME dynami-
+cally generates masks from small high-confidence regions,
+which progressively expand the refined masks mc
+r over the
+entire target region. CPE employs exponential moving aver-
+age (EMA) to dynamically optimize class tokens Z cls, in-
+tegrating features from different stages to generate repre-
+sentative class prototypes p. The prototypical CAM pro be-
+tween class prototypes p and image features F serves as
+the supervision for the refined masksmc
+r in CRME. Finally,
+the pseudo labels are obtained by combining the prototyp-
+ical CAM pro and the initial CAM init, which generates the
+pseudo-labels to supervise the final segmentation branch.
+3.3. Confidence Region Mask Expansion
+The core idea of CRME is to gradually expand the mask’s
+scope in small increments based on the confidence level of
+each patch, to effectively restrict the mask’s spread into the
+background regions.
+Patch-level Confidence Allocation. To assign a faithful
+confidence level for each patch, we introduce Patch-level
+Confidence Allocation to improve its confidence score. We
+first patchify input image X to obtain embedding features
+Femb. Then, the final layer output features F are extracted
+from ViT, and two transformer layers are applied to gener-
+ate the merged features ˜F by taking the inputs from Femb
+as the query and F as the key and value. The previous
+methods [12] usually apply a classification layer to ˜F to
+9831
+
+
+=== PAGE 4 ===
+compute the patch-level classification scores. However, it is
+difficult to capture the relative confidence between classes
+and patches. Inspired by [36], we introduce two additional
+branches, i.e., patch branch and class branch, to model
+both class-specific information and spatial relations. Those
+branches process the merged features ˜F along the class and
+patch dimensions, which are formulated as:
+Si,j
+class = e(W i
+class ˜F j )
+PC
+l=1 e(W l
+class
+˜F j ) , S i,j
+patch = e(W i
+patch ˜F j )
+Phw
+k=1 e(W i
+patch
+˜F k) , (2)
+where Si,j
+class denotes the confidence score for patch i con-
+cerning class j, Si,j
+patch represents the confidence score for
+class i across patch j, Wclass, Wpatch ∈ RC×d are weight
+matrices for the class dimension with W l
+class and W i
+patch
+denoting the weights for class l and class i respectively,
+˜F i ∈ Rd×1 represents the feature of patch i, while C and
+hw represent the total number of classes and patches respec-
+tively. We then derive the joint confidence score by tak-
+ing the Hadamard product of the class-specific and patch-
+specific confidence scores:
+S = Sclass ⊙ Spatch, (3)
+where S ∈ RC×hw is the joint confidence score, ⊙ denotes
+Hadamard product. Therefore, we can construct the confi-
+dence loss Lconf by using class label y as the supervision to
+optimize S:
+Lconf = 1
+C
+CX
+c=1
+BCE
+ hwX
+i=1
+Sc,i, yc
+!
+, (4)
+where BCE(·, ·) is the binary cross-entropy function. This
+allocation method generates reliable S, enabling the extrac-
+tion of semantically consistent, high-confidence regions, to
+guide the Patch-level mask generation.
+Patch-level Mask Generation. Additionally, we design
+a mask generation branch that adopts a lightweight Mask-
+Former segmentation decoder [37] structure to generate a
+mask set M = {mi,j | i = 1 , . . . , h; j = 1 , . . . , w}, with
+each mi,j ∈ [0, 1]h×w corresponding to the mask for the
+patch located at position (i, j), i.e. each patch has a mask of
+size h × w. The mask decoder dynamically adjusts the gen-
+erated mask based on each patch’s features, ensuring that
+the semantic information in the mask is closely related to
+the patch.
+We further redefine each mask mi,j by restricting path
+predictions as follows:
+mi,j(x, y) =
+(
+mi,j(x, y) if (x − i)2 + (y − j)2 ≤ r2
+0 otherwise , (5)
+where each patch only predicts values within nearby re-
+gions. In this formulation, mi,j retains its original values
+Figure 3. Visualization of Progressive Mask Expansion and
+Combination. The arrows indicate steps of mask expansion, and
+⊕ represents the operation of adding a mask to the set ˆM c. For
+visual clarity, the masks in ˆM c are shown overlaid, and each mask
+is displayed in its binarized form.
+within a circular region centered at (i, j) with radius r,
+while values outside this region are set to zero. This con-
+straint ensures that each patch only contributes predictions
+within a defined local area, thereby limiting its receptive
+field to its immediate neighborhood. Meanwhile, the radius
+r gradually increases during training. To facilitate subse-
+quent descriptions, we express the mask set M in its flat-
+tened form as M = {mk | mk = mi,j, k = i · w + j},
+where k denotes the flattened index.
+Progressive Mask Expansion and Combination. Su-
+pervising the mask generation with CAM is insufficient to
+further enhance the segmentation performance. Therefore,
+we propose a progressive mask expansion and combination
+strategy, i.e., starting from the region with the highest con-
+fidence and gradually extending to the complete region of
+the target. In the initial stage of the strategy, for class c,
+the mask with the highest confidence score is selected by
+applying arg max to the confidence score S, and the candi-
+date mask set M c is constructed as:
+M c =
+
+mi | arg max
+j
+S(i, j) = c
+
+, (6)
+where class c has the highest confidence score in mi, thus
+forming the candidate mask set for class c. Next, we filter
+and expand the candidate masks, according to the mask se-
+lection, as presented in Alg. 1. These steps utilize the Ref-
+erence Overlap Ratio (ROR) metric, which measures the
+overlap ratio relative to a reference mask. The ROR metric
+is defined as the ratio of the intersection area between two
+masks to the area of the reference mask:
+ROR(mi, mj) = |I(mi ≥ τbin) ∩ I(mj ≥ τbin)|
+|I(mi ≥ τbin)| , (7)
+where mi and mj is the reference mask and the candidate
+mask, respectively. I is an element-wise indicator func-
+tion matrix used to generate a binarized mask based on the
+threshold τbin. The expansion process is illustrated in Fig. 3.
+Initially, masks with a high overlap with the reference, i.e.,
+they ROR greater than or equal to the high threshold τhigh,
+9832
+
+
+=== PAGE 5 ===
+Algorithm 1 Class Mask Selection.
+Input: Joint confidence score Sc for class c, candidate
+masks set M c = {mc
+1, mc
+2, . . . , mc
+n} for class c, n = |M c|,
+Reference Overlap Ratio ROR(mi, mj), threshold parame-
+ters τhigh, τlow.
+Output: Combined mask mc
+r for class c.
+1: Initialize ˆM c = ∅
+2: Find the highest scoring mask mmax ← mc
+i, where i =
+arg max(Sc).
+3: Add mmax to ˆM c, i.e., ˆM c ← ˆM c ∪ {mmax}.
+4: repeat
+5: for all mj ∈ M c do
+6: R∗ ← max
+mi∈ ˆM c
+ROR(mi, mj)
+7: if R∗ > τhigh then
+8: M c ← M c \ {mj}
+9: else if τlow < R ∗ ≤ τhigh then
+10: ˆM c ← ˆM c ∪ {mj}
+11: M c ← M c \ {mj}
+12: end if
+13: end for
+14: until ˆM c no longer changes
+15: mc
+r ← Max(Stack( ˆM c), dim = 0)
+16: Return mc
+r
+are removed from the candidate setM c to avoid redundancy
+and to prevent large masks from excessively covering the
+selected masks (like the red box in the lower right corner
+mask in Fig. 3). Thus, it avoids reckless spread into back-
+ground regions. The algorithm then identifies masks with a
+moderate overlap, i.e., ROR between the low threshold τlow
+and the high threshold τhigh from the remaining unselected
+masks and adds them to the selected mask set ˆM c, thereby
+progressively expanding the mask coverage area.
+This process iterates until the selected mask set ˆM c sta-
+bilizes and no further changes occur. Through these itera-
+tions, the selected mask set gradually expands from regions
+with high confidence to encompass the entire target area.
+The mask mc
+r is generated by stacking all selected masks
+together to produce the complete segmentation output. For
+each class, this operation is repeated T times to ensure cov-
+erage of multiple instances and high-confidence regions, af-
+ter which the resulting mc
+r masks are also stacked to form
+a final refined mask mc
+r. As such, the refined mask loss
+Lrefine is constructed as:
+Lrefine = 1
+|{c | yc ̸= 0}|
+X
+{c|yc̸=0}
+BCE(mc
+r, Y c
+pro), (8)
+where {c | yc ̸= 0 } denotes the set of present classes,
+and Ypro is the enhanced prototype pseudo label generated
+from the CPE module, which will be described in Sec. 3.4.
+Therefore, the CRME loss is defined as:
+LCRME = λ1Lconf + λ2Lrefine, (9)
+where λ1 and λ2 are weighting parameters for each loss
+term.
+3.4. Class-Prototype Enhancement
+CPE aims to learn discriminative, dataset-level prototypes
+for each class, which is further utilized in the patch features
+to generate high-quality pseudo labels, serving as supervi-
+sion for mask generation in CRME.
+Class-Specific Semantic Alignment. This module
+aims to provide each CLS token with more distinct seman-
+tic information by supervising the alignment between CLS
+tokens and image features. In the vanilla ViT, the CLS to-
+ken zcls ∈ Rd is projected into classification logits through
+a linear layer and trained using cross-entropy loss with la-
+bel y. It enables efficient aggregation of global features for
+classification but fails to obtain rich semantic information
+to present different categories for segmentation [29]. We
+consider adding additional C learnable class tokens, which
+generate the class token matrix Zcls ∈ RC×d via ViT. To
+further form semantic matches between the CLS tokens and
+the image features at a spatial level, we propose the similar-
+ity map between class tokens and image features to enhance
+their interaction via the following computation:
+A = Z cls · F ⊤
+∥Z cls∥ · ∥F ∥ , (10)
+where A ∈ RC×hw. Previous studies [12] show that the fea-
+tures from the last layer of the backbone tend to be overly
+smooth, which may lead to background regions being mis-
+takenly identified as foreground. Therefore, we utilize
+the CAMs from an intermediate layer to generate pseudo-
+labels, denoted as Ya ∈ Rhw, thereby capturing higher-
+confidence foreground regions and using them to supervise
+the similarity map A. The supervised loss is defined as:
+LCPE = 1
+N +
+X
+i=Y j
+a
+(1 − Ai,j) + 1
+N −
+X
+i̸=Y j
+a
+Ai,j, (11)
+where N+ and N − are the numbers of positive and negative
+pairs, respectively. Ai,j is the similarity between classi and
+position j, and Y j
+a denotes the pseudo-label for position j.
+Additionally, we utilize the absolute similarity rather than
+its original formulation to promote diversity [12, 38].
+Progressive Class Prototype Update. We observed
+that the backbone tends to focus on the most discrimi-
+native regions (local information) of the target during the
+early stages of training, which can be used to alleviate the
+over-expansion of high feature similarity from the target’s
+interior to its exterior. To this end, we introduce class-
+specific prototype pi, which uses early-stage features to en-
+rich the model’s generalization capacity across different im-
+ages. Specifically, each class-specific token Zcls
+i has an as-
+sociated prototype pi ∈ Rd, which is updated using Expo-
+nential Moving Average (EMA) according to the formula:
+pi = λppi + (1 − λp)Zcls
+i , (12)
+9833
+
+
+=== PAGE 6 ===
+where λp is the smoothing factor controlling the update rate
+of the prototype. These prototypes accumulate information
+across images and refine the representation of class tokens
+by balancing early local discriminative features with global
+class characteristics. Finally, we compute the refined sim-
+ilarity map (denoted as CAM pro) between the prototype p
+and the feature map F by using Eq. 10. Thus, the enhanced
+pseudo label Ypro ∈ RC×hw can be obtained by thresh-
+olding CAMpro, which are then used to optimize the mask
+generation in CRME. All samples within a category share
+a single class prototype throughout training, encapsulating
+discriminative, dataset-level information specific to that cat-
+egory.
+3.5. Optimization
+The overall loss function for learning pseudo labels is for-
+mulated as the weighted sum of the above losses:
+Lpseudo = LCRME + λ3LCPE + Lcls, (13)
+where λ3 is weighting parameter for LCPE, and classifica-
+tion losses Lcls are applied to generate initial CAMs. For
+each class c, the final pseudo labels are computed via the av-
+erage combination of the initial CAM and the refined mask
+mc
+r. We apply the common cross-entropy loss Lseg to the
+final segmentation branch. Thus, the total loss for segmen-
+tation is constructed as:
+L = Lpseudo + Lseg. (14)
+Following previous approaches [10, 12, 13], an additional
+regularization loss [39] is applied to enhance the spatial
+consistency of the predicted segmentation masks.
+4. Experiments
+4.1. Experimental Settings
+Datasets and Evaluation Metrics. We conduct experi-
+ments on the PASCAL VOC 2012 [40] and MS COCO
+2014 [17]. For the VOC 2012, the SBD dataset [41] is
+integrated into the training set as part of a common data
+augmentation strategy. The expanded VOC 2012 dataset
+consists of 10,582 training images, 1,449 validation images,
+and 1,456 test images, with test set performance evaluated
+on the official evaluation server. The COCO 2014 dataset
+contains 82,081 and 40,137 images for training and valida-
+tion sets, respectively. We use the Intersection over Union
+(mIoU) metric to assess the experimental results.
+Implement Details. We utilize a ViT-B/16 backbone
+pretrained on ImageNet 21k. Optimization is conducted us-
+ing the AdamW optimizer with a polynomial learning rate
+scheduler, where the learning rate for the backbone is set to
+3e − 5, and 3e − 4 for other components. During inference,
+multi-scale testing and dense CRF post-processing [27] are
+employed to keep consistent with prior works [12, 13]. By
+Methods BackBone Train Val
+Multi-stage WSSS methods.
+CLIMS [42]CVPR’22 ResNet101 70.5 -
+CLIP-ES [43]CVPR’23 ResNet101 70.8 -
+PCSS [18]ECCV’24 DeiT-S 73.2 -
+CTI [31]CVPR’24 ResNet38 73.7 -
+One-stage WSSS methods.
+ToCo [12]CVPR’23 VIT-B/16 73.6 72.3
+DIAL [14]ECCV’24 VIT-B/16 75.2 73.1
+DuPL [13]CVPR’24 VIT-B/16 76.0 74.1
+Ours VIT-B/16 77.6 76.3
+Table 1. Comparison of CAM pseudo labels. Evaluation is con-
+ducted on the PASCAL VOC 2012 train and val sets.
+Methods Sup. Backbone VOC COCO
+Val Test Val
+Multi-stage WSSS methods.
+CLIMS [42]CVPR’22 I+L ResNet10170.4 70.0 -
+CLIP-ES [43]CVPR’23 I+L ResNet10173.8 73.9 45.4
+L2G [24]CVPR’22 I+S ResNet10172.1 71.7 44.2
+PPC [44]CVPR’22 I+S ResNet10172.6 73.6 -
+FPR [45]ICCV’23 I ResNet10170.3 70.1 43.9
+MCTformer [29]CVPR’22 I ResNet38 71.9 71.6 42.0
+OCR [46]CVPR’23 I ResNet38 72.7 72.0 42.5
+PCSS [18]ECCV’24 I ResNet38 73.2 73.0 45.7
+CTI [31]CVPR’24 I ResNet38 74.1 73.2 45.5
+One-stage WSSS methods.
+1Stage [47]CVPR’20 I ResNet38 62.7 64.3 -
+AFA [10]CVPR’22 I MiT-B1 66.6 66.3 38.9
+TSCD [48]AAAI’23 I MiT-B1 71.1 72.2 40.1
+ToCo [12]CVPR’23 I VIT-B/16 71.1 72.2 42.3
+DuPL [13]CVPR’24 I VIT-B/16 73.3 72.8 44.6
+DIAL [14]ECCV’24 I+L VIT-B/16 74.5 74.9 44.4
+Ours I VIT-B/16 75.5 75.91 47.2
+Table 2. Comparison of the semantic segmentation results. Se-
+mantic segmentation performance is evaluated on the PASCAL
+VOC validation and test sets, along with the COCO validation set.
+“Sup.” denotes the supervision type: I for image-level labels, S for
+saliency maps, and L for image-level language annotations.
+default, the background thresholds β is set as 0.5. During
+patch-level mask generation, the radius r is constrained us-
+ing cosine updating to optimize local region coverage. The
+number of iterations T for each class in the mask expansion
+process is set to 5. In mask expansion, the overlap control
+thresholds (τhigh, τlow) are set to (0.5, 0.4) and τbin is set to
+0.7. Additionally, the EMA factor of λp = 0 .99 is applied
+to stabilize the prototype updates. The loss function weights
+are set as (λ1, λ2, λ3) = (2 .0, 1.0, 0.02). More training de-
+tails can be referred to Supplementary Materials.
+4.2. Experimental Results
+Evaluation of Pseudo Labels. In Tab. 1, we demon-
+strate the performance advantage of our model on the VOC
+training set, compared to current state-of-the-art methods
+1http : / / host . robots . ox . ac . uk : 8080 / anonymous /
+ZALC8B.html
+9834
+
+
+=== PAGE 7 ===
+Figure 4. Visualization results of Segmentation on the PASCAL VOC 2012 and MS COCO datasets.Our method demonstrates more
+precise segmentation results.
+Figure 5. The OA rate (%) of CAM evaluated on the VOC
+val set. Lower OA indicate more accurate segmentation, with re-
+duced mislabeling and fewer unintended expansions beyond target
+boundaries.
+through the evaluation of CAM pseudo labels. With the
+CRME and PCE, our generated CAM pseudo label achieves
+77.6% mIoU in the VOC 2012 train set, surpassing all other
+methods with multi-stage and one-stage training. In addi-
+tion, our PCRE also outperforms the one-stage DuPL [13]
+by 2.2% on the VOC validation set, further demonstrating
+the effectiveness of our method in generating high-quality
+pseudo-labels.
+Evaluation of Semantic Segmentation. Tab. 2 presents
+the semantic segmentation performance of our method on
+the VOC and COCO datasets. Our method achieves 75.5%
+and 75.9% mIoU on the VOC validation and test sets, which
+outperforms one-stage DIAL [14] by 1.0% and 1.0% mIoU,
+respectively. For the evaluation of the COCO validation,
+our method also achieves new state-of-the-art results with
+47.2% mIoU, significantly outperforming DIAL by 2.8%
+mIoU. Moreover, our method also achieves 1.5% mIoU
+gains over multi-stage PCSS [18].
+Quantitative Evaluation of Over Expansion Reduc-
+Methods Backbone Val Ratio
+Fully-supervised methods
+DeepLabV2 [49]TPAMI’17 ResNet101 77.7 100%
+WideResNet [50]PR’19 ResNet38 80.8 100%
+Segformer [51]ICCV’21 MiT-B1 78.7 100%
+DeepLabV2 [49]TPAMI’17 ViT-B/16 82.3 100%
+Multi-stage WSSS methods
+AdvCAM [52]CVPR’21 ResNet101 68.1 87.6%
+PPL [53]TMM’23 ResNet38 67.8 87.3%
+MCTformer [29]CVPR’22 ResNet38 71.9 89.0%
+CTI [31]CVPR’24 ResNet38 74.1 91.7%
+One-stage WSSS methods
+SLRNet [54]IJCV’22 ResNet38 69.3 85.8%
+AFA [10]CVPR’22 MiT-B1 66.0 83.9%
+ViT-PCM [16]ECCV’22 ViT-B/16 70.3 85.4%
+ToCo [12]CVPR’23 ViT-B/16 71.1 86.4%
+DuPL [13]CVPR’24 ViT-B/16 73.3 89.1%
+Ours ViT-B/16 75.5 91.7%
+Table 3. The comparison to the fully-supervised counterparts
+on VOC val set. For fairness, this evaluation is restricted to meth-
+ods with the only usage of image-level labels. The ratio represents
+the performance ratio between WSSS methods and their fully-
+supervised ones based on the same backbone.
+tion. To quantify the effectiveness of our method in al-
+leviating the over-expansion issue, we employ the over-
+activation rate (OA), as defined in DuPL [13]. OA repre-
+sents the ratio of background pixels incorrectly labeled as
+the target, thereby measuring the extent of unintended over-
+expansion into non-target areas. This is directly aligned
+with the over-expansion problem, where high OA values
+indicate severe expansion beyond target boundaries. The
+OA metric, defined as OA = F P
+T P+F P provides an objec-
+tive basis for comparing methods on their ability to reduce
+such target-background confusion. As shown in Fig. 5, our
+method significantly reduces the OA rate for the monitor by
+27.84%, and the average OA rate per category decreases by
+3.2% compared to DuPL. These results demonstrate that our
+method effectively reduces the target confusion by carefully
+expanding the target region.
+9835
+
+
+=== PAGE 8 ===
+Baseline CRME CPE CAM Seg.
+PCA PMEC LCPE PCPU
+✓ 70.7 68.9
+✓ ✓ 72.1 70.5
+✓ ✓ ✓ 74.4 72.5
+✓ ✓ ✓ ✓ 75.5 73.2
+✓ ✓ ✓ ✓ ✓ 76.3 73.8
+Table 4. Abalation study of key components on VOC val set.
+PCA, PMEC, LCPE and PCPU denote Patch-level Confidence
+Allocation, Progressive Mask Expansion and Combination, CPE
+loss and Progressive Class Prototype Update, respectively. CRF
+postprocessing is not conducted in the ablation study.
+Comparison by Reducing the Effect of Backbones.To
+further make a fair comparison, we reduce the effect of dif-
+ferent backbones by comparing the performance ratio be-
+tween each method and its fully-supervised counterpart on
+the VOC validation. As shown in Tab. 3, our method and
+CTI [31] achieve the highest performance ratio with the
+same 91.7%, outperforming other WSSS methods. For ex-
+ample, compared to DuPL [13], we achieve a 2.6% gain of
+performance ratio. Despite the same performance ratio be-
+tween our method and CTI, we significantly surpass CTI by
+1.4% mIoU.
+Visualization Results. We first conduct the visualiza-
+tion comparison of segmentation masks generated by our
+method, ToCo [12], DuPL [13] and the ground truth, as
+shown in Fig. 4. It can be observed that our method ef-
+fectively mitigates the issue of over-expansion, producing
+more accurate and complete segmentation masks that are
+close to the ground truth.
+Furthermore, we visualize the CAM on PASCAL VOC
+2012 to compare our method with SOTA one-stage WSSS
+methods, as shown in Fig. 6.
+4.3. Ablation studies and Analysis
+Effectiveness of Components. We conduct ablation ex-
+periments on the VOC 2012 validation set to assess each
+module. Following [12, 13], we use ViT-B/16 as our base-
+line. The experimental results are presented in Tab. 4. First,
+Patch-level Confidence Allocation(PCA), distributes con-
+fidence between classes and patches, enabling more precise
+localization of high-confidence regions, thereby improving
+segmentation performance. Second, the Progressive Mask
+Expansion and Combination (PMEC) strategy gradually
+expands the mask from high-confidence patches to the en-
+tire target, effectively suppressing interference from similar
+regions. This approach increases segmentation accuracy to
+72.5% mIoU, yielding a 2% improvement over using PCA
+alone. Based on CRME, the LCPE loss significantly en-
+hances the alignment of features and class tokens across
+different classes within the semantic space, further improv-
+Figure 6. Visualization results of CAM on PASCAL VOC 2012.
+Our method produces more accurate and complete CAMs com-
+pared to other methods.
+Lconf Confidence DimensionCAM Seg.
+Max Single 71.5 69.4
+Sum Single 73.1 71.0
+Max Patch-Class 74.5 73.0
+Sum Patch-Class76.3 73.8
+τlow\τhigh 0.9 0.7 0.5
+0.4 73.0 73.4 73.8
+0.3 72.4 72.6 73.2
+0.2 71.9 72.3 72.6
+Table 5. Ablation studies. Left: Patch-Level Confidence Alloca-
+tion configurations. Right: ROR thresholds on VOC validation set
+(mIoU%).
+ing segmentation accuracy by 0.7% mIoU. Finally, thePro-
+gressive Class Prototype Update(PCPU), dynamically re-
+fines class prototypes during training, which achieves seg-
+mentation performance improvement of 0.6% mIoU com-
+pared to CRME+LCPE.
+Further Analysis of CRME. We first analyze the ef-
+fects of confidence allocation configurations in CRME,i.e.,
+patch-class joint confidence vs. single patch-wise confi-
+dence. Additionally, to refine the supervision strategy, we
+compare the effectiveness of sum loss and max loss in Eq. 4.
+As shown in Tab. 5Left, patch-class joint confidence signif-
+icantly enhances segmentation performance, demonstrating
+the advantage of jointly modeling class and spatial informa-
+tion. Furthermore, the sum loss outperforms the max loss in
+overall performance. Second, we conduct the ablation study
+on ROR thresholds, as shown in Tab. 5Right. τlow and τhigh
+are set to 0.4 and 0.5, which achieves the best segmentation
+performance.
+5. Conclusion
+In this paper, we propose a Progressive Confidence Re-
+gion Expansion (PCRE) framework to address the over-
+expansion issue in CAM for weakly supervised semantic
+segmentation tasks. PCRE allows the gradual generaliza-
+tion of a faithful mask covering the entire target region and
+introduces representative, dataset-level prototypes for each
+class, which rectify excessive expansion to similar back-
+ground areas in CAM. Extensive experiments show that
+PCRE achieves new state-of-the-art performances.
+9836
+
+
+=== PAGE 9 ===
+Acknowledgements
+This work is supported by the National Natural Science
+Foundation of China (NO. 62102151), the Open Research
+Fund of Key Laboratory of Advanced Theory and Appli-
+cation in Statistics and Data Science, Ministry of Educa-
+tion (KLATASDS2305), the Fundamental Research Funds
+for the Central Universities.
+References
+[1] Deepak Pathak, Philipp Krahenbuhl, and Trevor Darrell.
+Constrained convolutional neural networks for weakly super-
+vised segmentation. In ICCV, pages 1796–1804, 2015.
+[2] Jiwoon Ahn and Suha Kwak. Learning pixel-level semantic
+affinity with image-level supervision for weakly supervised
+semantic segmentation. In CVPR, pages 4981–4990, 2018.
+[3] Amy Bearman, Olga Russakovsky, Vittorio Ferrari, and
+Li Fei-Fei. What’s the point: Semantic segmentation with
+point supervision. In ECCV, pages 549–565, 2016.
+[4] Di Lin, Jifeng Dai, Jiaya Jia, Kaiming He, and Jian Sun.
+Scribblesup: Scribble-supervised convolutional networks for
+semantic segmentation. In CVPR, pages 3159–3167, 2016.
+[5] Meng Tang, Abdelaziz Djelouah, Federico Perazzi, Yuri
+Boykov, and Christopher Schroers. Normalized cut loss for
+weakly-supervised cnn segmentation. InCVPR, pages 1818–
+1827, 2018.
+[6] Jifeng Dai, Kaiming He, and Jian Sun. Boxsup: Exploit-
+ing bounding boxes to supervise convolutional networks for
+semantic segmentation. In ICCV, pages 1635–1643, 2015.
+[7] Anna Khoreva, Rodrigo Benenson, Jan Hosang, Matthias
+Hein, and Bernt Schiele. Simple does it: Weakly supervised
+instance and semantic segmentation. In CVPR, pages 876–
+885, 2017.
+[8] Jiwoon Ahn, Sunghyun Cho, and Suha Kwak. Weakly su-
+pervised learning of instance segmentation with inter-pixel
+relations. In CVPR, pages 2209–2218, 2019.
+[9] Wei Gao, Fang Wan, Xingjia Pan, Zhiliang Peng, Qi Tian,
+Zhenjun Han, Bolei Zhou, and Qixiang Ye. Ts-cam: Token
+semantic coupled attention map for weakly supervised object
+localization. In CVPR, pages 2886–2895, 2021.
+[10] Lixiang Ru, Yibing Zhan, Baosheng Yu, and Bo Du. Learn-
+ing affinity from attention: End-to-end weakly-supervised
+semantic segmentation with transformers. In CVPR, pages
+16846–16855, 2022.
+[11] Bolei Zhou, Aditya Khosla, Agata Lapedriza, Aude Oliva,
+and Antonio Torralba. Learning deep features for discrimi-
+native localization. In CVPR, pages 2921–2929, 2016.
+[12] Lixiang Ru, Heliang Zheng, Yibing Zhan, and Bo Du. Token
+contrast for weakly-supervised semantic segmentation. In
+CVPR, pages 3093–3102, 2023.
+[13] Yuanchen Wu, Xichen Ye, Kequan Yang, Jide Li, and Xiao-
+qiang Li. Dupl: Dual student with trustworthy progressive
+learning for robust weakly supervised semantic segmenta-
+tion. In CVPR, pages 3534–3543, 2024.
+[14] Soojin Jang, Jungmin Yun, Junehyoung Kwon, Eunju Lee,
+and Youngbin Kim. Dial: Dense image-text alignment for
+weakly supervised semantic segmentation. arXiv preprint
+arXiv:2409.15801, 2024.
+[15] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is
+worth 16x16 words: Transformers for image recognition at
+scale, 2021.
+[16] Simone Rossetti, Damiano Zappia, Marta Sanzari, Marco
+Schaerf, and Fiora Pirri. Max pooling with vision transform-
+ers reconciles class and shape in weakly supervised semantic
+segmentation. In ECCV, pages 446–463, 2022.
+[17] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+Pietro Perona, Deva Ramanan, Piotr Doll´ar, and C Lawrence
+Zitnick. Microsoft coco: Common objects in context. In
+ECCV, pages 740–755, 2014.
+[18] Hoyong Kwon, Jaeseok Jeong, Sung-Hoon Yoon, and Kuk-
+Jin Yoon. Phase concentration and shortcut suppression
+for weakly supervised semantic segmentation. In ECCV.
+Springer, 2024.
+[19] Peng-Tao Jiang, Qibin Hou, Yang Cao, Ming-Ming Cheng,
+Yunchao Wei, and Hong-Kai Xiong. Integral object mining
+via online attention accumulation. In CVPR, pages 2070–
+2079, 2019.
+[20] Guolei Sun, Wenguan Wang, Jifeng Dai, and Luc Van Gool.
+Mining cross-image semantics for weakly supervised seman-
+tic segmentation. In ECCV, pages 347–365, 2020.
+[21] Yunchao Wei, Jiashi Feng, Xiaodan Liang, Ming-Ming
+Cheng, Yao Zhao, and Shuicheng Yan. Object region mining
+with adversarial erasing: A simple classification to semantic
+segmentation approach. In CVPR, pages 1568–1576, 2017.
+[22] Hyeokjun Kweon, Sung-Hoon Yoon, Hyeonseong Kim,
+Daehee Park, and Kuk-Jin Yoon. Unlocking the poten-
+tial of ordinary classifier: Class-specific adversarial erasing
+framework for weakly supervised semantic segmentation. In
+CVPR, pages 6994–7003, 2021.
+[23] Kunyang Sun, Haoqing Shi, Zhengming Zhang, and Yong-
+ming Huang. Ecs-net: Improving weakly supervised seman-
+tic segmentation by using connections between class activa-
+tion maps. In CVPR, pages 7283–7292, 2021.
+[24] Peng-Tao Jiang, Yuqi Yang, Qibin Hou, and Yunchao Wei.
+L2g: A simple local-to-global knowledge transfer frame-
+work for weakly supervised semantic segmentation. In
+CVPR, pages 16886–16896, 2022.
+[25] Fei Zhang, Chaochen Gu, Chenyue Zhang, and Yuchao Dai.
+Complementary patch for weakly supervised semantic seg-
+mentation. In CVPR, pages 7242–7251, 2021.
+[26] Yukun Su, Ruizhou Sun, Guosheng Lin, and Qingyao Wu.
+Context decoupling augmentation for weakly supervised se-
+mantic segmentation. In CVPR, pages 7004–7014, 2021.
+[27] Philipp Kr ¨ahenb¨uhl and Vladlen Koltun. Efficient inference
+in fully connected crfs with gaussian edge potentials. NIPS,
+2011.
+[28] Lianghui Zhu, Yingyue Li, Jiemin Fang, Yan Liu, Hao Xin,
+Wenyu Liu, and Xinggang Wang. Weaktr: Exploring plain
+vision transformer for weakly-supervised semantic segmen-
+tation. arXiv preprint arXiv:2304.01184, 2023.
+9837
+
+
+=== PAGE 10 ===
+[29] Lian Xu, Wanli Ouyang, Mohammed Bennamoun, Farid
+Boussaid, and Dan Xu. Multi-class token transformer for
+weakly supervised semantic segmentation. In CVPR, pages
+4310–4319, 2022.
+[30] Zhiwei Yang, Kexue Fu, Minghong Duan, Linhao Qu, Shuo
+Wang, and Zhijian Song. Separate and conquer: Decou-
+pling co-occurrence via decomposition and representation
+for weakly supervised semantic segmentation. In CVPR,
+pages 3606–3615, 2024.
+[31] Sung-Hoon Yoon, Hoyong Kwon, Hyeonseong Kim, and
+Kuk-Jin Yoon. Class tokens infusion for weakly supervised
+semantic segmentation. In CVPR, pages 3595–3605, 2024.
+[32] Lei Li, Ke Gao, Juan Cao, Ziyao Huang, Yepeng Weng, Xi-
+aoyue Mi, Zhengze Yu, Xiaoya Li, and Boyang Xia. Pro-
+gressive domain expansion network for single domain gen-
+eralization. In CVPR, pages 224–233, 2021.
+[33] Tianyue Cao, Yongxin Wang, Yifan Xing, Tianjun Xiao,
+Tong He, Zheng Zhang, Hao Zhou, and Joseph Tighe. Pss:
+Progressive sample selection for open-world visual represen-
+tation learning. In ECCV, pages 278–294, 2022.
+[34] Yuanbo Xiangli, Linning Xu, Xingang Pan, Nanxuan Zhao,
+Anyi Rao, Christian Theobalt, Bo Dai, and Dahua Lin.
+Bungeenerf: Progressive neural radiance field for extreme
+multi-scale scene rendering. InECCV, pages 106–122, 2022.
+[35] Wenxuan Huang, Yunhang Shen, Jiao Xie, Baochang Zhang,
+Gaoqi He, Ke Li, Xing Sun, and Shaohui Lin. A general
+and efficient training for transformer via token expansion. In
+CVPR, pages 15783–15792, 2024.
+[36] Hakan Bilen and Andrea Vedaldi. Weakly supervised deep
+detection networks. In CVPR, pages 2846–2854, 2016.
+[37] Bowen Cheng, Alex Schwing, and Alexander Kirillov. Per-
+pixel classification is not all you need for semantic segmen-
+tation. NIPS, pages 17864–17875, 2021.
+[38] Tianlong Chen, Zhenyu Zhang, Yu Cheng, Ahmed Awadal-
+lah, and Zhangyang Wang. The principle of diversity: Train-
+ing stronger vision transformers calls for reducing all levels
+of redundancy. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 12020–
+12030, 2022.
+[39] Meng Tang, Federico Perazzi, Abdelaziz Djelouah, Ismail-
+Ben Ayed, Christopher Schroers, and Yuri Boykov. On
+regularized losses for weakly-supervised cnn segmentation.
+ECCV, 2018.
+[40] Mark Everingham, SM Ali Eslami, Luc Van Gool, Christo-
+pher KI Williams, John Winn, and Andrew Zisserman. The
+pascal visual object classes challenge: A retrospective.IJCV,
+pages 98–136, 2015.
+[41] Bharath Hariharan, Pablo Arbel ´aez, Lubomir Bourdev,
+Subhransu Maji, and Jitendra Malik. Semantic contours from
+inverse detectors. In ICCV, pages 991–998, 2011.
+[42] Jinheng Xie, Xianxu Hou, Kai Ye, and Linlin Shen. Clims:
+Cross language image matching for weakly supervised se-
+mantic segmentation. In CVPR, pages 4483–4492, 2022.
+[43] Yuqi Lin, Minghao Chen, Wenxiao Wang, Boxi Wu, Ke Li,
+Binbin Lin, Haifeng Liu, and Xiaofei He. Clip is also an ef-
+ficient segmenter: A text-driven approach for weakly super-
+vised semantic segmentation. InCVPR, pages 15305–15314,
+2023.
+[44] Ye Du, Zehua Fu, Qingjie Liu, and Yunhong Wang. Weakly
+supervised semantic segmentation by pixel-to-prototype
+contrast. In CVPR, pages 4320–4329, 2022.
+[45] Liyi Chen, Chenyang Lei, Ruihuang Li, Shuai Li, Zhaoxiang
+Zhang, and Lei Zhang. Fpr: False positive rectification for
+weakly supervised semantic segmentation. In CVPR, pages
+1108–1118, 2023.
+[46] Zesen Cheng, Pengchong Qiao, Kehan Li, Siheng Li, Pengxu
+Wei, Xiangyang Ji, Li Yuan, Chang Liu, and Jie Chen.
+Out-of-candidate rectification for weakly supervised seman-
+tic segmentation. In CVPR, pages 23673–23684, 2023.
+[47] Nikita Araslanov and Stefan Roth. Single-stage semantic
+segmentation from image labels. In CVPR, pages 4253–
+4262, 2020.
+[48] Rongtao Xu, Changwei Wang, Jiaxi Sun, Shibiao Xu, Weil-
+iang Meng, and Xiaopeng Zhang. Self correspondence dis-
+tillation for end-to-end weakly-supervised semantic segmen-
+tation. In Proceedings of the AAAI Conference on Artificial
+Intelligence, volume 37, pages 3045–3053, 2023.
+[49] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L Yuille. Deeplab: Semantic image
+segmentation with deep convolutional nets, atrous convolu-
+tion, and fully connected crfs. TPAMI, 40(4):834–848, 2017.
+[50] Zifeng Wu, Chunhua Shen, and Anton Van Den Hengel.
+Wider or deeper: Revisiting the resnet model for visual
+recognition. PR, 90:119–133, 2019.
+[51] Robin Strudel, Ricardo Garcia, Ivan Laptev, and Cordelia
+Schmid. Segmenter: Transformer for semantic segmenta-
+tion. In CVPR, pages 7262–7272, 2021.
+[52] Jungbeom Lee, Eunji Kim, and Sungroh Yoon. Anti-
+adversarially manipulated attributions for weakly and semi-
+supervised semantic segmentation. In CVPR, pages 4071–
+4080, 2021.
+[53] Jinlong Li, Zequn Jie, Xu Wang, Yu Zhou, Xiaolin Wei, and
+Lin Ma. Weakly supervised semantic segmentation via pro-
+gressive patch learning. IEEE Transactions on multimedia,
+25:1686–1699, 2022.
+[54] Junwen Pan, Pengfei Zhu, Kaihua Zhang, Bing Cao,
+Yu Wang, Dingwen Zhang, Junwei Han, and Qinghua Hu.
+Learning self-supervised low-rank network for single-stage
+weakly and semi-supervised semantic segmentation. IJCV,
+pages 1181–1195, 2022.
+9838

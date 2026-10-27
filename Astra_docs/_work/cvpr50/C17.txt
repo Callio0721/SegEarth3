@@ -1,0 +1,1059 @@
+=== PAGE 1 ===
+SegMAN: Omni-scale Context Modeling with State Space Models
+and Local Attention for Semantic Segmentation
+Yunxiang Fu* Meng Lou* Yizhou Yu†
+School of Computing and Data Science, The University of Hong Kong
+yunxiang@connect.hku.hk, loumeng@connect.hku.hk, yizhouy@acm.org
+Abstract
+High-quality semantic segmentation relies on three key ca-
+pabilities: global context modeling, local detail encoding,
+and multi-scale feature extraction. However, recent meth-
+ods struggle to possess all these capabilities simultane-
+ously. Hence, we aim to empower segmentation networks to
+simultaneously carry out efficient global context modeling,
+high-quality local detail encoding, and rich multi-scale fea-
+ture representation for varying input resolutions. In this pa-
+per, we introduce SegMAN, a novel linear-time model com-
+prising a hybrid feature encoder dubbed SegMAN Encoder,
+and a decoder based on state space models. Specifically,
+the SegMAN Encoder synergistically integrates sliding lo-
+cal attention with dynamic state space models, enabling
+highly efficient global context modeling while preserving
+fine-grained local details. Meanwhile, the MMSCopE mod-
+ule in our decoder enhances multi-scale context feature ex-
+traction and adaptively scales with the input resolution.
+Our SegMAN-B Encoder achieves 85.1% ImageNet-1k ac-
+curacy (+1.5% over VMamba-S with fewer parameters).
+When paired with our decoder, the full SegMAN-B model
+achieves 52.6% mIoU on ADE20K (+1.6% over SegNeXt-
+L with 15% fewer GFLOPs), 83.8% mIoU on Cityscapes
+(+2.1% over SegFormer-B3 with half the GFLOPs), and
+1.6% higher mIoU than VWFormer-B3 on COCO-Stuff with
+lower GFLOPs. Our code is available at https://
+github.com/yunxiangfu2001/SegMAN.
+1. Introduction
+As a core computer vision task, semantic segmentation
+needs to assign a categorical label to every pixel within an
+image [35]. Accurate semantic segmentation demands three
+crucial capabilities. First, global context modeling es-
+tablishes rich contextual dependencies regardless of spatial
+distance, enabling overall scene understanding [13]. Sec-
+*Equal contribution
+†Corresponding Author
+Figure 1. SegMAN Encoder classification performance compared
+with representative vision backbones alongside semantic segmen-
+tation results of the full SegMAN model compared to prior state-
+of-the-art models.
+ond, local detail encoding endows fine-grained feature and
+boundary representations, crucial for differentiating seman-
+tic categories and localizing boundaries between adjacent
+regions with different semantic meanings [59]. Third, con-
+text modeling based on multiple intermediate scalespro-
+motes semantic representations across multiple scales, ad-
+dressing intra-class scale variations while enhancing inter-
+class discrimination [2, 57, 63].
+Recent methods of semantic segmentation have been un-
+able to simultaneously encapsulate all three of these ca-
+pabilities effectively. For instance, VWFormer [57] in-
+troduces a varying window attention (VW A) mechanism
+that effectively captures multi-scale information through
+cross-attention between local windows and multiple win-
+dows with predefined scales. However, at higher input res-
+olutions, the global context modeling capability of VW A
+diminishes because the predefined window sizes fail to
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+19077
+
+
+=== PAGE 2 ===
+Figure 2. Qualitative analysis of receptive field patterns and segmentation performance for small-sized models (27M-29M parameters).
+Left: Visualization of effective receptive fields (ERF) on the Cityscapes validation set at 1024×1024 resolution, illustrating SegMAN’s
+stronger global context modeling capacity in comparison to existing state-of-the-art models. Right: Segmentation maps highlighting
+SegMAN’s superior capacity to encode fine-grained local details that are often missed by existing approaches.
+maintain full feature map coverage. In addition, larger
+windows significantly increase the computational cost as
+self-attention exhibits quadratic complexity. Likewise,
+EDAFormer [60] proposes an embedding-free spatial re-
+duction attention (SRA) mechanism to implement global
+attention efficiently and an all-attention decoder for global
+and multi-scale context modeling. However, fine-grained
+details are lost due to its reliance on downsampled fea-
+tures for token-to-region attention. Moreover, the absence
+of dedicated local operators in the feature encoder limits
+fine-grained feature learning [56, 60].
+To present a more intuitive understanding of the afore-
+mentioned issues, we visualize the effective receptive field
+(ERF) maps and segmentation maps of recent state-of-the-
+art models [56, 57, 60] with 27M-29M parameters. As de-
+picted in Figure 2 ( Left), the ERF of VWFormer [57] and
+EDAFormer [60] has limited feature map coverage when
+processing high-resolution Cityscapes images. Meanwhile,
+the segmentation maps in Figure 2 (Right) reveal that exist-
+ing methods have a limited ability to recognize fine-grained
+local details, which we attribute to insufficient local feature
+modeling in these architectures.
+In this work, we aim to encapsulate omni-scale context
+modeling for a varying input resolution within a semantic
+segmentation network. As a result, we propose SegMAN,
+a novel segmentation network capable of carrying out ef-
+ficient global context modeling, high-quality local detail
+encoding, and rich context representation at diverse scales
+simultaneously. Our SegMAN introduces two novel sub-
+networks: (1) a hybrid feature encoder that integrates Lo-
+cal Attention and State Space models (LASS) in the token
+mixer, and (2) a decoder with a Mamba-based Multi-Scale
+Context Extraction (MMSCopE) module. In the SegMAN
+Encoder, LASS leverages a two-dimensional state space
+model (SS2D) [28] for global context modeling and neigh-
+borhood attention [19] (Natten) for local detail encoding,
+both functioning in linear time. The dynamic global scan-
+ning in our method always covers the full feature map, en-
+abling robust global context modeling across varying input
+resolutions and all encoder layers. Meanwhile, by perform-
+ing local attention within a sliding window, Natten exhibits
+an outstanding capability in fine-grained local detail encod-
+ing. Our decoder complements the encoder with robust fea-
+ture learning across multiple scales. The core MMSCopE
+module first aggregates semantic context from multiple re-
+gions of the encoder feature map. Then it uses SS2D to
+scan each regionally aggregated feature map to learn multi-
+scale contexts at linear complexity. For higher efficiency,
+the feature maps at different scales are reshaped to the same
+resolution and concatenated so that scanning only needs to
+be performed on a single feature map. Note that our method
+differs from existing methods in two aspects. First, unlike
+multi-kernel convolution [2] and multi-scale window atten-
+tion [57], our design adaptively scales with the input res-
+olution. Second, by performing SS2D-based scanning over
+entire multi-scale feature maps, our method better preserves
+19078
+
+
+=== PAGE 3 ===
+fine-grained details that are typically compromised by pool-
+ing operations [36, 63] or spatial reduction attention [60] in
+existing methods.
+As shown in Figure 1, our SegMAN Encoder shows
+superior performance compared to representative vision
+backbones on ImageNet-1k. When paired with our novel
+decoder, the full SegMAN model establishes new state-
+of-the-art segmentation performance on ADE20K [65],
+Cityscapes [8], and COCO-Stuff-164k [1]. To summarize,
+our contributions are threefold:
+• We introduce a novel encoder architecture featuring our
+LASS token mixer that synergistically combines local at-
+tention with state space models for efficient global con-
+text modeling and local detail encoding.
+• We propose MMSCopE, a novel decoder module that op-
+erates on multi-scale feature maps that adaptively scale
+with the input resolution, surpassing previous approaches
+in both fine-grained detail preservation and omni-scale
+context learning.
+• We demonstrate through comprehensive experiments that
+SegMAN, powered by LASS and MMSCopE, establishes
+new state-of-the-art performance while maintaining com-
+petitive computational efficiency across multiple chal-
+lenging semantic segmentation benchmarks.
+2. Related work
+Segmentation encoders. Prior research in semantic seg-
+mentation architectures typically comprises two key com-
+ponents: an encoder for feature extraction from input
+images and a decoder for multi-scale context learning
+and pixel-wise classification. While conventional ap-
+proaches often adapt popular classification networks such
+as ResNet [20], ConvNeXt [30], PVT [49], and Swin-
+Transformer [29], along with advanced backbones [31–
+33, 41] as encoders, improvements in classification perfor-
+mance do not necessarily translate to enhanced segmen-
+tation capabilities [21], primarily due to the requirement
+for fine-grained spatial information in segmentation tasks.
+This observation has motivated the development of special-
+ized segmentation-oriented encoders [18, 39, 45, 53, 56,
+58, 60, 64]. In this paper, we introduce a novel segmen-
+tation encoder that integrates local attention with dynamic
+State Space Models (Mamba) [16]. In contrast to previ-
+ous works, our design enables the simultaneous modeling
+of fine-grained details and global contexts while maintain-
+ing linear time complexity.
+Segmentation decoders. Multi-scale feature learning
+plays a fundamental role in semantic segmentation, leading
+to numerous innovations in decoder architectures. Semi-
+nal works established various approaches to multi-scale fea-
+ture aggregation, including the adaptive pooling strategy of
+PSPNet [63], atrous convolutions in the DeepLab series [2–
+4], and feature pyramid network (FPN) based decoders
+such as UPerNet [54] and Semantic FPN [23]. Contem-
+porary architectures have advanced both efficiency and per-
+formance through diverse approaches to multi-scale feature
+fusion, including MLP-based methods (Segformer [56]),
+Matrix decomposition modules (SegNeXt [15, 18]), Trans-
+formers (FeedFormer [43], VWFormer [57]), and convo-
+lutions (CGRSeg [36]). An approach relevant to ours is
+VWFormer [57], which employs cross-attention between
+local windows and multiple larger windows with predefined
+scales to capture multi-scale contexts. However, its reliance
+on fixed window scales limits its global context modeling
+capability: as the input resolution increases, the predefined
+windows fail to maintain complete feature map coverage.
+In contrast, our proposed decoder adaptively extracts con-
+text features at different scales while maintaining full fea-
+ture map coverage regardless of the input resolution.
+Vision Mamba. Dynamic state space models repre-
+sented by Mamba [16] have demonstrated promising per-
+formance in sequence modeling. Mamba combines struc-
+tured state space models [17, 44] with selective scanning,
+enabling global context modeling with dynamic weights
+and linear time complexity. These favorable properties
+have led to promising results on vision tasks. For exam-
+ple, VMamba [28] and ViM [67] are Mamba-based vision
+backbone networks. Other works have explored Mamba for
+medical imaging [26, 40], 3D point clouds [27, 62], and im-
+age/video generation [12, 14, 46]. In this paper, we leverage
+Mamba to learn global contexts in the encoder and multi-
+scale contexts in the decoder for segmentation.
+3. Method
+3.1. Overall Architecture
+As shown in Figure 3, our proposed SegMAN consists of
+a newly designed feature encoder and decoder. Specif-
+ically, we propose a novel hybrid feature encoder based
+on core mechanisms from both Transformer and dynamic
+State Space Models [16], and a Mamba-based Multi-Scale
+Context Extraction module (MMSCopE) in the decoder.
+The hierarchical SegMAN Encoder integrates Neighbor-
+hood Attention (Natten) [19] and the 2D-Selective-Scan
+Block (SS2D in VMamba) [28] within the token mixer
+termed Local Attention and State Space (LASS), enabling
+comprehensive feature learning at both global and local
+scales across all layers while maintaining linear compu-
+tational complexity. Meanwhile, MMSCoPE dynamically
+and adaptively extracts multi-scale semantic information by
+processing feature maps at varying levels of granularity us-
+ing SS2D [28], with the scales adaptively adjusted accord-
+ing to the input resolution. Collectively, the SegMAN En-
+coder injects robust global contexts and local details into
+a feature pyramid, where feature maps are progressively
+downsampled and transformed to produce omni-scale fea-
+19079
+
+
+=== PAGE 4 ===
+Figure 3. Overall Architecture of SegMAN. (a) Hierarchical SegMAN Encoder. (b) LASS for modeling global contexts and local details
+with linear complexity. (c) The SegMAN Decoder. (d) The MMSCopE module for multi-scale contexts extraction.
+tures at different pyramid levels. This feature pyramid is
+then fed into MMSCopE, where features are further aggre-
+gated spatially as well as across scales, resulting in com-
+prehensive multi-scale representations that can be used for
+dense prediction.
+3.2. Feature encoder
+Overview. As shown in Figure 3, our SegMAN Encoder
+is a standard four-stage network [29, 30], where each stage
+begins with a strided 3×3 convolution for spatial reduction,
+followed by a series of LASS Blocks. Each LASS Block in-
+cludes pre-layer normalization, a novel LASS module, and
+a feedforward network (FFN) [10, 19, 29]. Our proposed
+LASS represents the first integration of local self-attention
+(Natten [19]) and state space models (SS2D [28]) for se-
+mantic segmentation, capturing local details and global con-
+texts simultaneously with linear time complexity. Ablation
+studies (Table 5) confirm the necessity of both components.
+Local attention and state space module. Long-
+range dependency modeling is crucial for semantic seg-
+mentation as they enable comprehensive context learn-
+ing and scene understanding, as demonstrated by the suc-
+cess of Transformer-based semantic segmentation mod-
+els [34, 39, 56, 60, 64]. To efficiently learn global contexts
+across all network layers, we leverage the SS2D block in
+VMamba [28]. This variant of a dynamic state space model
+named Mamba [16] adopts four distinct and complementary
+scanning paths, enabling each token to integrate informa-
+SegMAN Channels Blocks Params FLOPs
+Encoder (M) (G)
+Tiny [32, 64, 144, 192] [2, 2, 4, 2] 3.5 0.65
+Small [64, 144, 288, 512] [2, 2, 10, 4] 25.5 4.05
+Base [80, 160, 364, 560] [4, 4, 18, 4] 45.0 9.94
+Large [96, 192, 432, 640] [4, 4, 28, 4] 81.0 16.8
+Table 1. Configurations of the three SegMAN Encoder variants.
+FLOPs were measured at the 224 × 224 resolution.
+tion from all other tokens in four different directions.
+However, while Mamba [16] achieves linear time com-
+plexity by compressing the global context of each chan-
+nel into a fixed-dimensional hidden state [16], this com-
+pression inherently leads to information loss, in particular,
+loss of fine-grained local spatial details, that are crucial in
+segmentation to accurately localize region boundaries. To
+this end, we utilize Neighborhood Attention (Natten) [19],
+where a sliding-window attention mechanism localizes ev-
+ery pixel’s attention span to its immediate neighborhood.
+This approach retains translational equivalence, effectively
+captures local dependencies, and has linear time complex-
+ity. In practice, we serially stack Natten and SS2D, and
+a shortcut around SS2D is employed to merge local and
+global information. The merged output is then fed into a
+1×1 convolution layer for further global-local feature fu-
+sion.
+Network architecture. Our SegMAN Encoder pro-
+duces a feature pyramid. The spatial resolution of Fi is
+H
+21+i × W
+21+i , where H and W are the height and width
+19080
+
+
+=== PAGE 5 ===
+of the input image, respectively. We design three Seg-
+MAN Encoder variants with different model sizes, each
+with computational complexity comparable to some exist-
+ing semantic segmentation encoders [18, 56, 60]. As the
+feature map resolution at Stage 4 is ( H
+32 × W
+32 ), global self-
+attention [48] becomes computationally feasible. Therefore
+we replace SS2D with this more powerful global context
+modeling mechanism. The configurations of these models
+are presented in Table 1.
+3.3. Feature Decoder
+Overview. As shown in Figure 3, our proposed decoder first
+aggregates features at various levels of abstraction (from
+low-level F2 to high-level F4) to obtain a feature map F
+of size H
+8 × W
+8 , as in prior works [56, 57]. Specifically,
+each feature map Fi is projected to a lower dimension using
+a 1 × 1 convolution followed by batch normalization and
+ReLU, collectively denoted as ‘Conv’ in Figure 3. Subse-
+quently, F3 and F4 are upsampled using bilinear interpola-
+tion to match the spatial dimensions of F2. The upsampled
+features Fup3 and Fup4 are concatenated together with F2
+and passed through a Conv layer for channel dimension re-
+duction, resulting in F with size H
+8 × W
+8 × C, where C
+is the number of channels. The feature map F is then pro-
+cessed by our proposed MMSCopE module to extract rich
+multi-scale context features, producing a new feature map
+F ′. We then add the feature mapF ′ to F2, Fup3, and Fup4 to
+enrich their multi-scale contexts. The final prediction path-
+way concatenates F ′ with these context-enhanced features
+and the global pooling result on Fup4, passes the combined
+features through a two-layer MLP, and the result is upsam-
+pled to the input resolution.
+Mamba-based multi-scale context extraction. To
+effectively extract contexts at different scales, we pro-
+pose a Mamba-based Multi-Scale Context Extraction (MM-
+SCopE) module. As shown in Figure 3, we apply strided
+convolutions to downsample the feature map F , generat-
+ing Fs2 and Fs4 with a resolution equal to 1/2 and 1/4
+of that of F , respectively. The motivation behind this is
+to obtain multiple regionally aggregated contexts through
+two derived feature maps: Fs2, which aggregates features
+from 3 × 3 neighborhoods using a convolution with stride
+2, and Fs4, which aggregates features from 5 × 5 neighbor-
+hoods with stride 4. Then, motivated by the observation
+that Mamba scans each channel independently, we use a
+single Mamba scan to simultaneously extract contexts from
+the three feature maps F , Fs2, and Fs4. The main idea is to
+concatenate these feature maps along the channel dimension
+and perform a single Mamba scan, which is more efficient
+on the GPU than processing each feature map separately.
+However, the spatial dimensions of these feature maps are
+not consistent, which prevents direct concatenation. To re-
+solve this, we employ lossless downsampling via the Pixel
+Unshuffle [42] operation to reduce the spatial dimensions
+of F and Fs2 to match that of Fs4, which is H
+32 × W
+32 .
+Specifically, this operation rearranges non-overlapping 4×4
+patches from F and 2×2 patches from Fs2 into their respec-
+tive channel dimension, increasing the channel depth by a
+factor of 16 and 4 respectively, while preserving complete
+spatial information. The transformed feature maps retain
+information at their original scales. To reduce computa-
+tional costs, we project each feature map to a fixed chan-
+nel dimension C through 1 × 1 convolutions. This step
+assigns equal importance to the context information from
+each scale. Then we concatenate the projected feature maps
+along the channel dimension, and pass the combined fea-
+ture map to SS2D [28] to achieve multi-scale context ex-
+traction in a single scan. The resulting feature map is of size
+H
+8 × W
+8 × 3C, where the three segments along the channel
+dimension correspond to earlier feature maps at three dis-
+tinct scales (F , Fs2, and Fs4). To facilitate context mixing
+across scales, we append a 1 × 1 convolution layer after
+the SS2D scan. Finally, we use bilinear interpolation to up-
+sample the mixed features to 1/8 of the input resolution,
+and project the channel dimension down toC using another
+1 × 1 convolution. This yields the new feature map F ′ with
+mixed multi-scale contexts.
+Multi-scale fusion. Instead of directly using the fea-
+ture map F ′ to predict pixel labels, we further exploit stage-
+specific representations from the encoder by adding F ′ to
+F2, Fup3, and Fup4. This effectively injects multi-scale
+contexts into stage-specific feature maps, which inherits
+information from various levels of abstraction. Next, we
+concatenate the resulting context-enhanced feature maps
+from each stage, the multi-scale context feature F ′, and the
+global average pooling result on Fup4. For pixel-wise la-
+bel prediction, the diverse concatenated features are fused
+through a two-layer MLP, and further bilinearly interpolated
+to restore the original input resolution.
+4. Experiments
+4.1. Setting
+Datasets. Following previous works [18, 56], we firstly
+pre-train our SegMAN Encoder on the ImageNet-1K
+dataset [9]. Then, we evaluate the semantic segmen-
+tation performance on three commonly used datasets:
+ADE20K [65], a challenging scene parsing benchmark con-
+sisting of 20,210 images annotated with 150 semantic cate-
+gories; Cityscapes [8], an urban driving dataset comprising
+5,000 high-resolution images with 19 semantic categories;
+and COCO-Stuff-164K [1], which contains 164,000 images
+labeled across 172 semantic categories.
+Implementation details. We conducted ImageNet pre-
+training using the Timm library [52] with hyperparameters
+and data augmentation settings identical to those of Swin
+19081
+
+
+=== PAGE 6 ===
+Method Params(M) ADE20K Cityscapes COCO-Stuff
+GFLOP mIoU GFLOP mIoU GFLOP mIoU
+Segformer-B0 [56] 3.8 8.4 37.4 125.5 76.2 8.4 35.6
+SegNeXt-T [18] 4.3 7.7 41.1 61.6 78.9 7.7 38.7
+VWFormer-B0 [57] 3.7 5.8 38.9 112.4 77.2 5.8 36.2
+EDAFormer-T [60] 4.9 5.8 42.3 151.7 78.7 5.8 40.3
+CGRSeg-T† [36] 9.4 4.8 42.5 65.5 78.3 4.8 40.4
+SegMAN-T 6.4 6.2 43.0 52.5 80.3 6.2 41.3
+Swin UperNet-T [29] 60.0 236.0 44.4 - - - -
+ViT-CoMer-S [53] 61.4 296.1 46.5 - - - -
+OCRNet [61] 70.5 164.8 45.6 - - - -
+Segformer-B2 [56] 27.5 62.4 46.5 717.1 81.0 62.4 44.6
+MaskFormer [5] 42.0 55.0 46.7 - - - -
+Mask2Former [6] 47.0 74.0 47.7 - - - -
+SegNeXt-B [18] 27.6 34.9 48.5 279.1 82.6 34.9 45.8
+FeedFormer-B2 [43] 29.1 42.7 48.0 522.7 81.5 - -
+VWFormer-B2 [57] 27.4 46.6 48.1 415.1 81.7 46.6 45.2
+EDAFormer-B [60] 29.4 32.1 49.0 605.9 81.6 32.1 45.9
+CGRSeg-T† [36] 35.7 16.5 47.3 199.7 80.2 16.5 45.2
+SegMAN-S 29.4 25.3 51.3 218.4 83.2 25.3 47.5
+Segformer-B3 [56] 47.3 79.0 49.4 962.9 81.7 79.0 45.5
+SegNeXt-L [18] 48.9 70.0 51.0 577.5 83.2 70.0 46.5
+VWFormer-B3 [57] 47.3 63.3 50.3 637.1 82.4 63.3 46.8
+SegMAN-B 51.8 58.1 52.6 479.0 83.8 58.1 48.4
+Swin UperNet-B [29] 121.0 261.0 48.1 - - - -
+ViT-CoMer-B [53] 144.7 455.4 48.8 - - - -
+Segformer-B5 [56] 84.7 110.3 51.0 1149.8 82.4 110.3 46.7
+VWFormer-B5 [57] 84.6 96.1 52.0 1139.6 82.8 96.1 48.0
+SegMAN-L 92.4 97.1 53.2 796.0 84.2 97.1 48.8
+Table 2. Comparison with state-of-the-art semantic segmentation models on
+ADE20K, Cityscapes, and COCO-Stuff-164K. FLOPs are calculated at 512 × 512
+(ADE20K, COCO-Stuff) and 2048 × 1024 (Cityscapes) resolutions.
+Models Params(M) GFLOP Acc
+MiT-B0 [56] 3.8 0.60 70.5
+EFT-T [60] 3.7 0.60 72.3
+MSCAN-T [18] 4.2 0.89 75.9
+SegMAN-T Encoder3.5 0.65 76.2
+MiT-B2 [56] 24 4.0 81.6
+EFT-B [60] 26 4.2 82.4
+MSCAN-B [18] 27 4.4 83.0
+Swin-T [29] 28 4.5 81.2
+ConvNeXt-T [30] 28 4.5 82.1
+InternImage-T [51] 30 5.0 83.5
+ViM-S [67] 26 - 81.6
+VMamba-T [28] 29 4.9 82.6
+SparX-Mamba-T [32] 27 5.2 83.5
+SegMAN-S Encoder 26 4.1 84.0
+MiT-B3 [56] 45 6.9 83.1
+MSCAN-L [18] 45 9.1 83.9
+Swin-S [29] 50 8.7 83.2
+ConvNeXt-S [30] 50 8.7 83.1
+InternImage-S [51] 50 8.0 84.2
+VMamba-S [28] 50 8.7 83.6
+SparX-Mamba-S [32] 47 9.3 84.2
+SegMAN-B Encoder45 9.9 85.1
+MiT-B5 [56] 82 11.8 83.8
+Swin-B [29] 88 15.4 83.5
+ConvNeXt-B [30] 89 15.4 83.8
+InternImage-B [51] 97 16.7 84.9
+ViM-B [67] 98 - 83.2
+VMamba-B [28] 89 15.4 83.9
+SparX-Mamba-B [32] 84 15.9 84.5
+SegMAN-L Encoder 81 16.8 85.5
+Table 3. Comparison with state-of-the-art vi-
+sion backbones on ImageNet-1K. FLOPs are
+calculated at 224 × 224 resolution.
+Transformer [29]. Regarding semantic segmentation, we
+trained all models using the MMSegmentation library [7],
+combining the pre-trained SegMAN Encoder with a ran-
+domly initialized decoder. Following the Segformer train-
+ing protocol [56], we employed standard data augmentation
+techniques, including random horizontal flipping and ran-
+dom scaling (ratio of 0.5 to 2.0). We implemented dataset-
+specific random cropping with dimensions of 512×512 for
+ADE20K and COCO-Stuff, and 1024×1024 for Cityscapes.
+We trained the models using the AdamW optimizer for
+160K iterations with batch sizes of 16 for ADE20K and
+COCO-Stuff, and 8 for Cityscapes. The learning rate is set
+to 1e-6 with 1500 warmup iterations. We evaluated seg-
+mentation performance using mean intersection over union
+(mIoU) and computed FLOPs using the fvcore library [11].
+All models were trained on 8 NVIDIA H800 GPUs.
+4.2. Comparison with state-of-the-art methods
+This section presents a comprehensive comparison of
+our proposed SegMAN with state-of-the-art segmentation
+methods on three widely used datasets.
+Baselines. We compare our method with other strong
+competitors including EDAFormer [60], VWFormer [57]
+and CGRSeg [36], Segformer [56], and SegNeXt [18].
+Note that the Efficientformer-v2 [25] used in CGRSeg [36]
+significantly benefits from knowledge distillation from
+RegNetY-16GF [38] (83.6M parameters, 15.9 GFLOPs)
+and extended training duration of 450 epochs compared to
+the conventional 300 epochs, providing a stronger encoder
+network compared to other methods. To ensure a fair com-
+parison, we retrained Efficientformer-v2 on ImageNet-1K
+using the same training configurations as Swin [29]. We
+report results for CGRSeg by fine-tuning this retrained en-
+coder following official implementations.
+Results. Table 2 shows the superior performance of Seg-
+MAN across all three datasets: ADE20K, Cityscapes, and
+COCO-Stuff-164K. Among lightweight models, SegMAN-
+T achieves the best performance, with 43.0% mIoU on
+ADE20K, 80.3% mIoU on Cityscapes, and 41.3% mIoU on
+COCO-Stuff, while maintaining comparable computational
+costs. Our SegMAN-S model achieves significant perfor-
+mance improvements compared to state-of-the-art methods.
+On the ADE20K benchmark, it surpasses the recently intro-
+duced EDAFormer-B [60] by 2.3% mIoU, and even outper-
+forms the larger SegNeXt-L [18] model, which has 48.9M
+parameters, by 0.3% mIoU. The performance gains extend
+to the COCO-Stuff dataset, where SegMAN-S demonstrates
+improvements of 1.6% mIoU over EDAFormer-B and 1.0%
+19082
+
+
+=== PAGE 7 ===
+Model Params (M) GFLOPs FPS mIoU
+Segformer-B0 [56] 3.8 125.5 21.8 76.2
+SegNext-T [18] 4.3 61.6 25.8 78.9
+VWFormer-B0 [57] 3.7 112.4 21.1 77.2
+EDAFormer-T [60] 4.9 151.7 12.7 78.7
+CGRSeg-T [36] 9.3 65.5 27.6 78.3
+SegMAN-T 6.4 52.5 34.9 80.3
+Segformer-B2 [56] 27.5 717.1 10.2 81.0
+SegNext-B [18] 27.6 279.1 14.1 82.6
+VWFormer-B2 [57] 27.4 415.1 9.87 81.7
+EDAFormer-B [60] 29.4 605.9 6.6 81.6
+CGRSeg-B [36] 35.6 199.0 11.8 80.2
+SegMAN-S 29.4 218.4 13.8 83.2
+Segformer-B3 [56] 46.3 962.9 6.7 81.7
+SegNext-L [18] 48.9 577.5 10.1 83.2
+VWFormer-B3 [57] 47.3 637.1 6.3 82.4
+SegMAN-B 51.8 479.0 7.2 83.8
+Segformer-B5 [56] 84.7 1460.4 3.5 81.7
+VWFormer-B5 [57] 84.6 1139.6 3.7 82.4
+SegMAN-L 92.4 796.0 5.2 84.2
+Table 4. Comparison of model complexity and inference speed on
+Cityscapes [8] (2048 × 1024 resolution).
+mIoU over SegNeXt-L. Notably, SegMAN-S achieves these
+superior results while reducing computational complexity
+by over 20%, requiring only 25.3 GFLOPs compared to
+EDAFormer-B. On Cityscapes, SegMAN-S achieves 83.2%
+mIoU, surpassing EDAFormer-B by 1.6%. Moreover,
+SegMAN-B surpasses previous best performing models by
+1.6% on both ADE20K and COCO-Stuff while incurring
+lower computational cost. On Cityscapes, SegMAN-B im-
+proves SOTA by 0.6% mIoU using 17% less GFLOPs.
+Similarly, our largest SegMAN-L model achieves +1.2%,
++1.0%, and +0.8% gains over prior SOTA on ADE20K,
+Cityscapes, and COCO-Stuff, respectively. The consis-
+tent performance gains across different datasets and model
+scales validate the effectiveness of our proposed SegMAN,
+which can simultaneously capture global contexts, local de-
+tails, and multi-scale information through its LASS-based
+encoder and MMSCopE-based decoder.
+Speed Analysis. We benchmark inference speed on
+Cityscapes [8] using an NVIDIA L40S GPU, averaging
+Frames Per Second (FPS) over 128 steps with batch size
+2. As shown in Table 4, SegMAN-T achieves +1.6%
+mIoU at approximately 3 times the speed of EDAFormer-
+T, highlighting an excellent balance between performance
+and speed.
+4.3. Comparison with state-of-the-art backbones
+In Table 3, we evaluate the classification performance of
+our proposed SegMAN Encoder on ImageNet-1K [9], com-
+paring against two categories of architectures: state-of-
+the-art segmentation encoders (MiT [56], MSCAN [56],
+EFT [60]) and representative vision backbones (Swin
+Model Variant ParamsGFLOPs FPS Acc mIoU(M)
+SegMAN-S Encoder 25.5 21.4 139 84.0 51.3
+Replace LASSMaxViT [47] 24.6 29.8 96 83.5 (-0.5) 47.2 (-4.1)ACMix [37] 24.9 19.3 104 83.1 (-0.9) 48.6 (-2.7)PVT [49] 29.5 22.0 169 82.8 (-1.2) 49.1 (-2.2)BiFormer [66] 25.2 30.5 97 82.9 (-1.1) 48.8 (-2.5)
+LASS DesignParallel Natten and SS2D 25.5 21.4 129 83.8 (-0.2) 48.9 (-2.4)w/o SS2D residual 26.1 21.4 132 83.7 (-0.3) 50.2 (-1.1)Stage 4 Attn→SS2D 30.0 21.8 121 83.7 (-0.3) 50.6 (-0.7)
+SS2D within LASSReplace SS2D w SRA [49] 26.0 22.3 142 83.7 (-0.3) 50.6 (-0.7)Replace SS2D w L-Attn [22] 27.6 21.8 150 83.6 (-0.4) 49.5 (-1.8)Remove SS2D 25.0 20.9 162 83.6 (-0.4) 47.4 (-3.9)
+Natten within LASSReplace Natten w Conv 25.8 20.7 160 83.1 (-0.9) 49.5 (-1.8)Replace Natten w Swin [29] 30.0 21.6 147 83.5 (-0.5) 50.3 (-1.0)Remove Natten [19] 24.9 25.9 100 83.6 (-0.4) 49.8 (-1.5)
+Table 5. Ablation studies and comparison of token mixers for
+SegMAN encoder. FLOPs and FPS are calculated or measured
+at 512 × 512 resolution using the encoder.
+Transformer [29], ConvNeXt [30], InternImage [51]
+ViM [67], VMamba [28], SparX-Mamba [32]). SegMAN
+Encoder variants consistently achieve superior classifica-
+tion accuracy in comparison to architectures of similar com-
+putational complexity. Specifically, SegMAN-S Encoder
+significantly surpasses ConvNeXt-T and MSCAN-B by
+1.9% and 1.0% in Top-1 accuracy, respectively. SegMAN-
+B Encoder demonstrates similar improvements over Swin-
+S and MSCAN-L by 1.9% and 1.2%, respectively. The
+promising performance across model variants demonstrates
+the benefits of integrating local attention with state space
+models to effectively capture both fine-grained details and
+global contextual information. A more detailed comparison
+can be found in the supplementary material.
+4.4. Ablation studies on SegMAN encoder
+We systematically evaluate SegMAN Encoder’s architec-
+tural design on ImageNet-1K [9] and ADE20K [65]. Our
+LASS token mixer integrates Neighborhood Attention (Nat-
+ten [19]) and 2D-Selective-Scan (SS2D), with a residual
+connection added to SS2D to fuse global and local contexts.
+In Stage 4 blocks, we replace SS2D with global attention for
+enhanced high-level feature modeling.
+To validate these architectural decisions, we conduct
+comprehensive ablation studies examining: (1) compara-
+tive performance against alternative token mixers, (2) de-
+sign choices of LASS, and (3) the impact of individual
+components within the token mixer. In all experiments,
+including token mixer replacements, we maintain consis-
+tent model complexity by adjusting channel dimensions to
+achieve comparable parameter counts and computational
+costs. Table 5 presents our findings.
+Alternative token mixers. We evaluate the effective-
+ness of LASS by replacing it with recent token mixers
+19083
+
+
+=== PAGE 8 ===
+Model Params (M) GFLOPs mIoU (%)
+UPerNet [54] 27.1 38.7 50.4
+MLP Decoder [56] 25.0 32.7 50.3
+Ham Decoder [18] 25.3 29.5 50.4
+VWFormer Decoder [57] 28.2 40.7 50.5
+CGRHead [36] 44.2 24.5 50.3
+EDAFormer Decoder [60] 28.5 26.2 50.2
+SegMAN-S Decoder 29.4 25.3 51.3
+Table 6. Comparison of complexity and accuracy of segmentation
+decoders. FLOPs are calculated at 512 × 512 resolution.
+(MaxViT [47], ACMix [37], PVT [49], and BiFormer [66]).
+Note that we implement MaxViT’s Block-SA and Grid-SA
+modules in series to serve as a token mixer. As shown
+in Table 5, our LASS achieves consistent and substantial
+improvements across both classification and segmentation
+tasks while maintaining competitive computational costs.
+The performance gains stem from the complementary na-
+ture between Natten, which models fine-grained local fea-
+tures, and SS2D, which efficiently models global contexts.
+Alternative LASS mixer designs. We explore alter-
+native methods to integrate SS2D and Natten together in
+LASS. Results indicate that parallel arrangement of Natten
+and SS2D and removing the residual connections for SS2D
+lead to substantial performance drops in both classification
+accuracy and segmentation mIoU.
+SS2D and Natten. We analyze the two key components
+of LASS through systematic ablations. When SS2D is re-
+placed with alternative global attention mechanisms, perfor-
+mance consistently decreases: SRA [49] (-0.3% accuracy,
+-0.7% mIoU) and Linear Attention [22] (-0.4% accuracy, -
+1.8% mIoU). Likewise, replacing Natten with either convo-
+lutions (-0.9% accuracy, -1.8% mIoU) or Shifted-Window
+Attention [29] (-0.5% accuracy, -1.0% mIoU) leads to sig-
+nificant performance degradation, demonstrating the effec-
+tiveness of our component choices.
+4.5. Ablation studies on SegMAN decoder
+We investigate both the overall effectiveness of our pro-
+posed decoder and the performance of individual com-
+ponents of the MMSCopE module using the ADE20K
+dataset [65]. For a fair comparison, we ensure that different
+model variants have comparable computational complexity
+by adjusting the number of channels. Here, all ablations are
+conducted using the SegMAN-S decoder.
+Decoder comparisons and encoder generalization .
+Table 6 evaluates decoder efficacy under controlled con-
+ditions, where all models employ our SegMAN-S En-
+coder. We benchmark against decoders from represen-
+tative methods [18, 36, 56, 57, 60] with matched model
+sizes and computational budgets—UPerNet’s channel di-
+mensions were adjusted to ensure equivalent GFLOPs. Our
+decoder achieves superior mIoU.
+Notably, integrating our SegMAN Encoder with third-
+Model Variant Params (M) GFLOPs FPS mIoU
+SegMAN-S 29.4 25.3 128 51.3
+Scan Strategy
+Independent scans 28.7 25.9 65 (-63) 51.5 (+0.2)
+Multi-scale feature
+w/o 16×16 28.9 24.8 130 (+2) 51.0 (-0.3)
+w/o 32×32 28.5 24.5 132 (+4) 50.8 (-0.5)
+w/o 64×64 28.3 24.3 131 (+3) 50.6 (-0.7)
+64×64 only 26.2 23.6 137 (+9) 50.9 (-0.4)
+Compression
+w/o compression 30.3 26.7 98 (-30) 51.0 (-0.3)
+Channels 1C:2C:4C 31.2 25.3 124 (-4) 50.8 (-0.5)
+Architecture Components
+w/o FFN 28.4 24.8 129 (+1) 51.2 (-0.1)
+Table 7. Ablation studies on the MMSCopE module in SegMAN
+decoder. FLOPs and FPS are measured at 512 × 512 resolution.
+party decoders yields significant performance gains: +2.1%
+for VWFormer, +1.9% for SegNeXt, and +1.2% for
+EDAFormer over their original encoder-decoder configura-
+tions (Table 2). This highlights our encoder’s generalization
+and plug-and-play capability.
+Ablation studies on the MMSCopE module. Table 7
+presents the impact of various components within the MM-
+SCopE module: (1) Switching to independently scanning
+each feature map instead of our proposed simultaneous
+scanning strategy significantly reduces FPS from 128 to 65;
+(2) The inclusion of multi-scale features yields consistent
+performance gains. Specifically, removing the feature map
+at 16x16, 32x32, or 64x64 resolution inside the MMSCopE
+module results in sub-optimal mIoU, with the removal of
+the 64x64 feature map resulting in the largest performance
+drop of 0.7%. Additionally, using the 64x64 feature map
+alone without pixel unshuffling and compression leads to
+a 0.4% decline. (3) Channel compression before SS2D
+proves beneficial, as its removal reduces mIoU by 0.3%.
+Alternative channel scaling configuration (1C, 2C, 4C) for
+the three feature scales yields suboptimal results; (4) The
+FFN following SS2D provides a marginal benefit of 0.1%.
+5. Conclusion
+This work presents a new segmentation network with two
+novel components: SegMAN Encoder, a hierarchical en-
+coder that synergistically integrates state space models with
+local attention, and MMSCopE, an efficient decoder mod-
+ule that leverages state space models for multi-scale context
+extraction. SegMAN Encoder enables simultaneous model-
+ing of fine-grained spatial details and global contextual in-
+formation while MMSCopE adaptively scales with the in-
+put resolution while processing multi-scale features. We
+conduct comprehensive evaluations across multiple bench-
+marks, which demonstrates that our approach achieves
+state-of-the-art performance in semantic segmentation.
+19084
+
+
+=== PAGE 9 ===
+Acknowledgement
+This work was supported by Hong Kong Research Grants
+Council under the NSFC/RGC Collaborative Research
+Scheme (Grant CRS HKU703/24).
+References
+[1] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. In Proceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 1209–1218, 2018. 3, 5
+[2] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L Yuille. Deeplab: Semantic image
+segmentation with deep convolutional nets, atrous convolu-
+tion, and fully connected crfs. IEEE transactions on pattern
+analysis and machine intelligence, 40(4):834–848, 2017. 1,
+2, 3
+[3] Liang-Chieh Chen, George Papandreou, Florian Schroff, and
+Hartwig Adam. Rethinking atrous convolution for semantic
+image segmentation. ArXiv, abs/1706.05587, 2017.
+[4] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian
+Schroff, and Hartwig Adam. Encoder-decoder with atrous
+separable convolution for semantic image segmentation. In
+Proceedings of the European conference on computer vision
+(ECCV), pages 801–818, 2018. 3
+[5] Bowen Cheng, Alex Schwing, and Alexander Kirillov. Per-
+pixel classification is not all you need for semantic segmen-
+tation. Advances in neural information processing systems ,
+34:17864–17875, 2021. 6
+[6] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention mask
+transformer for universal image segmentation. In Proceed-
+ings of the IEEE/CVF conference on computer vision and
+pattern recognition, pages 1290–1299, 2022. 6
+[7] MMSegmentation Contributors. MMSegmentation:
+Openmmlab semantic segmentation toolbox and
+benchmark. https : / / github . com / open -
+mmlab/mmsegmentation, 2020. 6
+[8] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. In Proceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 3213–3223, 2016. 3, 5, 7
+[9] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li,
+and Li Fei-Fei. Imagenet: A large-scale hierarchical image
+database. In 2009 IEEE conference on computer vision and
+pattern recognition, pages 248–255. Ieee, 2009. 5, 7
+[10] Alexey Dosovitskiy. An image is worth 16x16 words:
+Transformers for image recognition at scale. arXiv preprint
+arXiv:2010.11929, 2020. 4
+[11] FAIR. fvcore. https : / / github . com /
+facebookresearch/fvcore, 2021. 6
+[12] Zhengcong Fei, Mingyuan Fan, Changqian Yu, and Junshi
+Huang. Scalable diffusion models with state space backbone.
+arXiv preprint arXiv:2402.05608, 2024. 3
+[13] Jun Fu, Jing Liu, Haijie Tian, Yong Li, Yongjun Bao, Zhiwei
+Fang, and Hanqing Lu. Dual attention network for scene seg-
+mentation. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pages 3146–3154,
+2019. 1
+[14] Yunxiang Fu, Chaoqi Chen, and Yizhou Yu. Lamamba-diff:
+Linear-time high-fidelity diffusion models based on local at-
+tention and mamba. arXiv preprint arXiv:2408.02615, 2024.
+3
+[15] Zhengyang Geng, Meng-Hao Guo, Hongxu Chen, Xia Li,
+Ke Wei, and Zhouchen Lin. Is attention better than matrix
+decomposition? arXiv preprint arXiv:2109.04553, 2021. 3
+[16] Albert Gu and Tri Dao. Mamba: Linear-time sequence
+modeling with selective state spaces. arXiv preprint
+arXiv:2312.00752, 2023. 3, 4
+[17] Albert Gu, Isys Johnson, Karan Goel, Khaled Saab, Tri
+Dao, Atri Rudra, and Christopher R ´e. Combining recurrent,
+convolutional, and continuous-time models with linear state
+space layers. Advances in neural information processing sys-
+tems, 34:572–585, 2021. 3
+[18] Meng-Hao Guo, Cheng-Ze Lu, Qibin Hou, Zhengning Liu,
+Ming-Ming Cheng, and Shi-Min Hu. Segnext: Rethink-
+ing convolutional attention design for semantic segmenta-
+tion. Advances in Neural Information Processing Systems ,
+35:1140–1156, 2022. 3, 5, 6, 7, 8, 2
+[19] Ali Hassani, Steven Walton, Jiachen Li, Shen Li, and
+Humphrey Shi. Neighborhood attention transformer. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 6185–6194, 2023. 2, 3, 4, 7
+[20] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+Deep residual learning for image recognition. In Proceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 770–778, 2016. 3
+[21] Tong He, Zhi Zhang, Hang Zhang, Zhongyue Zhang, Jun-
+yuan Xie, and Mu Li. Bag of tricks for image classifica-
+tion with convolutional neural networks. In Proceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 558–567, 2019. 3
+[22] Angelos Katharopoulos, Apoorv Vyas, Nikolaos Pappas, and
+Franc ¸ois Fleuret. Transformers are rnns: Fast autoregressive
+transformers with linear attention. In International confer-
+ence on machine learning, pages 5156–5165. PMLR, 2020.
+7, 8
+[23] Alexander Kirillov, Ross Girshick, Kaiming He, and Piotr
+Doll´ar. Panoptic feature pyramid networks. In Proceedings
+of the IEEE/CVF conference on computer vision and pattern
+recognition, pages 6399–6408, 2019. 3
+[24] Feng Li, Hao Zhang, Huaizhe Xu, Shilong Liu, Lei Zhang,
+Lionel M Ni, and Heung-Yeung Shum. Mask dino: Towards
+a unified transformer-based framework for object detection
+and segmentation. In Proceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition , pages
+3041–3050, 2023. 2
+[25] Yanyu Li, Ju Hu, Yang Wen, Georgios Evangelidis, Kamyar
+Salahi, Yanzhi Wang, Sergey Tulyakov, and Jian Ren. Re-
+thinking vision transformers for mobilenet size and speed.
+In Proceedings of the IEEE international conference on com-
+puter vision, 2023. 6
+19085
+
+
+=== PAGE 10 ===
+[26] Jiarun Liu, Hao Yang, Hong-Yu Zhou, Yan Xi, Lequan
+Yu, Yizhou Yu, Yong Liang, Guangming Shi, Shaoting
+Zhang, Hairong Zheng, et al. Swin-umamba: Mamba-
+based unet with imagenet-based pretraining. arXiv preprint
+arXiv:2402.03302, 2024. 3
+[27] Jiuming Liu, Ruiji Yu, Yian Wang, Yu Zheng, Tianchen
+Deng, Weicai Ye, and Hesheng Wang. Point mamba:
+A novel point cloud backbone based on state space
+model with octree-based ordering strategy. arXiv preprint
+arXiv:2403.06467, 2024. 3
+[28] Yue Liu, Yunjie Tian, Yuzhong Zhao, Hongtian Yu, Lingxi
+Xie, Yaowei Wang, Qixiang Ye, and Yunfan Liu. Vmamba:
+Visual state space model. arXiv preprint arXiv:2401.10166,
+2024. 2, 3, 4, 5, 6, 7
+[29] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng
+Zhang, Stephen Lin, and Baining Guo. Swin transformer:
+Hierarchical vision transformer using shifted windows. In
+Proceedings of the IEEE/CVF international conference on
+computer vision, pages 10012–10022, 2021. 3, 4, 6, 7, 8, 2
+[30] Zhuang Liu, Hanzi Mao, Chao-Yuan Wu, Christoph Feicht-
+enhofer, Trevor Darrell, and Saining Xie. A convnet for the
+2020s. In Proceedings of the IEEE/CVF conference on com-
+puter vision and pattern recognition , pages 11976–11986,
+2022. 3, 4, 6, 7, 2
+[31] Meng Lou and Yizhou Yu. Overlock: An overview-first-
+look-closely-next convnet with context-mixing dynamic ker-
+nels. In IEEE/CVF Conference on Computer Vision and Pat-
+tern Recognition, 2025. 3
+[32] Meng Lou, Yunxiang Fu, and Yizhou Yu. Sparx: A sparse
+cross-layer connection mechanism for hierarchical vision
+mamba and transformer networks. In Proceedings of the
+AAAI Conference on Artificial Intelligence, 2025. 6, 7, 2
+[33] Meng Lou, Shu Zhang, Hong-Yu Zhou, Chuan Wu, Sibei
+Yang, and Yizhou Yu. Transxnet: Learning both global and
+local dynamics with a dual dynamic token mixer for visual
+recognition. IEEE Transactions on Neural Networks and
+Learning Systems, 2025. 3
+[34] Chenyang Lu, Daan de Geus, and Gijs Dubbelman. Content-
+aware token sharing for efficient semantic segmentation with
+vision transformers. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+23631–23640, 2023. 4
+[35] Shervin Minaee, Yuri Boykov, Fatih Porikli, Antonio Plaza,
+Nasser Kehtarnavaz, and Demetri Terzopoulos. Image seg-
+mentation using deep learning: A survey. IEEE transactions
+on pattern analysis and machine intelligence , 44(7):3523–
+3542, 2021. 1
+[36] Zhenliang Ni, Xinghao Chen, Yingjie Zhai, Yehui Tang,
+and Yunhe Wang. Context-guided spatial feature recon-
+struction for efficient semantic segmentation. arXiv preprint
+arXiv:2405.06228, 2024. 3, 6, 7, 8
+[37] Xuran Pan, Chunjiang Ge, Rui Lu, Shiji Song, Guanfu Chen,
+Zeyi Huang, and Gao Huang. On the integration of self-
+attention and convolution. In Proceedings of the IEEE/CVF
+conference on computer vision and pattern recognition ,
+pages 815–825, 2022. 7, 8
+[38] Ilija Radosavovic, Raj Prateek Kosaraju, Ross Girshick,
+Kaiming He, and Piotr Doll ´ar. Designing network design
+spaces. In Proceedings of the IEEE/CVF conference on com-
+puter vision and pattern recognition , pages 10428–10436,
+2020. 6
+[39] Ren ´e Ranftl, Alexey Bochkovskiy, and Vladlen Koltun. Vi-
+sion transformers for dense prediction. In Proceedings of
+the IEEE/CVF international conference on computer vision,
+pages 12179–12188, 2021. 3, 4
+[40] Jiacheng Ruan and Suncheng Xiang. Vm-unet: Vision
+mamba unet for medical image segmentation. arXiv preprint
+arXiv:2402.02491, 2024. 3
+[41] Dai Shi. Transnext: Robust foveal visual perception for vi-
+sion transformers. In Proceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition , pages
+17773–17783, 2024. 3
+[42] Wenzhe Shi, Jose Caballero, Ferenc Husz ´ar, Johannes Totz,
+Andrew P Aitken, Rob Bishop, Daniel Rueckert, and Zehan
+Wang. Real-time single image and video super-resolution
+using an efficient sub-pixel convolutional neural network. In
+Proceedings of the IEEE conference on computer vision and
+pattern recognition, pages 1874–1883, 2016. 5, 1
+[43] Jae-hun Shim, Hyunwoo Yu, Kyeongbo Kong, and Suk-
+Ju Kang. Feedformer: Revisiting transformer decoder for
+efficient semantic segmentation. In Proceedings of the
+AAAI Conference on Artificial Intelligence , pages 2263–
+2271, 2023. 3, 6
+[44] Jimmy TH Smith, Andrew Warrington, and Scott W Linder-
+man. Simplified state space layers for sequence modeling.
+arXiv preprint arXiv:2208.04933, 2022. 3
+[45] Quan Tang, Bowen Zhang, Jiajun Liu, Fagui Liu, and Yifan
+Liu. Dynamic token pruning in plain vision transformers
+for semantic segmentation. In Proceedings of the IEEE/CVF
+International Conference on Computer Vision , pages 777–
+786, 2023. 3
+[46] Yao Teng, Yue Wu, Han Shi, Xuefei Ning, Guohao Dai, Yu
+Wang, Zhenguo Li, and Xihui Liu. Dim: Diffusion mamba
+for efficient high-resolution image synthesis. arXiv preprint
+arXiv:2405.14224, 2024. 3
+[47] Zhengzhong Tu, Hossein Talebi, Han Zhang, Feng Yang,
+Peyman Milanfar, Alan Bovik, and Yinxiao Li. Maxvit:
+Multi-axis vision transformer. In European conference on
+computer vision, pages 459–479. Springer, 2022. 7, 8, 1, 2
+[48] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszko-
+reit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia
+Polosukhin. Attention is all you need. Advances in neural
+information processing systems, 30, 2017. 5
+[49] Wenhai Wang, Enze Xie, Xiang Li, Deng-Ping Fan, Kaitao
+Song, Ding Liang, Tong Lu, Ping Luo, and Ling Shao.
+Pyramid vision transformer: A versatile backbone for dense
+prediction without convolutions. In Proceedings of the
+IEEE/CVF international conference on computer vision ,
+pages 568–578, 2021. 3, 7, 8
+[50] Wenhai Wang, Enze Xie, Xiang Li, Deng-Ping Fan, Kaitao
+Song, Ding Liang, Tong Lu, Ping Luo, and Ling Shao. Pvt
+v2: Improved baselines with pyramid vision transformer.
+Computational Visual Media, 8(3):415–424, 2022. 1, 2
+[51] Wenhai Wang, Jifeng Dai, Zhe Chen, Zhenhang Huang,
+Zhiqi Li, Xizhou Zhu, Xiaowei Hu, Tong Lu, Lewei Lu,
+19086
+
+
+=== PAGE 11 ===
+Hongsheng Li, et al. Internimage: Exploring large-scale vi-
+sion foundation models with deformable convolutions. In
+Proceedings of the IEEE/CVF conference on computer vi-
+sion and pattern recognition, pages 14408–14419, 2023. 6,
+7, 2
+[52] Ross Wightman. Pytorch image models. https :
+/ / github . com / rwightman / pytorch - image -
+models, 2019. 5
+[53] Chunlong Xia, Xinliang Wang, Feng Lv, Xin Hao, and
+Yifeng Shi. Vit-comer: Vision transformer with convolu-
+tional multi-scale feature interaction for dense predictions.
+In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 5493–5502, 2024. 3,
+6
+[54] Tete Xiao, Yingcheng Liu, Bolei Zhou, Yuning Jiang, and
+Jian Sun. Unified perceptual parsing for scene understand-
+ing. In Proceedings of the European conference on computer
+vision (ECCV), pages 418–434, 2018. 3, 8
+[55] Yicheng Xiao, Lin Song, Jiangshan Wang, Siyu Song, Yixiao
+Ge, Xiu Li, Ying Shan, et al. Mambatree: Tree topology
+is all you need in state space model. Advances in Neural
+Information Processing Systems, 37:75329–75354, 2025. 1,
+2
+[56] Enze Xie, Wenhai Wang, Zhiding Yu, Anima Anandkumar,
+Jose M Alvarez, and Ping Luo. Segformer: Simple and
+efficient design for semantic segmentation with transform-
+ers. Advances in neural information processing systems, 34:
+12077–12090, 2021. 2, 3, 4, 5, 6, 7, 8
+[57] Haotian Yan, Ming Wu, and Chuang Zhang. Multi-scale rep-
+resentations by varying window attention for semantic seg-
+mentation. ICLR, 2024. 1, 2, 3, 5, 6, 7, 8
+[58] Chenglin Yang, Yilin Wang, Jianming Zhang, He Zhang,
+Zijun Wei, Zhe Lin, and Alan Yuille. Lite vision trans-
+former with enhanced self-attention. In Proceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 11998–12008, 2022. 3
+[59] Changqian Yu, Jingbo Wang, Chao Peng, Changxin Gao,
+Gang Yu, and Nong Sang. Learning a discriminative fea-
+ture network for semantic segmentation. In Proceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 1857–1866, 2018. 1
+[60] Hyunwoo Yu, Yubin Cho, Beoungwoo Kang, Seunghun
+Moon, Kyeongbo Kong, and Suk-Ju Kang. Embedding-free
+transformer with inference spatial reduction for efficient se-
+mantic segmentation. In European Conference on Computer
+Vision, pages 92–110. Springer, 2024. 2, 3, 4, 5, 6, 7, 8
+[61] Yuhui Yuan, Xilin Chen, and Jingdong Wang. Object-
+contextual representations for semantic segmentation. In
+Computer Vision–ECCV 2020: 16th European Conference,
+Glasgow, UK, August 23–28, 2020, Proceedings, Part VI 16,
+pages 173–190. Springer, 2020. 6
+[62] Tao Zhang, Xiangtai Li, Haobo Yuan, Shunping Ji, and
+Shuicheng Yan. Point could mamba: Point cloud learning via
+state space model. arXiv preprint arXiv:2403.00762, 2024.
+3
+[63] Hengshuang Zhao, Jianping Shi, Xiaojuan Qi, Xiaogang
+Wang, and Jiaya Jia. Pyramid scene parsing network. In
+Proceedings of the IEEE conference on computer vision and
+pattern recognition, pages 2881–2890, 2017. 1, 3
+[64] Sixiao Zheng, Jiachen Lu, Hengshuang Zhao, Xiatian Zhu,
+Zekun Luo, Yabiao Wang, Yanwei Fu, Jianfeng Feng, Tao
+Xiang, Philip HS Torr, et al. Rethinking semantic segmen-
+tation from a sequence-to-sequence perspective with trans-
+formers. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pages 6881–6890,
+2021. 3, 4
+[65] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ade20k dataset. In Proceedings of the IEEE conference on
+computer vision and pattern recognition , pages 633–641,
+2017. 3, 5, 7, 8, 1
+[66] Lei Zhu, Xinjiang Wang, Zhanghan Ke, Wayne Zhang, and
+Rynson WH Lau. Biformer: Vision transformer with bi-level
+routing attention. In Proceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition , pages
+10323–10333, 2023. 7, 8
+[67] Lianghui Zhu, Bencheng Liao, Qian Zhang, Xinlong Wang,
+Wenyu Liu, and Xinggang Wang. Vision mamba: Efficient
+visual representation learning with bidirectional state space
+model. arXiv preprint arXiv:2401.09417, 2024. 3, 6, 7, 2
+19087

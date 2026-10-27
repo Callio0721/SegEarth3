@@ -1,0 +1,1100 @@
+=== PAGE 1 ===
+POT: Prototypical Optimal Transport for Weakly Supervised Semantic
+Segmentation
+Jian Wang1,2 Tianhong Dai3 Bingfeng Zhang4 Siyue Yu1 Eng Gee Lim1,† Jimin Xiao1,†
+1XJTLU 2University of Liverpool 3Kashmir Intelligence 4China University of Petroleum
+Abstract
+Weakly Supervised Semantic Segmentation (WSSS) lever-
+ages Class Activation Maps (CAMs) to extract spatial infor-
+mation from image-level labels. However, CAMs primarily
+highlight the most discriminative foreground regions, lead-
+ing to incomplete results. Prototype-based methods attempt
+to address this limitation by employing prototype CAMs in-
+stead of classifier CAMs. Nevertheless, existing prototype-
+based methods typically use a single prototype for each
+class, which is insufficient to capture all attributes of the
+foreground features due to the significant intra-class vari-
+ations across different images. Consequently, these meth-
+ods still struggle with incomplete CAM predictions. In
+this paper, we propose a novel framework called Proto-
+typical Optimal Transport (POT) for WSSS. POT enhances
+CAM predictions by dividing features into multiple clus-
+ters and activating each cluster using its prototype. In
+this process, a similarity-aware optimal transport is em-
+ployed to assign features to the most probable clusters.
+This similarity-aware strategy ensures the prioritization of
+significant cluster prototypes, thereby improving the accu-
+racy of feature assignment. Additionally, we introduce an
+adaptive OT-based consistency loss to refine feature repre-
+sentations. This framework effectively overcomes the lim-
+itations of single-prototype methods, providing more com-
+plete and accurate CAM predictions. Extensive experi-
+mental results on standard WSSS benchmarks (PASCAL
+VOC and MS COCO) demonstrate that our method signif-
+icantly improves the quality of CAMs and achieves state-
+of-the-art performances. The source code will be released
+https://github.com/jianwang91/POT.
+1. Introduction
+Weakly supervised semantic segmentation (WSSS) with
+image-level labels reduces the labor for pixel-level annota-
+tions, thereby receiving increasing attention. In this task,
+Class Activation Maps (CAMs) [59] are widely used to
+†: Corresponding authors
+localize objects and employed to generate pseudo-labels,
+which are further utilized to train a segmentation model [8].
+However, CAMs primarily highlight the most distinctive
+foreground regions [36, 53], providing insufficient super-
+vision for training the segmentation model [8].
+To mitigate this limitation, prototype-based methods [9,
+57, 58] are introduced. These methods first generate binary
+masks for each class, either by feature similarity [9, 57] or
+a pretrained segmentation model [58]. These binary masks
+are then used to perform mask average pooling on the cor-
+responding features to construct a prototype for each class
+within an image. The resulting prototypes capture the es-
+sential characteristics of foreground classes and are lever-
+aged to activate features using cosine similarity. Compared
+to classifier CAMs, these prototype CAMs are more com-
+plete, thereby enhancing the overall performance.
+However, prototype CAMs still fail to cover complete
+regions of foreground objects in certain images. Feature
+distribution of such images reveals that the foreground ob-
+ject features are often sparse and dispersed (see Fig. 1 (a)).
+This issue is primarily attributed to the significant intra-
+class variations [37] in the dataset, which limits the abil-
+ity of a single prototype to activate all relevant features.
+Specifically, the classifier aims to capture global discrim-
+inative intra-class characteristics to accurately classify an
+image. Features that encapsulate such characteristics (e.g.,
+faces within the person class) can be effectively recognized
+and grouped to form a compact primary cluster. Neverthe-
+less, regions belonging to the same class may exhibit highly
+diverse appearances, even within the same image (see Fig 1
+(a), areas in the red and green boxes). These image-specific
+features cannot be closely clustered into the previously de-
+scribed primary cluster due to their lack of global intra-class
+characteristics. Instead, these feature clusters often appear
+separately from the primary one. When constructing proto-
+type CAMs with a single prototype, only features in close
+proximity to the prototype are fully activated (red area in
+Fig. 1 (a)), while other features are only partially activated
+(green area in Fig. 1 (a)). This incomplete activation fails
+to provide sufficient guidance for segmentation model train-
+ing, leading to unsatisfactory performance.
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+15055
+
+
+=== PAGE 2 ===
+(a) Feature distribution of SIPE
+Prototype CAM
+ (1) Partitioning 
+(2) Allocation
+(b) Our prototypical optimal transport framework 
+Confidient 
+pixel 
+features
+Arbitrary
+feature
+Feature clusters
+(3) Multi-cluster 
+  activation 
+Fully-activated
+Half-activated
+Our CAM
+Prototype
+Foreground feature
+Figure 1. (a): Feature distribution of single-prototype methods (e.g., SIPE [9]): some clusters are positioned at a considerable distance from
+the cluster containing the class prototype. Only features in close proximity to the prototype can be fully activated, leading to incomplete
+prototype CAMs. Fully-activated: feature activated with high prediction score (e.g., score > 0.6). Half-activated: feature activated with
+low prediction score (e.g., score < 0.4). (b): Our framework divides features into multiple clusters and activates the features separately.
+To address the aforementioned challenge, we pro-
+pose a novel plug-and-play framework called Prototypical
+Optimal Transport (POT) for WSSS, as shown in Fig. 1 (b).
+Considering the limitation of a single prototype in captur-
+ing the diverse attributes of foreground features, POT di-
+vides feature vectors into multiple clusters and generates
+multiple cluster prototypes to encapsulate a broader range
+of attributes within an image. By combining the activa-
+tion results from each cluster, POT obtains comprehensive
+foreground CAM results. Specifically, feature vectors with
+confident CAM predictions are initially divided into mul-
+tiple clusters. Each cluster encapsulates the most distinc-
+tive characteristics of a class and serves as an anchor for
+feature allocation within the image. Subsequently, a proto-
+typical optimal transport allocation is performed to assign
+each feature to the most appropriate cluster. Once the al-
+location is completed, features are activated by their corre-
+sponding cluster prototypes using cosine similarity. Finally,
+the cluster-activated results of the same class are combined
+to generate complete foreground CAM predictions.
+In the above pipeline, accurately assigning features to
+their corresponding clusters is both crucial and challenging.
+The use of multiple clusters per class further increases the
+complexity of the allocation process. Incorrectly assigned
+features cannot be fully activated, resulting in incomplete
+CAM predictions. To address this challenge, optimal trans-
+port (OT) theory [39] is employed to learn an adaptive trans-
+port plan for assigning features to their potential clusters
+effectively. However, conventional OT employs an aver-
+age constraint on target distribution, which treats all clus-
+ter prototypes equally. This strategy overlooks the varying
+significance and importance of different cluster prototypes,
+potentially leading to suboptimal allocation. In contrast, we
+introduce a similarity-aware constraint to address this lim-
+itation. This constraint prioritizes cluster prototypes with
+high similarities to the classifier CAM prototypes, recog-
+nizing them as more critical. This bias allows the OT opti-
+mization process to focus more on the prototypes containing
+discriminative characteristics when determining the lowest
+cost through the matching plan. Based on the transport plan,
+an adaptive OT-based consistency loss is further proposed
+to optimize the feature representation in POT. Our contribu-
+tions can be summarized as follows:
+• The reason for sparse and dispersed feature distribution
+in current prototype-based methods is analyzed, reveal-
+ing that a single prototype is insufficient to capture all
+attributes of foreground features. This limitation leads to
+incomplete foreground CAM predictions.
+• A novel plug-and-play prototypical optimal transport
+framework for WSSS is proposed. This framework em-
+ploys optimal transport to effectively assign features to
+multiple clusters. By combining cluster-activated results
+of the same class, the framework enhances CAM predic-
+tions on various existing WSSS methods.
+• Our method achieves new state-of-the-art benchmarks in
+multistage WSSS, attaining 76.1% and 76.7% mIoU on
+the validation and test sets of Pascal VOC 2012 and
+47.9% mIoU on the MS COCO 2014 validation set.
+2. Related Work
+Weakly Supervised Semantic Segmentation. Class Acti-
+vation Maps (CAMs) [59] are extensively utilized in WSSS
+with image-level labels. However, CAMs primarily focus
+on the most discriminative regions of images. To address
+this limitation, a variety of methods explore diverse strate-
+gies, including attention mapping [38, 40, 42, 52], erasing
+and accumulation [21, 22, 51], region growing [19, 55],
+boundary constraints [6, 27, 33], cross-image information
+mining [41, 44, 48], and prototype-based methods. Among
+them, prototype-based methods [9, 10, 15, 37, 49] have
+drawn increasing attention due to their effectiveness in en-
+hancing CAM completeness. Chen et al. [9] introduce
+image-specific prototypes by evaluating class-wise Inter-
+section over Union (IoU) between the structure map and
+classifier CAMs. Du et al. [15] propose a pixel-to-prototype
+contrast method, which involves selecting top-K pixel fea-
+15056
+
+
+=== PAGE 3 ===
+Image
+Classifier
+ℒ???
+Encoder
+Classifier 
+CAM
+(I) Feature (Confident) PARTITIONING 
+(II) Feature ALLOCATION
+...  ...
+ℒ?????
+...Class bg
+Class  1
+... ...
+Class  J
+(III) Feature ACTIVATION
+Allocate & Reweight
+Transport plan T
+(J+1)×K
+HW
+Cluster prototype
+...
+...
+Feature
+Cluster 1 ... Cluster K
+...   ...    ...
+Class prototype
+S Cosine similarity
+S
+Regenerated 
+cluster prototype ...
+Eq. (7)   Allocate   
+Eq. (10)
+Reweight
+Eq. (11)    
+Combine
+ActivateActivateActivate
+Eq. (5)
+Marginal constraint
+S
+...
+Figure 2. Illustration of POT. The framework begins by partitioning features with confident CAM values into multiple clusters. Then, an
+optimal transport is constructed to allocate all features to these clusters. This allocation is guided by a marginal constraint, which uses
+cosine similarities between cluster prototypes and class prototypes to ensure accurate allocation. Once the features are allocated, new
+prototypes are generated using all the features within each cluster in feature activation stage. These newly generated prototypes are used
+to activate their corresponding feature clusters. The activated results are reweighted by the transport plan and combined to form the final
+CAM predictions. Additionally, an OT-based consistency loss is applied between the CAM predictions and the classifier CAMs to optimize
+feature representations within the framework. For simplicity, the process in feature activation stage is demonstrated with a single class.
+tures with confident CAM values to compute prototypes.
+Tang et al. [37] refine prototypes by aligning feature distri-
+butions between context prototypes over the whole dataset
+and instance prototypes of the current image. The generated
+prototypes are further used to construct prototype CAMs
+based on cosine similarity between them and feature vec-
+tors. Despite their effectiveness, these prototype-construct
+strategies generally rely on a single prototype per class to
+activate features, which is inadequate given the huge intra-
+class variations in the dataset. Unlike these approaches, our
+method leverages multiple cluster prototypes to generate
+prototype CAMs, providing a more comprehensive repre-
+sentation of foreground classes. While Chen et al. [10] uti-
+lize multiple clusters as well, their approach generates such
+clusters across the dataset, relying on manually set thresh-
+olds to select prototypes. This operation limits their perfor-
+mance. In contrast, our method employs optimal transport
+to learn an adaptive allocation strategy, leading to improved
+results without the need for manual parameter tuning.
+Optimal Transport. Optimal Transport (OT) [39] offers an
+effective method for transferring mass between two distri-
+butions. To reduce the computational cost of OT, Sinkhorn
+OT [14, 23] is proposed, which can be efficiently solved
+using the Sinkhorn algorithm. This algorithm ensures the
+widespread applicability of OT among various fields. In
+computer vision, OT has been successfully applied to many
+different tasks, such as generative models [2, 56], structural
+matching [45, 56], image matching [54], and domain adap-
+tation [3, 4, 28, 50]. All these applications seek to find an
+optimal plan that minimizes a specific cost function. In our
+work, we employ optimal transport to create an allocation
+plan that assigns features to the most appropriate clusters.
+By learning such an adaptive transport plan [34], we im-
+prove the efficiency and effectiveness of feature distribu-
+tion, allowing for more precise feature clustering.
+3. Methodology
+This section presents a detailed explanation of the pro-
+posed Prototypical Optimal Transport (POT) framework for
+WSSS, as depicted in Fig. 2. The framework includes three
+key stages: feature partitioning, feature allocation, and fea-
+ture activation. In the first stage, feature vectors with con-
+fident classifier CAM values are grouped into a fixed num-
+ber of clusters for each class. These clusters capture the
+most critical characteristics of their respective classes, and
+a cluster prototype is generated for each of them to serve as
+an anchor for the subsequent feature allocation. The second
+stage employs Optimal Transport (OT) to allocate features
+to clusters. The resulting transport plan provides the prob-
+ability distribution for assigning each feature to a specific
+15057
+
+
+=== PAGE 4 ===
+cluster prototype established in the first stage, thereby guid-
+ing the systematic allocation of feature vectors. In the final
+stage, the cluster prototypes are updated based on the newly
+allocated feature vectors, and features are activated indi-
+vidually by calculating cosine similarities with their corre-
+sponding cluster prototypes. In addition, an OT-based con-
+sistency loss is introduced to maintain the consistency of the
+final activation results and the classifier CAMs, which op-
+timizes the feature representation and provides an effective
+and bounded exploration of prototypes.
+3.1. Feature Partitioning
+This section provides a detailed description of the feature
+partitioning stage. For an input image, F4 ∈ RD×H×W
+represents the feature map produced by the last layer of the
+encoder, where D, H, and W denotes the dimensions of
+the feature map. Additionally, the classifier weight for each
+class c is denoted as θc ∈ RD×1. The original classifier
+CAMs are derived as follows:
+Mcls(F4, θ) =
+n
+ReLU (θT
+1 F4), · · · , ReLU(θT
+|C|F4)
+o
+| {z }
+|C| f oreground classes
+∪
+
+(1 − max
+c∈C
+(ReLU (θT
+c F4)))
+
+| {z }
+1 background class
+,
+(1)
+where T denotes the transpose operation and|C| denotes the
+number of foreground classes in set C.
+The classifier CAMs effectively highlight the most dis-
+criminative regions for each category [10, 42]. To capture
+the significant representations of these regions for the sub-
+sequent feature allocation stage, CAM-based prototypes are
+established as anchors for each class in an image. However,
+previous methods [9, 57, 58] typically rely on a single pro-
+totype per class, which often fails to capture the full range
+of attributes within each foreground class due to their sub-
+stantial intra-class variations [37]. Therefore, they can only
+activate features in close proximity to the prototype, lead-
+ing to incomplete foreground CAM predictions. To address
+this limitation, we propose the use of multiple prototypes
+within each class. Each of these cluster prototypes captures
+attributes from features within its specific cluster, enabling
+a more comprehensive activation of features and a more ac-
+curate representation of the class. Specifically, the k-means
+approach is used to separate features in activated regions for
+each class. Features with CAM values above a threshold τ
+are clustered into K groups for each class (including back-
+ground class) present in the image. The cluster prototypes
+are represented as P ∈ R(J+1)×K×D, where J denotes the
+number of foreground classes and Pc,k denotes the proto-
+type for the k-th cluster of class c. The cluster prototypes
+can be defined as:
+P = M AP
+ 
+M ask
+ 
+F4, Mcls
+⊙ L (F1, F2, F3, F4)
+
+,
+(2)
+where M AP(·) denotes average pooling over the spatial di-
+mension of flattened features. M ask(·) generates a binary
+mask Mask ∈ RHW ×(J+1)×K according to the clustering
+results of confident features, where Maski,c,k = 1 indicates
+the feature at position i is clustered to the k-th cluster of
+class c. Fi represents the feature map produced by the i-
+th layer of encoder. The function L(·) represents a linear
+projection, and ⊙ denotes element-wise multiplication.
+3.2. Feature Allocation
+Following feature partitioning in Section 3.1, the next stage
+involves allocating all the feature vectors to the previously
+generated clusters. The key challenge in this stage is to ef-
+fectively measure the distances between features and candi-
+date prototypes. Common distance metrics, such as cosine
+distance, typically focus on point-to-point solutions. These
+methods calculate the distance between each feature and
+prototype and then select the closest prototype for feature
+allocation. However, these methods ignore the interactions
+among features and treat each allocation individually. In
+practice, feature allocation in this task should be consid-
+ered a set-to-set problem, where the allocation of certain
+features affects the subsequent allocation of others. To ad-
+dress such a problem, Optimal Transport (OT) theory pro-
+vides a comprehensive framework. We first briefly intro-
+duce OT theory and then demonstrate its role in the fea-
+ture allocation stage. Essentially, OT aims to optimize the
+transfer of mass between two distributions under specified
+marginal constraints [39]. Let M and N denote the lengths
+of these two distributions. The cost matrix associated with
+the transfer between these two distributions is represented
+as C ∈ RM ×N . The OT problem can be defined as:
+T∗(C) = arg min
+T
+MX
+i=1
+NX
+j=1
+Ti,jCi,j,
+s. t. T1N = u, TT 1M = v,
+(3)
+where T is the transport plan matrix. 1M and 1N are col-
+umn vectors of ones with dimensions M and N, respec-
+tively. u and v are the source and target probability dis-
+tributions. Typically, these distributions are set to uniform
+distributions [28, 35], i.e., ui = 1 /M and vj = 1 /N, im-
+plying that the mass in the source distribution is equally
+transported to the target distribution.
+In our scenario, features and prototypes are modeled as
+two distributions, and the ultimate goal is to assign features
+to corresponding prototypes based on their pairwise dis-
+tances. The optimal transport theory allows us to find the
+best strategy to assign these features, minimizing the total
+15058
+
+
+=== PAGE 5 ===
+distance across all possible assignments. However, tradi-
+tional OT methods treat all cluster prototypes equally and
+ignore the varying importance of these cluster prototypes
+in each class. To address this limitation, we introduce a
+similarity-aware optimal transport method. The similarities
+between the cluster prototypes and corresponding classi-
+fier CAM prototypes are leveraged to generate a similarity-
+aware marginal constraint for optimal transport. Specifi-
+cally, a similarity matrix, denoted as X ∈ R(J+1)×K, is
+constructed where each element xc,k represents the similar-
+ity between the k-th cluster prototype Pc,k of class c and
+the classifier CAM prototype Pcls
+c of the same class c. This
+similarity is defined as follows:
+xc,k = sim⟨Pc,k, Pcls
+c ⟩, (4)
+where sim⟨·, ·⟩ denotes cosine similarity. The matrix X is
+first flattened and then passed through a softmax function to
+construct the marginal similarity-aware constraint:
+x = softmax (Flat(X)) , (5)
+where Flat (·) denotes flattening operation. This transfor-
+mation ensures that the marginal constraints are normalized
+and represent the relative importance of cluster prototypes.
+Marginal constraints are used to define the distributions
+in optimal transport. In previous methods [4, 35], average
+constraint is applied to the target distribution, which results
+in a uniform allocation of features across all cluster proto-
+types. Instead, we replace the average constraint with the
+similarity-aware constraint from Eq. (5) on the target dis-
+tribution. This modification enables the transport process
+to prioritize cluster prototypes with higher similarities to
+the classifier prototype, thereby allocating more features to
+high-similarity cluster prototypes while reducing allocation
+to those with lower similarities. To find the optimal trans-
+port plan T ∈ RM ×N that maximizes the similarities (i.e.,
+minimizes the pairwise distances) between feature vectors
+and cluster prototypes under our proposed similarity-aware
+constraint, the objective function is formulated as follows:
+T∗(S) = arg max
+T
+MX
+i=1
+NX
+j=1
+Ti,jSi,j,
+s. t. T1N = 1
+M 1M , TT 1M = x,
+(6)
+where S ∈ RM ×N is a similarity map and the element Si,j
+represents the cosine similarity between the i-th feature and
+the j-th cluster prototype. N is the total number of proto-
+types and N = ( J + 1) × K. M is the number of feature
+vectors and M = HW . 1M is a column vector of ones with
+dimension M. To improve the computational efficiency,
+Sinkhorn distance [13] is employed for fast optimization as
+in previous methods [4, 5].
+Upon completion of the optimization process, we obtain
+an optimized transport plan T∗. The elements in the i-th
+row of T∗ represent a categorical distribution, indicating
+the likelihood of allocating the i-th feature to each cluster
+prototype. Finally, following a greedy strategy, the i-th fea-
+ture is assigned to the prototype with the highest probability,
+as in the previous methods [4, 35]:
+j∗ = arg max
+j
+T∗
+i,j. (7)
+Through the optimized transport plan, each feature is as-
+signed to a specific cluster prototype. This assignment pro-
+cess promotes the clustering of similar features in the fea-
+ture space, thereby enhancing the representation capability
+of the model.
+3.3. Feature Activation
+The optimal transport plan elements indicate the likelihood
+of allocating feature vectors to various prototypes, and they
+are employed to reweight the prototype CAMs and weight
+the training loss in our POT framework.
+Reweighting Prototype CAMs. The initial cluster proto-
+types in Eq. (2) are obtained from confident CAM predic-
+tions. To fully activate features within each cluster, it is
+essential to update these cluster prototypes by incorporat-
+ing newly assigned features according to the transport plan
+allocation in the preceding stage. Specifically, cluster pro-
+totypes P∗ ∈ R(J+1)×K×D are re-generated using all fea-
+tures allocated to them:
+P∗ = M AP
+ 
+M ask∗(T∗) ⊙ L(F1, F2, F3, F4)
+
+. (8)
+The function M ask∗(·) generates a re-allocation binary
+mask Mask∗ ∈ RHW ×(J+1)×K, where an element
+Mask∗
+i,c,k = 1 indicates that the feature at position i is as-
+signed to the k-th cluster of class c according to the trans-
+port plan. Fi represents the feature map produced by the
+i-th layer of the encoder. By incorporating all allocated fea-
+tures, the updated prototypes encapsulate a more compre-
+hensive representation within each cluster, including both
+confident and less confident features. This operation en-
+ables the prototypes to activate features within their respec-
+tive clusters more effectively compared to those derived
+solely from confident CAM values in Eq. (2).
+Subsequently, the prototype CAM for the k-th cluster of
+class c, denoted as Mp
+c,k, is derived by calculating the co-
+sine similarity between the hierarchical features and its up-
+dated prototype P∗
+c,k as follows:
+Mp
+c,k = ReLU
+ 
+sim⟨P∗
+c,k, L(F1, F2, F3, F4)⟩
+
+. (9)
+The final prototype CAMs are constructed by aggregat-
+ing the pixel-weighted results from the obtained prototype
+CAMs. Initially, these prototype CAMs are reweighted us-
+ing the optimized transport plan. The elements allocated to
+15059
+
+
+=== PAGE 6 ===
+the k-th cluster of class c in the transport plan T∗, denoted
+as T∗
+c,k, are used to reweight the corresponding prototype
+CAMs. This operation prioritizes feature-prototype pairs
+with higher similarities while de-emphasizing those with
+minimal similarities, ensuring a more accurate representa-
+tion of the relationships between features and prototypes:
+Mp∗
+c,k = T∗
+c,k ⊙ Mp
+c,k. (10)
+The refined prototype CAMs contain K activated results
+for each class. Each of these results partially activates a
+distinct region within that class. To construct the final pro-
+totype CAM for each class c, these K activation results are
+aggregated by summing them together:
+Mp∗
+c =
+KX
+i=1
+Mp∗
+c,k. (11)
+Weighting Consistency Loss. To ensure that the gener-
+ated prototype CAM does not diverge significantly from the
+classifier CAM, we introduce an OT-based consistency loss,
+which leverages the transport plan derived in Eq. (6). Un-
+like the uniform-based consistency loss in previous meth-
+ods [9, 57, 58], which disregards the certainty in the predic-
+tions and treats all pixels equally, our OT-based consistency
+loss employs a pixel-level adaptive weights. This weight ad-
+justs the contribution of each pixel in the loss computation
+between the optimized prototype CAMs and the classifier
+CAMs. It enforces strong constraints on pixels with high
+certainty in their predictions while relieving them on those
+with lower certainty (i.e., the prediction value closes to 0.5).
+Specifically, the adaptive weight is applied along the class
+dimension for each pixel, and the OT-based consistency loss
+is defined as follows:
+Lotcon = 1
+HW
+HWX
+i=1
+|C|+1X
+c=1
+wi,c∥Mp∗
+i,c − Mcls
+i,c∥1, (12)
+where ∥ · ∥ denotes the ℓ1-normalization. Mp∗
+and Mcls
+denote the optimized prototype CAMs and the classifier
+CAMs. The coefficient wi,c is derived from the transport
+plan for each foreground class c as well as the background:
+wi,c = lc
+
+1 − 1
+log(|C| + 1) H (g(ti,c))
+
+, (13)
+where lc represents the one-hot label for the c-th class,
+1/ log(|C| + 1)is a scaling factor andg(ti,c) =PK
+k=1 ti,c,k.
+The ti,c,k denotes the value in the i-th row allocated to the
+k-th cluster of class c within the transport plan. The sum of
+the K values for a specific feature at position i and class c,
+referred to as g(ti,c), indicates the probability of the feature
+belonging to this class [4, 5]. The binary entropyH(g(ti,c))
+of the distribution g(ti,c) is defined as:
+H(g(ti,c)) = −g(ti,c) log g(ti,c) − (1 − g(ti,c)) log(1− g(ti,c)).
+(14)
+Method PASCAL VOC
+CAM Mask
+AdvCAM CVPR’21 [24] 55.6 69.9
+CLIMSCVPR’22 [43] 56.6 70.5
+SIPECVPR’22 [9] 58.6 68.0
+AEFTECCV’22 [51] 56.0 71.0
+MCTformer CVPR’22 [46] 61.7 69.1
+AMNCVPR’22 [26] 62.1 72.2
+LPCAM CVPR’23 [10] 65.3 72.7
+MCTformer+ TPAMI’24 [47] 68.8 76.2
+CLIP-ES+CPALCVPR’24 [37] 71.9 75.8
+CLIP-ES+PSDPM CVPR’24 [58] - 77.3
+SFCAAAI’24 [57] 64.7 73.7
+SFC + Ours 68.5 76.5
+CLIP-ES CVPR’23 [31] 70.8 75.0
+CLIP-ES + Ours 75.0 79.3
+Table 1. Evaluation (mIoU (%)) of CAM and pseudo-label (de-
+noted as Mask) results on PASCAL VOC 2012 train set.
+The value of H(g(ti,c)) approaches the maximum as un-
+certainty increases and conversely approaches 0 when un-
+certainty is low. As a result, the adaptive coefficient wi,c
+dynamically adjusts the contribution from each pixel, as-
+signing lower weights to pixels with higher prediction un-
+certainty. By incorporating this adaptive weighting scheme,
+our method enforces varying constraint levels between opti-
+mized prototype CAMs and classifier CAMs, enhancing the
+efficiency and effectiveness of the training process.
+3.4. Overall Training Objective
+We utilize the multi-label classification loss Lcls, together
+with the OT-based consistency loss Lotcon, to train our
+model. The overall loss function is defined as:
+Ltotal = Lcls + λLotcon, (15)
+where λ is the weighting parameter. The multi-label soft
+margin classification loss Lcls is expressed as:
+Lcls = 1
+|C|
+|C|X
+c=1
+lc log
+ 
+sigmoid
+ 
+GAP
+ 
+θT
+c F
+
++ (1 − lc) log
+ 
+1 − sigmoid
+ 
+GAP
+ 
+θT
+c F
+
+,
+(16)
+where GAP (·) function denotes the global average pooling.
+4. Experiment
+4.1. Experiment Settings
+Datasets and Evaluation Metrics. Our approach is eval-
+uated on two widely used benchmark datasets: PASCAL
+VOC 2012 [16] and MS COCO 2014 [30]. PASCAL VOC
+15060
+
+
+=== PAGE 7 ===
+Image
+CLIP-ES 
+CAM
+Our CAM
+Groundtruth
+Figure 3. Visualization results on PASCAL VOC 2012 dataset. Our approach generates more comprehensive visual results compared to
+the results from CLIP-ES [31].
+2012 contains 20 foreground classes, and its extended train-
+ing set, SBD [17], which includes 10,582 images, is used
+for training. MS COCO 2014 consists of 80 foreground
+classes, with 80k images for training and 40k images for
+validation. The mean Intersection-over-Union (mIoU) [32]
+is used as the evaluation metric to assess the performance
+of the models across all experiments.
+Implementation Details. For pseudo-label generation, we
+adopt the ImageNet pre-trained ResNet50 [18]. Training is
+conducted with the stochastic gradient descent (SGD) op-
+timizer for 6 epochs with a batch size of 16. The learning
+rates for the Encoder and additional layers are set to 0.1 and
+1, respectively, following prior research [9, 43]. A poly-
+nomial learning rate scheduler with a power of 0.9 is also
+implemented. The loss coefficient λ is set to 3 in Eq. (15).
+The parameter K for k-means clustering and the threshold
+τ in Section 3.1 are set to 3 and 0.7, respectively. Pseudo-
+labels are generated leveraging DenseCRF [20] and IRN [1]
+following previous methods [9, 57, 58].
+4.2. Comparison with the State-of-the-art
+Comparison of Pseudo-label Quality. To evaluate the
+effectiveness of our approach, we conduct a comparative
+analysis focusing on CAMs (denoted as CAM) and pseudo
+masks (denoted as Mask), as outlined in Tab. 1. Our
+method is incorporated into two prominent baseline mod-
+els: CLIP-ES [31] and SFC [57]. The experimental results
+in Tab. 1 demonstrate the consistent improvements across
+both baseline methods. Notably, when applied to the CLIP-
+ES [31] baseline, our method increases CAM and pseudo-
+label quality by 4.2% and 4.3%, respectively, surpassing all
+other WSSS methodologies. To illustrate these improve-
+ments, we compare the qualitative outcomes of CAMs gen-
+erated by our method against those from CLIP-ES [31]. As
+depicted in Fig. 3, our approach consistently delivers more
+comprehensive results than the baseline method.
+Comparison of WSSS Performance. In WSSS, pseudo
+masks are employed as groundtruth to fully supervise the
+training of segmentation models [9, 43]. Tab. 2 presents the
+quantitative comparison of our method and recent state-of-
+Method VOC MS COCO
+val test val
+AdvCAMCVPR’21[24] 68.1 68.0 42.6
+ReCAMCVPR’22[11] 68.5 68.4 -
+URNAAAI’22[29] 69.5 69.7 40.7
+SIPECVPR’22[9] 68.8 69.7 43.6
+AMNCVPR’22[26] 69.5 69.6 44.7
+W-OoDCVPR’22[25] 70.7 70.1 -
+AEFTECCV’22[51] 70.9 71.7 44.8
+FPRICCV’23[7] 70.0 70.6 43.9
+OCR+SEAMCVPR’23[12] 67.8 68.4 -
+LPCAMCVPR’23[10] 70.1 70.4 45.5
+FPRICCV’23[7] 70.3 70.1 -
+CLIP-ES+PSDPMCVPR’24[58] 74.1 74.9 47.2
+CLIP-ES+CPALCVPR’24[37] 74.5 74.7 46.8
+SFCAAAI’24[57] 71.2 72.5 46.8
+SFC + Ours 74.5 75.2 47.6
+CLIP-ESCVPR’23[31] 71.1 71.4 45.4
+CLIP-ES + Ours 76.1 76.7 47.9
+Table 2. Evaluation (mIoU (%)) of segmentation performances on
+PASCAL VOC 2012 and MS COCO 2014 datasets.
+the-art models on the PASCAL VOC 2012 and MS COCO
+2014 datasets. Our method achieves 76.1% and 76.7%
+mIoUs using an ImageNet pre-trained backbone on PAS-
+CAL VOC 2012 and 47.9% mIoU on MS COCO 2014,
+surpassing all other multistage image-level WSSS meth-
+ods. Furthermore, the consistent performance improve-
+ments achieved by our framework across various baseline
+methods and datasets highlight that these original single-
+prototype baselines are limited by their single-prototype de-
+sign. Our approach can effectively alleviate this limitation
+and achieve substantial performance improvement.
+4.3. Ablation Studies
+To thoroughly assess the effectiveness of the proposed
+method, we conduct ablation studies focusing on three key
+components: multi-cluster activation, similarity-aware OT,
+and OT-based consistency loss. The results are presented
+in Tab. 3 and Tab. 4. In these experiments, we integrate
+our method into the CLIP-ES model [31]. Since CLIP-
+15061
+
+
+=== PAGE 8 ===
+# Base Single-cluster Multi-cluster SOT &Lotcon mIoU (%)
+I ✓ 70.8
+II ✓ ✓ 71.5
+III ✓ ✓ 72.9
+IV ✓ ✓ ✓ 75.0
+Table 3. Ablation study of our framework on PASCAL VOC
+2012 train set. The mIoU (%) metric is used for evaluation.
+CLIP-ES [31] is adopted as the baseline method. ‘SOT’ denotes
+similarity-aware optimal transport.
+Image Multi-clusterCLIP-ES Multi-cluster
+& SOT
+Cluster
+visualization
+Single-cluster
+Figure 4. Visual comparison of important components.
+ES is a training-free model, we distill its knowledge into
+a ResNet-50 encoder, using a single-cluster activation setup
+as the baseline for comparison. Detailed structural informa-
+tion can be found in the supplementary material.
+Multi-cluster Activation. We conduct ablation studies in
+conditions II and III to evaluate the effectiveness of multi-
+cluster activation. To avoid the influence of OT, we con-
+duct these two experiments without using OT. Instead, we
+directly allocate features to specific classes based on the
+cosine similarity with class prototypes. After that, proto-
+types are regenerated and features are activated in line with
+the POT pipeline. By comparing conditions II and III, we
+find that multi-cluster activation results in an improvement
+of 1.4% in performance. Visualizations of sample results,
+shown in Fig. 4 (3rd and 4th columns), illustrate that multi-
+cluster activation leads to more comprehensive CAM pre-
+dictions. Both the quantitative and qualitative results high-
+light the advantages and effectiveness of multi-cluster acti-
+vation in our framework.
+Similarity-aware OT. Tab. 4 presents a detailed analysis
+of the improvements achieved by OT, using condition III
+as the baseline for comparison. Applying vanilla OT leads
+to a 1.2% increase in mIoU, achieving a performance of
+74.1%. Further incorporating similarity-aware OT results
+in an additional 0.5% performance boost, demonstrating the
+advantages of the similarity-aware constraint in the optimal
+# Base OT SOT Lcon Lotcon mIoU (%)
+III ✓ ✓ 72.9
+V ✓ ✓ ✓ 74.1
+VI ✓ ✓ ✓ 74.6
+VII ✓ ✓ ✓ 75.0
+Table 4. Ablation study of OT-enhanced components on PASCAL
+VOC 2012 train set. The mIoU (%) metric is used for evaluation.
+Condition III is adopted as the baseline in this table. ‘Lcon’ refers
+to the loss calculated without including the coefficient wi,c.
+transport framework. Visual comparisons between results
+obtained with similarity-aware OT (SOT) and those with-
+out OT (the 5th and 4th columns in Fig. 4, respectively)
+show that integrating SOT yields more complete and less
+noisy foreground CAM predictions. One explanation is that
+directly using cosine similarity for feature allocation can
+mistakenly incorporate background features into the fore-
+ground pixel clusters. Consequently, prototypes generated
+from these mixed clusters may inadvertently activate back-
+ground features. In contrast, SOT provides more accurate
+feature allocation, as shown in the 6th column in Fig. 4,
+which visualizes three clusters of the foreground class. This
+approach results in cleaner and more distinct prototypes.
+Furthermore, the reweighting operation in Eq. (10) also di-
+minishes the background noise in CAM predictions.
+OT-based Consistency Loss. When comparing experi-
+ments VI and VII in Tab. 4, it is clear that using OT-based
+consistency loss can enhance CAM performance, achieving
+a final mIoU of 75.0. This result underscores the accuracy
+and effectiveness of the optimized transport plan.
+5. Conclusion
+This paper introduces the POT framework, a novel approach
+designed to address the issue of incomplete CAM predic-
+tions in existing prototype-based approaches. We demon-
+strate that a single prototype is insufficient to capture the
+diverse attributes of foreground objects due to intra-class
+variations, leading to incomplete CAMs. By utilizing multi-
+ple feature clusters and a similarity-aware optimal transport
+strategy, POT achieves precise feature allocation, obtaining
+comprehensive and accurate results. Additionally, we in-
+corporate an OT-based consistency loss to optimize feature
+representations and constrain the prototype exploration, fur-
+ther enhancing the effectiveness of the framework. Exten-
+sive experiments on two popular datasets demonstrate the
+superiority of our proposed method in image-level WSSS.
+Acknowledgement This work is supported by the National Nat-
+ural Science Foundation of China (No. 62471405, 62331003,
+62301451), Jiangsu Basic Research Program Natural Science
+Foundation (SBK2024021981), Suzhou Basic Research Program
+(SYG202316) and XJTLU REF-22-01-010, XJTLU AI University
+Research Center, Jiangsu Province Engineering Research Center
+of Data Science and Cognitive Computation at XJTLU and SIP AI
+innovation platform (YZCXPT2022103), Suzhou Municipal Key
+Laboratory for Intelligent Virtual Engineering (SZS2022004).
+15062
+
+
+=== PAGE 9 ===
+References
+[1] Jiwoon Ahn, Sunghyun Cho, and Suha Kwak. Weakly su-
+pervised learning of instance segmentation with inter-pixel
+relations. In CVPR, pages 2209–2218, 2019. 7
+[2] Martin Arjovsky, Soumith Chintala, and L ´eon Bottou.
+Wasserstein generative adversarial networks. InICML, pages
+214–223, 2017. 3
+[3] Emmanuel Boissard, Thibaut Le Gouic, and Jean-Michel
+Loubes. Distribution’s template estimate with wasserstein
+metrics. Bernoulli, 21(2):740 – 759, 2015. 3
+[4] Wanxing Chang, Ye Shi, Hoang Tuan, and Jingya Wang.
+Unified optimal transport framework for universal domain
+adaptation. In NeurIPS, pages 29512–29524, 2022. 3, 5, 6
+[5] Guangyi Chen, Weiran Yao, Xiangchen Song, Xinyue Li,
+Yongming Rao, and Kun Zhang. Prompt learning with opti-
+mal transport for vision-language models. In ICLR, 2023. 5,
+6
+[6] Liyi Chen, Weiwei Wu, Chenchen Fu, Xiao Han, and Yun-
+tao Zhang. Weakly supervised semantic segmentation with
+boundary exploration. In ECCV, pages 347–362, 2020. 2
+[7] Liyi Chen, Chenyang Lei, Ruihuang Li, Shuai Li, Zhaoxiang
+Zhang, and Lei Zhang. Fpr: False positive rectification for
+weakly supervised semantic segmentation. In ICCV, pages
+1108–1118, 2023. 7
+[8] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L Yuille. Deeplab: Semantic image
+segmentation with deep convolutional nets, atrous convolu-
+tion, and fully connected crfs. IEEE TPAMI, 40(4):834–848,
+2017. 1
+[9] Qi Chen, Lingxiao Yang, Jian-Huang Lai, and Xiaohua
+Xie. Self-supervised image-specific prototype exploration
+for weakly supervised semantic segmentation. In CVPR,
+pages 4288–4298, 2022. 1, 2, 4, 6, 7
+[10] Zhaozheng Chen and Qianru Sun. Extracting class activation
+maps from non-discriminative features as well. In CVPR,
+pages 3135–3144, 2023. 2, 3, 4, 6, 7
+[11] Zhaozheng Chen, Tan Wang, Xiongwei Wu, Xian-Sheng
+Hua, Hanwang Zhang, and Qianru Sun. Class re-activation
+maps for weakly-supervised semantic segmentation. In
+CVPR, pages 969–978, 2022. 7
+[12] Zesen Cheng, Pengchong Qiao, Kehan Li, Siheng Li, Pengxu
+Wei, Xiangyang Ji, Li Yuan, Chang Liu, and Jie Chen.
+Out-of-candidate rectification for weakly supervised seman-
+tic segmentation. In CVPR, pages 23673–23684, 2023. 7
+[13] L ´ena¨ıc Chizat, Gabriel Peyr ´e, Bernhard Schmitzer, and
+Franc ¸ois-Xavier Vialard. Scaling algorithms for unbalanced
+optimal transport problems. Mathematics of Computation ,
+87(314):2563–2609, 2018. 5
+[14] Marco Cuturi. Sinkhorn distances: Lightspeed computation
+of optimal transport. In NeurIPS, pages 2952–2964, 2013. 3
+[15] Ye Du, Zehua Fu, Qingjie Liu, and Yunhong Wang. Weakly
+supervised semantic segmentation by pixel-to-prototype
+contrast. In CVPR, pages 4320–4329, 2022. 2
+[16] Mark Everingham, SM Ali Eslami, Luc Van Gool, Christo-
+pher KI Williams, John Winn, and Andrew Zisserman. The
+pascal visual object classes challenge: A retrospective.IJCV,
+111(4):98–136, 2015. 6
+[17] Bharath Hariharan, Pablo Arbel ´aez, Lubomir Bourdev,
+Subhransu Maji, and Jitendra Malik. Semantic contours from
+inverse detectors. In ICCV, pages 991–998, 2011. 7
+[18] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+Deep residual learning for image recognition. In CVPR,
+pages 770–778, 2016. 7
+[19] Zilong Huang, Xinggang Wang, Jiasi Wang, Wenyu Liu, and
+Jingdong Wang. Weakly-supervised semantic segmentation
+network with deep seeded region growing. In CVPR, pages
+7014–7023, 2018. 2
+[20] Philipp Kr ¨ahenb¨uhl and Vladlen Koltun. Efficient inference
+in fully connected crfs with gaussian edge potentials. In
+NeurIPS, pages 834–848, 2011. 7
+[21] Hyeokjun Kweon, Sung-Hoon Yoon, Hyeonseong Kim,
+Daehee Park, and Kuk-Jin Yoon. Unlocking the poten-
+tial of ordinary classifier: Class-specific adversarial erasing
+framework for weakly supervised semantic segmentation. In
+ICCV, pages 6994–7003, 2021. 2
+[22] Hyeokjun Kweon, Sung-Hoon Yoon, and Kuk-Jin Yoon.
+Weakly supervised semantic segmentation via adversarial
+learning of classifier and reconstructor. In CVPR, pages
+11329–11339, 2023. 2
+[23] Nathaniel Lahn, Sharath Raghvendra, and Kaiyi Zhang.
+A combinatorial algorithm for approximating the optimal
+transport in the parallel and mpc settings. In NeurIPS, pages
+21675–21686, 2023. 3
+[24] Jungbeom Lee, Eunji Kim, and Sungroh Yoon. Anti-
+adversarially manipulated attributions for weakly and semi-
+supervised semantic segmentation. In CVPR, pages 4071–
+4080, 2021. 6, 7
+[25] Jungbeom Lee, Seong Joon Oh, Sangdoo Yun, Junsuk Choe,
+Eunji Kim, and Sungroh Yoon. Weakly supervised semantic
+segmentation using out-of-distribution data. In CVPR, pages
+16897–16906, 2022. 7
+[26] Minhyun Lee, Dongseob Kim, and Hyunjung Shim. Thresh-
+old matters in wsss: manipulating the activation for the ro-
+bust and accurate segmentation model against thresholds. In
+CVPR, pages 4330–4339, 2022. 6, 7
+[27] Seungho Lee, Minhyun Lee, Jongwuk Lee, and Hyunjung
+Shim. Railroad is not a train: Saliency as pseudo-pixel su-
+pervision for weakly supervised semantic segmentation. In
+CVPR, pages 5495–5505, 2021. 2
+[28] Bin Li, Ye Shi, Qian Yu, and Jingya Wang. Unsupervised
+cross-domain image retrieval via prototypical optimal trans-
+port. In AAAI, pages 3009–3017, 2024. 3, 4
+[29] Yi Li, Yiqun Duan, Zhanghui Kuang, Yimin Chen, Wayne
+Zhang, and Xiaomeng Li. Uncertainty estimation via re-
+sponse scaling for pseudo-mask noise mitigation in weakly-
+supervised semantic segmentation. In AAAI, pages 1447–
+1455, 2022. 7
+[30] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+Pietro Perona, Deva Ramanan, Piotr Doll´ar, and C Lawrence
+Zitnick. Microsoft coco: Common objects in context. In
+ECCV, page 740–755, 2014. 6
+[31] Yuqi Lin, Minghao Chen, Wenxiao Wang, Boxi Wu, Ke Li,
+Binbin Lin, Haifeng Liu, and Xiaofei He. Clip is also an ef-
+ficient segmenter: A text-driven approach for weakly super-
+15063
+
+
+=== PAGE 10 ===
+vised semantic segmentation. InCVPR, pages 15305–15314,
+2023. 6, 7, 8
+[32] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully
+convolutional networks for semantic segmentation. In
+CVPR, pages 3431–3440, 2015. 7
+[33] Shenghai Rong, Bohai Tu, Zilei Wang, and Junjie Li.
+Boundary-enhanced co-training for weakly supervised se-
+mantic segmentation. In CVPR, pages 19574–19584, 2023.
+2
+[34] Yossi Rubner, Carlo Tomasi, and Leonidas J Guibas. The
+earth mover’s distance as a metric for image retrieval.IJCV,
+40(2):99–121, 2000. 3
+[35] Heeseong Shin, Chaehyun Kim, Sunghwan Hong, Seokju
+Cho, Anurag Arnab, Paul Hongsuck Seo, and Seungryong
+Kim. Towards open-vocabulary semantic segmentation with-
+out semantic labels. In NeurIPS, pages 29512–29524, 2024.
+4, 5
+[36] Kunyang Sun, Haoqing Shi, Zhengming Zhang, and Yong-
+ming Huang. Ecs-net: Improving weakly supervised seman-
+tic segmentation by using connections between class activa-
+tion maps. In ICCV, pages 7283–7292, 2021. 1
+[37] Feilong Tang, Zhongxing Xu, Zhaojun Qu, Wei Feng,
+Xingjian Jiang, and Zongyuan Ge. Hunting attributes: Con-
+text prototype-aware learning for weakly supervised seman-
+tic segmentation. In CVPR, pages 3324–3334, 2024. 1, 2, 3,
+4, 6, 7
+[38] Feilong Tang, Zhongxing Xu, Ming Hu, Wenxue Li,
+Peng Xia, Yiheng Zhong, Hanjun Wu, Jionglong Su, and
+Zongyuan Ge. Neighbor does matter: Density-aware con-
+trastive learning for medical semi-supervised segmentation.
+In AAAI, 2025. 2
+[39] C ´edric Villani et al., editors. Optimal transport: old and
+new. Springer, 2009. 2, 3, 4
+[40] Jian Wang, Tianhong Dai, Xinqiao Zhao, ´Angel F. Garc´ıa-
+Fern´andez, Eng Gee Lim, and Jimin Xiao. Class activation
+map calibration for weakly supervised semantic segmenta-
+tion. TCSVT, 34(11):11668–11681, 2024. 2
+[41] Jian Wang, Siyue Yu, Bingfeng Zhang, Xinqiao Zhao,
+´Angel F Garc ´ıa-Fern´andez, Eng Gee Lim, and Jimin Xiao.
+Cross-frame feature-saliency mutual reinforcing for weakly
+supervised video salient object detection. Pattern Recogni-
+tion, 150:110302, 2024. 2
+[42] Yude Wang, Jie Zhang, Meina Kan, Shiguang Shan, and
+Xilin Chen. Self-supervised equivariant attention mech-
+anism for weakly supervised semantic segmentation. In
+CVPR, pages 12275–12284, 2020. 2, 4
+[43] Jinheng Xie, Xianxu Hou, Kai Ye, and Linlin Shen. Clims:
+cross language image matching for weakly supervised se-
+mantic segmentation. In CVPR, pages 4483–4492, 2022. 6,
+7
+[44] Jinheng Xie, Jianfeng Xiang, Junliang Chen, Xianxu Hou,
+Xiaodong Zhao, and Linlin Shen. C2am: Contrastive learn-
+ing of class-agnostic activation map for weakly supervised
+object localization and semantic segmentation. In CVPR,
+pages 989–998, 2022. 2
+[45] Hongteng Xu, Dixin Luo, Hongyuan Zha, and
+Lawrence Carin Duke. Gromov-wasserstein learning
+for graph matching and node embedding. In ICML, pages
+6932–6941. PMLR, 2019. 3
+[46] Lian Xu, Wanli Ouyang, Mohammed Bennamoun, Farid
+Boussaid, and Dan Xu. Multi-class token transformer for
+weakly supervised semantic segmentation. In CVPR, 2022.
+6
+[47] Lian Xu, Mohammed Bennamoun, Farid Boussaid, Hamid
+Laga, Wanli Ouyang, and Dan Xu. Mctformer+: Multi-class
+token transformer for weakly supervised semantic segmen-
+tation. IEEE TPAMI, 2024. 6
+[48] Zhongxing Xu, Feilong Tang, Zhe Chen, Zheng Zhou, Weis-
+han Wu, Yuyao Yang, Yu Liang, Jiyu Jiang, Xuyue Cai, and
+Jionglong Su. Polyp-mamba: Polyp segmentation with vi-
+sual mamba. In MICCAI, 2024. 2
+[49] Zhongxing Xu, Feilong Tang, Zhe Chen, Yingxue Su, Zhiyi
+Zhao, Ge Zhang, Jionglong Su, and Zongyuan Ge. To-
+ward modality gap: Vision prototype learning for weakly-
+supervised semantic segmentation with clip. In AAAI, 2025.
+2
+[50] Yucheng Yang, Xiang Gu, and Jian Sun. Prototypical partial
+optimal transport for universal domain adaptation. In AAAI,
+pages 10852–10860, 2023. 3
+[51] Sung-Hoon Yoon, Hyeokjun Kweon, Jegyeong Cho, Shin-
+jeong Kim, and Kuk-Jin Yoon. Adversarial erasing frame-
+work via triplet with gated pyramid pooling layer for weakly
+supervised semantic segmentation. In ECCV, pages 326–
+344, 2022. 2, 6, 7
+[52] Bingfeng Zhang, Jimin Xiao, Jianbo Jiao, Yunchao Wei,
+and Yao Zhao. Affinity attention graph neural network for
+weakly supervised semantic segmentation. IEEE TPAMI, 44
+(11):8082–8096, 2021. 2
+[53] Bingfeng Zhang, Jimin Xiao, Yunchao Wei, and Yao Zhao.
+Credible dual-expert learning for weakly supervised seman-
+tic segmentation. IJCV, 131(8):1892–1908, 2023. 1
+[54] Chi Zhang, Yujun Cai, Guosheng Lin, and Chunhua Shen.
+Deepemd: Few-shot image classification with differentiable
+earth mover’s distance and structured classifiers. In CVPR,
+pages 12203–12213, 2020. 3
+[55] Xiaolin Zhang, Yunchao Wei, Jiashi Feng, Yi Yang, and
+Thomas S Huang. Adversarial complementary learning for
+weakly supervised object localization. In CVPR, pages
+1325–1334, 2018. 2
+[56] Wenliang Zhao, Yongming Rao, Ziyi Wang, Jiwen Lu, and
+Jie Zhou. Towards interpretable deep metric learning with
+structural matching. In ICCV, pages 9887–9896, 2021. 3
+[57] Xinqiao Zhao, Feilong Tang, Xiaoyang Wang, and Jimin
+Xiao. Sfc: Shared feature calibration in weakly supervised
+semantic segmentation. In AAAI, pages 7525–7533, 2024. 1,
+4, 6, 7
+[58] Xinqiao Zhao, Ziqian Yang, Tianhong Dai, Bingfeng Zhang,
+and Jimin Xiao. Psdpm: Prototype-based secondary discrim-
+inative pixels mining for weakly supervised semantic seg-
+mentation. In CVPR, pages 3437–3446, 2024. 1, 4, 6, 7
+[59] Bolei Zhou, Aditya Khosla, Agata Lapedriza, Aude Oliva,
+and Antonio Torralba. Learning deep features for discrim-
+inative localization. In CVPR, pages 2921–2929, 2016. 1,
+2
+15064

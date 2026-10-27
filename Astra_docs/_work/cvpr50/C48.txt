@@ -1,0 +1,1089 @@
+=== PAGE 1 ===
+Selective, Regularized, and Calibrated: Harnessing Vision Foundation Models
+for Cross-Domain Few-Shot Semantic Segmentation
+Junyuan Ma1,2*, Xunzhi Xiang1, Wenbin Li1, Qi Fan1B, Yang Gao1
+1Nanjing University 2University of Chinese Academy of Sciences
+majunyun23@mails.ucas.ac.cn, xbxsxp@gmail.com, {liwenbin, fanqi, gaoy}@nju.edu.cn
+Abstract
+Vision foundation models (VFMs) have achieved strong per-
+formance across various vision tasks. However, it still re-
+mains challenging to apply VFMs for cross-domain few-
+shot segmentation (CD-FSS), which segments objects of
+novel classes under domain shifts using only a few la-
+beled exemplars. The challenge is mainly driven by two
+factors: (1) limited labeled exemplars per novel class
+relative to the scale of VFM pre-training, making the
+model prone to overfitting during retraining, and (2) target-
+domain shifts underrepresented during pre-training, induc-
+ing cross-domain inconsistency and layerwise sensitivity.
+To address these issues, we propose Hierarchical Exemplar
+Representation Adaptation (HERA), a three-stage select-
+regularize-calibrate VFM-based segmentation framework
+that learns effectively from limited labels and adapts to
+novel domains without source-data retraining. We first de-
+sign Hierarchical Layer Selection (HLS) to adaptively iden-
+tify the most informative VFM layer using a data-dependent
+Exemplar Transfer Risk (ETR) computed for each candi-
+date layer. Then, Prior-Guided Regularization (PGR) reg-
+ularizes interactions on the selected representation, yield-
+ing well-structured local signals for the subsequent stage.
+Furthermore, Pixelwise Adaptive Calibration (PAC) com-
+bines the selected representation with the refined interaction
+maps to calibrate pixelwise predictions, producing consis-
+tent masks. Together, these stages form a hierarchical se-
+lect–regularize–calibrate pipeline that guides frozen VFM
+features in new domains while fine-tuning less than 2.7%
+of parameters at test time. Extensive experiments show that
+HERA surpasses the state-of-the-art by more than 4.1 mIoU
+across multiple CD-FSS benchmarks.
+1. Introduction
+Few-shot semantic segmentation (FSS) aims to generate
+pixel-level predictions for novel classes using only a few
+* Work done during an internship at Nanjing University.
+B Corresponding author.
+Pixelwise Adaptive
+Calibration
+Mask Prediction
+Support Set
+Query Image
+VFM Backbone
+Prior-Guided
+Regularization
+Episode-wise 
+best layer
+Attention 
+regularization
+img residual
+attn residual
+sim residual
+ Our HERA framework（Select–Regularize–Calibrate ）
+Why VFMs are fragile in CD-FSS
+few labeled
+exemplars per class
+target-domain
+distribution shifts
+prone to overfittingrepresentation
+mismatch
+Fragile support-query correspondence
+Outcomes
++4.1 mIoU over SOTA
+Source-free deployment
+<2.7% parameters updated
+Figure 1. Scarce labels and target domain shift co-occur in CD-
+FSS, making VFMs fragile in deployment. Retraining tends to
+overfit and misalign representations, thereby destabilizing sup-
+port–query correspondence. Our method HERA, a three-stage
+select-regularize-calibrate framework, adapts a frozen VFM at test
+time with only limited labeled exemplars and no source data,
+achieving state-of-the-art performance.
+labeled support exemplars. Existing methods [12, 38, 53,
+60] learn class-agnostic correspondences from constructed
+pairs of support and query images, which transfers knowl-
+edge from base to novel classes and yields strong in-domain
+generalization. However, when the deployment distribu-
+tion differs from the training distribution, the learned cor-
+respondences and class prototypes degrade, leading to large
+performance drops. This motivates cross-domain few-shot
+segmentation (CD-FSS), which seeks to generalize to novel
+classes in unseen target domains under distribution shift, us-
+ing only a few labeled support exemplars.
+Existing CD-FSS methods [21, 39, 48] predominantly
+rely on CNN backbones, and typically extend in-domain
+FSS either by retraining on source data with domain-
+generalization techniques or by mining cross-image corre-
+spondences. Although effective in controlled settings, these
+approaches are costly and depend on source data. Their
+convolutional inductive biases limit long-range reasoning
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+12385
+
+
+=== PAGE 2 ===
+and robustness under distribution shift, leading to overfit-
+ting with sparse labels. Given these limitations, replac-
+ing CNN backbones with vision foundation models (VFMs)
+yields stronger and more transferable representations.
+VFMs are pretrained vision backbones that provide
+transferable representations across recognition, segmenta-
+tion, and multimodal tasks [7, 40, 45]. Despite these
+strengths, applying them to CD-FSS is challenging for two
+reasons. First, the few-shot regime offers only a hand-
+ful of labeled exemplars per novel class, so retraining is
+prone to overfitting, source-dependent, and computation-
+ally prohibitive for large models. Second, distribution shifts
+place target domains outside pretraining coverage, so using
+frozen features or adapting all layers indiscriminately yields
+cross-domain inconsistency and pronounced layer sensitiv-
+ity, which destabilize correspondence and pixel predictions.
+Empirically, VFM features exhibit sharp layerwise variation
+in transferability under shift [29, 43, 44]. Adapting a single
+stable layer reduces degrees of freedom and curbs overfit-
+ting. Notably, most recent VFM-based CD-FSS methods
+[20, 36, 50] still assume source-domain pretraining, which
+directly conflicts with constraints on source-data access and
+is prone to overfitting in few-shot regimes. Therefore, it is
+necessary to adopt source-free test-time adaptation [34] that
+first selects the most informative layer for adaptation and
+then keeps the remaining backbone frozen while updating
+only a small subset of parameters.
+To address these issues, we present Hierarchical Exem-
+plar Representation Adaptation (HERA), as shown in Fig. 1,
+an efficient VFM-based segmentation framework that learns
+from limited labels and adapts to novel domains without
+source data retraining. We first propose Hierarchical Layer
+Selection (HLS) to estimate a per-episode Exemplar Trans-
+fer Risk (ETR) for each candidate layer from the few la-
+beled supports and the forward activations, and choose the
+lowest risk layer as the working representation. We then
+confine test time updates to a small subset of parameters at
+this layer and keep the rest of the backbone frozen.
+Even with a stable representation, token interaction
+maps, such as the self-attention maps used in ViTs, re-
+main noisy under distribution shift. To mitigate this,
+Prior Guided Regularization (PGR) regularizes the atten-
+tion on the selected representation with a lightweight spa-
+tial prior, strengthening locality and structural consistency
+while preserving global coverage. Finally, Pixelwise Adap-
+tive Calibration (PAC) combines the selected representation
+with these prior guided attention maps and a query-image
+prototype-contrast map to calibrate pixel-level predictions,
+correcting residual artifacts along thin boundaries and in
+low-contrast regions. In summary, our contributions are:
+• We present HERA, a source-free test-time adaptation
+framework for CD-FSS with VFMs that organizes adap-
+tation as select, regularize, and calibrate, keeps the back-
+bone frozen while fine-tuning less than 2.7% of parame-
+ters at test time in a lightweight manner.
+• We introduce Hierarchical Layer Selection (HLS), driven
+by a data-dependent Exemplar Transfer Risk (ETR),
+which selects the lowest-risk layer per episode from a few
+labeled supports and cached forward activations, thereby
+localizing adaptation to a small parameter subset.
+• We couple Prior-Guided Regularization (PGR) and Pixel-
+wise Adaptive Calibration (PAC) to regularize target-side
+structure and calibrate pixel-wise predictions, yielding a
+coherent hierarchy from representation to prediction.
+• Extensive experiments on multiple CD-FSS benchmarks
+show consistent gains over prior methods, improving by
+over 4.1 mIoU, with ablations validating each stage and
+confirming strong parameter efficiency.
+2. RELA TED WORK
+Few-Shot Semantic Segmentation (FSS)aims to predict
+pixel-level masks for novel classes using only a few labeled
+supports. Most existing methods fall into two families.
+Prototype-based approaches form class prototypes in fea-
+ture space and classify queries by similarity [10, 27, 28, 31].
+Affinity-based approaches compute dense correlations or
+attention between support and query features to propagate
+context [12, 37, 38, 41]. Subsequent works strengthen FSS
+through multi-scale context aggregation, prototype refine-
+ment, and mask-level regularization [4, 41, 47], yet most
+assume matched training and test distributions, leaving ro-
+bustness to domain shift largely unexplored.
+Cross-Domain Few-Shot Segmentation (CD-FSS)aims
+to generalize to novel classes in an unseen target domain us-
+ing a few labeled support exemplars. Prior work is largely
+CNN-based and follows two lines. Source-side training
+performs domain generalization on source data before de-
+ployment [4, 13, 30, 46], which can be effective but re-
+quires continued access to source data and repeated retrain-
+ing. Target domain supervised adaptation either mines cor-
+respondences across images or fine-tunes adapter modules
+using a few labeled supports [21, 39, 48, 55]. Despite
+progress, these pipelines are costly or source dependent,
+and convolutional inductive biases limit long range reason-
+ing and robustness under distribution shift. In contrast,
+we adopt an effective VFM-based segmentation framework
+without source-data retraining.
+Vision Foundation Models (VFMs)are largely ViT-
+based backbones pre-trained at scale with self-supervised,
+weakly-supervised, or semi-supervised objectives [7, 26,
+40, 45]. Representative models include CLIP [42] for
+image-text alignment, MAE and EV A02 [14, 15, 19] for
+masked-image modeling, SAM [26] for promptable seg-
+mentation, and DINO [40, 45] for self-distillation with
+strong objectness cues. These models provide transferable
+12386
+
+
+=== PAGE 3 ===
+hierarchical features and often yield competitive segmenta-
+tion with a frozen encoder. Specifically in DINOv3 [45],
+intermediate layers present coarse-to-fine semantics and at-
+tention that is locally coherent and globally aware, which
+suits support–query matching. Under distribution shift,
+however, layer utility varies across episodes and correspon-
+dence becomes unstable, so fixed layer choices or uniform
+fine-tuning are unreliable. We therefore adopt ViT-based
+VFMs with per-episode selection of a stable layer, followed
+by hierarchical regularization and calibration.
+Test-Time Adaptation (TTA)adapts deployed models to
+target data using unlabeled test samples [24, 34, 52]. Com-
+mon routes minimize entropy or consistency, update statis-
+tics, such as BN re-estimation, apply whitening or styl-
+ization, and perform contrastive or clustering-based align-
+ment for segmentation [16, 25, 54]. Although deployment-
+friendly, they optimize surrogate losses on queries, require
+sizable trainable subsets or lengthy per-image updates, and
+are weakly coupled to the episodic nature of CD-FSS. In
+parallel, parameter-efficient fine-tuning (PEFT) updates a
+small fraction of weights via adapters, prompts, or low-rank
+modules [5, 6, 17, 22, 56], but for dense prediction it often
+targets single-level proxies and lacks episode-aware align-
+ment. Our approach unifies TTA and PEFT by updating a
+small parameter subset at test time on a frozen backbone,
+guided by stable representation selection.
+3. Method
+3.1. Architecture Overview
+Cross-domain few-shot segmentation (CD-FSS) follows an
+episodicK-shot protocol: given a support–query setS=
+{(I i
+s, M i
+s)}K
+i=1 and a query imageI q, models trained on
+source domains are evaluated on target domains with dis-
+joint label spaces. Leveraging vision foundation models
+(VFMs) is attractive. However, under distribution shift, per-
+episode alignment between support and query becomes un-
+stable, causing errors to cascade from representation to pre-
+diction. In addition, VFM transferability varies across lay-
+ers, and local interactions remain noisy.
+We therefore propose Hierarchical Exemplar Represen-
+tation Adaptation (HERA), a three-stage select-regularize-
+calibrate framework that adapts at test time with a frozen
+backbone. We first design Hierarchical Layer Selection
+(HLS) to select a stable representation layerℓ ∗ by min-
+imizing a data-dependent Exemplar Transfer Risk (ETR)
+computed per episode. Then Prior Guided Regularization
+(PGR) refines the self-attention atℓ ∗ with entropy-gated
+Gaussian priors, strengthening locality and structural con-
+sistency while preserving global coverage. Finally, Pixel-
+wise Adaptive Calibration (PAC) calibrates pixel-wise pre-
+dictions via lightweight residuals to recover thin structures
+and denoise low-contrast regions. Together, these stages
+form a hierarchical path from representation to prediction
+and transfer a few labeled supports into reliable guidance in
+new domains, yielding stable, well-calibrated predictions.
+3.2. Hierarchical Layer Selection
+Given a frozen ViT backbonefthat produces layerwise fea-
+turesF ℓ, we observe pronounced cross-layer transferability
+variance under distribution shift. We therefore make per-
+episode layer selection the primary stage of HERA. HLS
+minimizes the data-dependent episode-level ETR over can-
+didate layers and outputs the selected representationF ℓ∗
+,
+which conditions downstream modules.
+3.2.1. Layerwise variability under shift
+As illustrated in Fig. 3, early to mid layers 0-11 emphasize
+low-SNR edges and textures, whereas mid to high layers
+12-23 yield class-agnostic objectness with sharper bound-
+aries, with a consistent semantic shift around layers 11-12.
+Because the most informative layer varies across episodes
+and domains, any fixed choice is brittle. Episode-wise se-
+lection is thus crucial for robust support–query alignment.
+We therefore restrict routing to layers 12-23, where seman-
+tics consolidate while spatial detail is preserved. Single-
+layer routing in this band often performs well but is fragile
+on thin structures, occlusions, and clutter, as layers exhibit
+complementary failure modes. The optimal layer may fluc-
+tuate across episodes within a domain. To curb this insta-
+bility, we augment the single-layer choice with a compact
+local-fusion candidate set centered at the best single layer
+and evaluate all candidates under a unified episode-level
+risk. This adds negligible cost and yields a more reliable
+routed representation for subsequent modules.
+3.2.2. Per-Episode Layer Selection
+Following Sec. 3.2.1, we estimate episode-level evidence at
+test time using leave-one-out and adapt only a small subset
+of parameters. Let the support set beS={(I i
+s, M i
+s)}K
+i=1.
+In thei-th iteration,(I i
+s, M i
+s)acts as the pseudo-queryS i
+q
+and the remaining supports formS (−i). In the 1-shot set-
+ting, we synthesize two augmented views of the support
+for test time adaptation (TTA). Then we compute a proto-
+typeP i
+s fromS (−i) and extract the pseudo-query feature
+F i
+q fromI i
+s at a candidate layerℓ.
+We define Exemplar Transfer Risk (ETR) as one minus
+the average pseudo-query mIoU:
+Rlayer(ℓ) = 1− 1
+K
+KX
+i=1
+mIoU
+
+cos(P i
+s,F i
+q), M i
+q
+
+,(1)
+ℓ⋆ = arg min
+ℓ∈C
+Rlayer(ℓ),(2)
+whereCcontains both single-layer and local-fusion candi-
+dates, andmIoU(·)compares the predicted mask with the
+12387
+
+
+=== PAGE 4 ===
+Mask Prediction
+Self-Attention Block
+Self-Attention Block
+Self-Attention Block
+...
+Support Set
+Query Image ❄
+Self-Attention Block 
+Single-layer evidence via
+Local Fusion Block
+Local Fusion Block
+Local Fusion Block
+...
+Local Layer Fusions❄
+Local fusion anchored at
+VFM Encoder
+I. Hierarchical Layer Selection
+Self-Attention Block
+❄
+Best-single
+Ⅲ . Pixelwise Adaptive Calibration
+❄: Frozen🔥:Learnable
+⊕
+:Addition⊕
+×6
+Self-Attention Block 
+Local Fusion Block
+🔥 ❄
+.VS.
+Select via
+Entropy-guided
+Gaussian prior
+..=
+ Regularized Attention head
+⊕
+Gaussian-Guided Attention of Original Self-Attention 
+ Regularized Attention head..
+ Regularized Attention head
+ Attention Head of      
+Ⅱ . Prior-Guided Regularization
+Feature-Similarity Residual_      
+Image-Vector Residual_     
+ Attention Head of      
+ Attention Head of      
+One-Hop Attention Residual_     
+Figure 2. HERA architecture. Hierarchical Layer Selection (HLS) estimates the leave-one-out layer riskR layer and routes each episode to
+ℓ⋆, chosen from a single layerℓ single or a local-fusion candidateℓ fusion. Atℓ ⋆, Prior Guided Regularization (PGR) calibrates self-attention
+with entropy-gated Gaussian priors, and Pixelwise Adaptive Calibration (PAC) adds residual logitsℓsim, ℓattn, ℓimg that are fused with the
+base logit in a select–regularize–calibrate hierarchy.L,U, andHare the numbers of layers, fusion candidates, and attention heads.
+pseudo-query ground truthM i
+q, whereM i
+q=M i
+s. The mini-
+mizerℓ ⋆ is the routed layer used in subsequent stages.
+Withℓ ⋆ fixed, we freeze the backbone and finetune only
+a small parameter setϕusing the same leave-one-out con-
+struction, optimizing a binary segmentation loss:
+LTTA = 1
+K
+KX
+i=1
+BCE
+
+cos(P i,ℓ⋆
+s ,F i,ℓ⋆
+q
+
+, M i
+q
+
+,(3)
+whereP i,ℓ⋆
+s andF i,ℓ⋆
+q are computed at the routed layerℓ ⋆.
+To mitigate overfitting [1, 18], we fine-tune only the se-
+lected layer’s MLP.FC for single-layer routing and fusion-
+MLP.FC for local-fusion routing and all remaining parame-
+ters are frozen. See Appendices 7 and 10 for more details.
+3.2.3. Two-Stage Selection with Lightweight TTA
+As shown in Algorithm 1, we first determine the best single
+layerℓ single via leave-one-out evidence and then form a com-
+pact set of local-fusion candidatesU⊆ L={12, . . . ,23}
+anchored atℓ single. Empirically, we observe that the last
+ViT block tends to provide more category-consistent and
+globally coherent features with strong objectness. We
+therefore includeℓ 23 in each local-fusion candidate as a
+global context anchor to compensate for occlusion and frag-
+mented shapes. All candidates are evaluated using the same
+episode-level risk ETR in Eq. (1).
+For any candidateU, letr ℓ =R layer(ℓ)denote the single-
+layer selection risk. Define the distanced(ℓ, ℓ23) =|ℓ−ℓ 23|
+and compute fusion weights and the fused feature as:
+wℓ = exp
+ 
+−βr ℓ −dist(ℓ, ℓ 23)/τ
+
+P
+j∈U exp
+ 
+−βr j −dist(j, ℓ 23)/τ
+ ,(4)
+F U =
+X
+ℓ∈U
+wℓ F ℓ,(5)
+whereβ >0controls reliance on the evidencer ℓ andτ >0
+is a locality bandwidth that favors deeper, semantically ag-
+gregated layers. Asτ→ ∞, the locality term vanishes; as
+β→ ∞, the weights collapse toarg min ℓ∈U rℓ, approach-
+ing the single-layer case. When evidence spreads across
+adjacent layers, a moderateτtrades off evidence and ag-
+gregation, reducing routing instability.
+Fixing the routed layer atℓ ⋆ mitigates the layer-wise
+component of episode-wise matching risk, thereby provid-
+ing a more stable, episode-conditioned representation for
+downstream adaptation stages.
+3.3. Prior Guided Regularization
+With the routed layer fixed by HLS, the representation
+provides stable global semantics, yet head-specific self-
+attention remains noisy under shift. Because DINO features
+provide mainly layer-level guidance, head-level maps show
+spurious long-range links, insufficient coverage of nearby
+neighborhoods, thin boundaries, and strong cross-head het-
+erogeneity. A uniform, head-agnostic prior is therefore in-
+adequate. We calibrate attention per head using a query-
+centered Gaussian prior whose bandwidth is set by an en-
+tropy gate derived from the head’s attention. Local and con-
+12388
+
+
+=== PAGE 5 ===
+Figure 3. Layerwise variability in VFM features (DINOv3 example). Foreground-logit heatmaps from ViT layers 0-23 for two episodes
+from distinct target domains. A semantic shift emerges around layers 11-12, yet the optimal layer for mask prediction differs across
+episodes, indicating episode- and domain-dependent variability in the best layer and motivating per-episode layer routing.
+Algorithm 1 Hierarchical Layer Selection (HLS)
+1:Require:K-shot support setS, candidate layersL={12, . . . ,23}and VFM backbonef.
+2:Select trainable parameters
+3:forn= 1toK−1do♢Episode-level routing evidence (n-shot): see Sec. 3.2
+4:▷Stage I: Single-layer evidence
+5:Assemble then-shot episodeS n; extract per-layer features{F ℓ}ℓ∈L withf
+6:ComputeR layer(ℓ)onS n and obtainℓ single single risk, see Eq.(1)
+7:▷Stage II: Local fusion aroundℓ single
+8:Construct a local fusion poolU(ℓ single)
+9:For eachU∈ U, compute fusion weightsw ℓ and fused featureF U see Eqs.(4)and(5)
+10:Chooseℓ ⋆ = arg min{ℓsingle}∪U(ℓ single) Rlayer(ℓ)and fixF ℓ⋆
+unified risk, see Eq.(2)
+11:fori= 1toKdo♢Pseudo–query cross-evaluation
+12:Form⟨S (−i),(I i
+s, M i
+s)⟩at fixedF ⋆
+13:ComputeL (i,n)
+TTA over alln-support combinationssee Eq.(3)
+14:end for
+15:Updateϕby back-propagating the average lossL (n)
+TTA; keepffrozen♢Parameter-efficient TTA
+16:end for
+fident heads receive a sharper prior, whereas globally dis-
+persed heads receive a more diffuse prior. This head-wise,
+entropy-gated calibration enforces locality while preserving
+necessary global coverage as shown in Fig. 4
+Head-wise Gaussian Prior with Entropy Gating.At-
+tention heads in ViTs exhibit specialization in spatial scope
+and semantics [29, 43, 44]. We therefore impose a head-
+wise Gaussian prior and set its bandwidth by an entropy
+gate, yielding a sharper prior for local, confident heads and
+a more diffuse prior for globally dispersed ones:
+ϕ(pj;p i, σ) = exp
+
+− ∥pj −p i∥2
+2σ2
+
+,(6)
+with two fixed bandwidth hyperparameters,σ loc < σ glo,
+capturing local aggregation and global coverage.
+Let ¯H(h)
+q denote the mean row entropy of theQK ⊤ log-
+its at headh, indicating global dispersion, and ¯H(h)
+k that of
+Gaussian priorRegularized attention Regularized attentionSelf attention: Self attention: Gaussian prior
+Figure 4. Prior Guided Regularization (PGR). Per-head Gaussian
+priors, gated by entropy, are injected intoQK ⊤ logits to cali-
+brate self-attention atℓ ⋆, locality is strengthened, far-field spuri-
+ous peaks are suppressed, while preserving global coverage.
+KK ⊤, indicating local stability. Using a logistic gateg(·)
+with temperatureα >0:
+γh =g
+ 
+α( ¯H(h)
+q − ¯H(h)
+k )
+
+,
+σh = (1−γ h)σ glo +γ h σloc,
+(7)
+12389
+
+
+=== PAGE 6 ===
+Table 1. Quantitative comparison on the CD-FSS benchmark. All compared methods, except HERA, are trained on the Pascal VOC [11]
+source domain and then evaluated on four targets, whereas HERA is source-free and performs no source- or target-side training (test-time
+adaptation only). Best and second-best results are shown inboldand underlined . The † indicates results reproduced by us, and ‡ indicates
+a ViT-base backbone. In the Training (S/T) column,✓/✓denotes source-side pretraining and supervised target retraining;✓/×denotes
+source-side pretraining only (no target retraining);∅denotes source-free, no target-side domain retraining, test-time adaptation only.
+Methods Publication Training (S/T) DeepGlobe ISIC2018 Chest X-ray FSS-1000 mIoU
+1-shot 5-shot 1-shot 5-shot 1-shot 5-shot 1-shot 5-shot 1-shot 5-shot
+PGNet [58] ICCV 2019 ✓/× 10.7 12.4 21.9 21.3 34.0 23.0 62.4 62.7 32.2 31.1
+PANet [53] ICCV 2019 ✓/× 36.6 45.4 25.3 34.0 57.8 69.3 69.2 71.7 47.2 55.1
+CaNet [59] CVPR 2019 ✓/× 22.3 23.1 25.2 28.2 28.4 28.6 70.7 72.0 36.6 38.0
+RPMMs [57] ECCV 2020 ✓/× 13.0 13.5 18.0 20.0 30.1 30.8 65.1 67.1 31.6 32.9
+PFENet [47] TPAMI 2020 ✓/× 16.9 18.0 23.5 23.8 27.2 27.6 70.9 70.5 34.6 35.0
+RePRI [1] CVPR 2021 ✓/× 25.0 27.4 23.3 26.2 65.1 65.5 71.0 74.2 46.1 48.3
+HSNet [38] ICCV 2021 ✓/× 29.7 35.1 31.2 35.1 51.9 54.4 77.5 81.0 47.6 51.4
+SSP † [12] ECCV 2022 ✓/× 40.5 49.6 35.5 48.2 74.2 74.5 79.0 80.2 57.3 63.1
+DATO [33] CVPR 2025 ✓/× 51.159.3 68.870.3 79.6 81.1 81.8 84.6 70.373.8
+PATNet [30] ECCV 2022 ✓/✓ 37.9 43.0 41.2 53.6 66.6 70.2 78.6 81.2 56.1 62.0
+PMNet [3] W ACV 2024 ✓/✓ 37.1 41.6 51.2 54.5 70.4 74.084.686.3 60.8 64.1
+ABCDFSS [21] CVPR 2024 ✓/✓ 42.6 49.0 45.7 53.3 79.8 81.4 74.6 76.2 60.7 65.0
+APSeg ‡ [20] CVPR 2024 ✓/✓ 35.9 40.0 45.4 54.0 84.1 84.5 79.7 81.9 61.3 65.1
+DR-Adapter [46] CVPR 2024 ✓/✓ 41.3 50.1 40.8 48.9 82.4 82.3 79.1 80.4 60.9 65.4
+APM [48] NeurIPS 2024 ✓/✓ 40.9 44.9 41.7 51.2 78.3 82.8 79.3 81.9 60.0 65.2
+IFA [39] CVPR 2024 ✓/✓ 50.6 58.8 66.3 69.8 74.0 74.6 80.1 82.4 67.8 71.4
+TVGTANet [35] ACM MM2025 ✓/✓ 42.0 50.7 47.2 58.8 84.6 87.3 78.3 81.4 63.0 69.5
+SDRC ‡ [50] ICML 2025 ✓/✓ 43.2 46.8 46.6 55.0 82.9 84.8 80.3 82.6 63.2 67.3
+DFN [49] ICML 2025 ✓/✓ 39.5 47.7 50.4 58.5 83.2 87.1 83.0 85.7 64.0 69.8
+LoEC ‡ [36] CVPR 2025 ✓/✓ 42.1 51.5 52.9 62.4 83.9 84.1 81.1 83.7 65.0 70.4
+HERA ‡ (DINOv2) —- ∅ 41.2 57.8 55.6 68.7 83.2 86.9 70.2 80.3 62.6 73.4
+HERA ‡ (DINOv3) —- ∅ 44.663.461.273.6 85.8 87.981.686.7 68.3 77.9
+where heads with stronger locality, indicating larger ¯H(h)
+q −
+¯H(h)
+k , receive a sharper prior, and globally dispersed heads
+receive a more diffuse prior.
+3.4. Pixelwise Adaptive Calibration
+With the layer and attention stages in place, pixelwise de-
+cisions remain unstable under shift, leaving residual errors
+along thin boundaries and in low-contrast regions. PAC
+explicitly performs pixelwise calibration by fusing three
+lightweight cues computed fromF ℓ∗
+and the refined atten-
+tion, namely feature similarity, one-hop attention propaga-
+tion, and image appearance. This fusion corrects residual
+artifacts and yields consistent masks:
+ℓfinal(x) =ℓ 0(x) +w simℓsim(x)
++w attnℓattn(x) +w imgℓimg(x)(8)
+whereℓ 0(x)is the base logit from the selected representa-
+tion andw · are fixed scalar weights. A single-step refine-
+vote gate applies residuals only when the estimated gain is
+positive, adding negligible overhead. Taken together, the
+three stages realize a hierarchical select-regularize-calibrate
+pipeline that adapts at test time with a frozen backbone. See
+Appendix 5 for more details.
+4. Experiments
+Evaluation Datasets and Metrics.We evaluate in a
+source-free test-time adaptation setting without access to
+source data. We evaluate on four public target datasets:
+FSS-1000 [32], a natural image corpus spanning 1,000 ob-
+ject classes; DeepGlobe [9], a satellite land cover dataset
+with seven categories and pronounced texture and scale
+shifts; ISIC2018 [8, 51], a dermoscopic skin lesion dataset
+with low-contrast and irregular boundaries; and Chest X-
+ray [2, 23], a medical radiograph dataset with substantial
+grayscale and structural variation. We follow the standard
+episodic K-shot protocol and report the mean IoU for 1-
+shot and 5-shot regimes. To ensure comparability, all meth-
+ods use identical episode sampling, a shared preprocessing
+pipeline, and a unified input resolution of400×400.
+Implementation Details.We use SSP [12] as the few-
+shot head and run HERA on a ViT backbone (default DI-
+12390
+
+
+=== PAGE 7 ===
+Deepglobe ISIC Chest X-ray FSS-1000
+Support QueryBaselineHERA
+Figure 5. Qualitative results on the Chest X-ray, ISIC, FSS-1000, and Deepglobe datasets under the 1-shot setting. The prediction and
+ground truth of query images are in red and green, respectively. Best viewed in color.
+NOv3 [45]). Under test-time adaptation (TTA), each tar-
+get episode proceeds as follows: (i) HLS selects the routed
+layer; and (ii) we form leave-one-out splits of theKsup-
+ports and minimize the loss in (3) on these splits, perform-
+ingK−1lightweight updates. We optimize with Adam
+(learning rate1.3×10 −3,β 1 = 0.9,β 2 = 0.999). Only a
+small parameter subset is trainable: the single-layer variant
+updates that layer’s mlp.fc, and the local-fusion variant up-
+dates the fusion-mlp.fc and all other weights remain frozen.
+In the 1-shot setting, we synthesize two augmented views
+from the single support using a soft copy–paste scheme to
+stabilize TTA. All experiments run on a single NVIDIA
+A100, with peak VRAM of4.2GB (5%of capacity). Since
+fewer than2.7%of parameters are updated, both compute
+and memory overheads are negligible.
+4.1. Comparison Experiments
+Our HERA unifies VFM-based adaptation for CD-FSS into
+a source-free, no-retraining test-time pipeline that is fun-
+damentally different from the training paradigms of the
+methods reported in Table 1. Under an identical evalu-
+ation protocol with the same episode sampling, prepro-
+cessing, and400×400input, HERA with DINOv3 attains
+68.3/77.9 mIoU in the 1-shot/5-shot settings. It outper-
+forms LoEC [36] by +3.3/+7.5, SDRC [50] by +5.1/+10.6,
+and the no-retraining baseline SSP by +11.0/+14.8 mIoU.
+Even compared with the CNN-based DATO [33], which re-
+quires source-domain training, HERA leads by +4.1 in the
+5-shot setting and exceeds the 5-shot performance of all
+other CNN-based methods. At the same time, HERA re-
+mains source-free, which better satisfies privacy and engi-
+neering constraints and simplifies deployment.
+In the 1-shot setting, HERA also provides practical
+advantages in both performance and efficiency as shown
+in Fig. 5. It surpasses TVGTANet [35] and DFN [49] by
+Table 2. HERA component ablation (5-shot mIoU↑, frozen VFM,
+400×400). HLS/PGR/PAC as defined; ‘∆Avg.’ = gain over SSP.
+MethodDeepGlobe ISIC Chest X-ray FSS-10005-shot∆Avg.Baseline 49.6 48.2 74.5 80.263.1 0.0+ HLS 61.7 71.4 87.7 86.076.7 +13.6+ HLS + PGR62.672.088.086.577.3+14.2+ HLS + PAC62.1 71.688.386.677.2 +14.1+ HLS + PGR + PAC63.4 73.687.986.777.9 +14.8
+Table 3. PAC branch ablation on HLS+PGR (5-shot mIoU↑,
+frozen VFM). ‘∆Avg.’ = gain vs. HLS+PGR.
+Variant 5-shot∆Avg.
+Baseline + HLS + PGR 77.27 –
++ l-sim 77.57 +0.30
++ l-attn 77.49 +0.22
++ l-img 77.45 +0.18
++ l-sim + l-attn + l-img 77.91 +0.64
++5.3 and +4.3 mIoU, respectively, even though these meth-
+ods require training on both source and target domains. The
+proposed denoising and boundary calibration modules are
+specifically designed for HERA and yield natural, well-
+defined boundaries. On Chest X-ray, HERA achieves the
+best results with 85.8/87.9 mIoU, indicating the combina-
+tion of selection–regularization–calibration is particularly
+effective for low-contrast, thin-boundary clinical cases.
+Overall, HERA delivers state-of-the-art performance in
+the 5-shot setting without any source or target training and
+remains strong in the 1-shot setting, while updating only
+<2.7%of its parameters. This yields a favorable trade-off
+between accuracy and cost, and makes deployment across
+institutions and devices easier and less constrained. Analy-
+ses with other VFMs are provided in Appendix 8.
+12391
+
+
+=== PAGE 8 ===
+Table 4. Layer selection ablation with a frozen backbone (5-shot mIoU↑). Rule lists the per episode selector and notation includesg ℓ
+gradient w.r.t. features of layerℓ;S sem,S str,Cnormalized semantic, structure, and complexity scores; andmIoU sup(ℓ)support only mIoU.
+Method Rule DeepGlobe ISIC Chest X-ray FSS-1000 Avg.∆
+Static-Maxarg max ℓ
+ 
+α Ssem(ℓ) +β S str(ℓ) +γ C(ℓ)
+
+58.8 67.2 80.1 81.4 71.9 0.0
+Grad-Maxarg max ℓ ∥gℓ∥ 60.2 62.0 85.4 84.7 73.1 +1.2
+Grad∆-Maxarg max ℓ
+gℓ −g ℓ−1
+ 60.4 61.7 86.0 84.8 73.2 +1.3
+HLS (ETR)arg min ℓ
+ 
+1−mIoU sup(ℓ)
+
+61.7 71.4 87.7 86.0 76.7 +4.8
+4.2. Ablation Studies
+Component ablation.We ablate HERA in the 5-shot set-
+ting with a frozen VFM backbone as shown in Table 2.
+The SSP baseline averages 63.1 mIoU, adding HLS raises
+the mean to 76.7 mIoU, which provides the dominant gain.
+With HLS fixed, attaching PGR or PAC raises the aver-
+age to 77.3 and 77.2 mIoU, respectively. These improve-
+ments are positive and stable across all four datasets, with
+per-dataset gains of +0.2 to +0.9 mIoU on average. The
+full-stack HLS+PGR+PAC reaches 77.9 mIoU, a gain of
+total +14.8 mIoU over SSP. Qualitatively, PGR suppresses
+spurious far-field correlations and strengthens local coher-
+ence, whereas PAC calibrates pixels in low-contrast, thin-
+boundary regions, yielding cleaner borders and less leakage.
+These effects also reduce failures in the 1-shot regime, and
+the marginal cost of adding these modules is minimal. We
+update<2.7%of the parameters, and the additional com-
+putational overhead is negligible. Overall, HLS aligns the
+routed representation, while PGR and PAC provide robust,
+interpretable structural refinements, yielding a cumulative
+top-down select-regularize-calibrate effect.
+Interaction of PGR and PAC Components.With HLS
+at 76.7 mIoU, adding PGR raises the mean to 77.3 mIoU,
+adding PAC yields 77.2 mIoU, and enabling both reaches
+77.9 mIoU. The corresponding gains over HLS are 0.6, 0.5,
+and 1.2 mIoU, see Table 2, which is slightly above 1.1 and
+indicates complementarity rather than redundancy. Decom-
+posing PAC in Table 3 relative to HLS+PGR, the similarity
+residualℓ sim, the one-hop attention priorℓ attn, and the im-
+age cueℓ img add 0.30, 0.22, and 0.18 mIoU, respectively,
+and using all three reaches 77.91 mIoU, an additional 0.64
+mIoU over HLS+PGR. PGR regularizes attention at the rep-
+resentation level, while PAC calibrates predictions at the
+pixel level, thereby making the two modules complemen-
+tary and consistently effective.
+Effect of Per-Episode Layer Selection (HLS).We com-
+pare per-episode selectors for test-time adaptation with a
+frozen backbone, as shown in Table 4. Our criterion-
+based HLS routes each episode to the layer that maximizes
+support-only mIoU,arg min ℓ
+ 
+1−mIoU sup(ℓ)
+
+, and pro-
+vides task-aligned, episode-aware feedback without extra
+parameters or surrogate losses. In contrast, Static-Max
+scores feature quality using semantic, structural, and com-
+plexity heuristics rather than task fit. Gradient proxies, in-
+cluding Grad-Max and Grad∆-Max, rank layers by gradient
+magnitude or change. These proxies tend to favor the final
+blocks in ViTs because of residual connections and normal-
+ization, and they correlate weakly with semantic alignment.
+HLS attains the best average performance of 76.7 mIoU,
+surpassing Static-Max by +4.8 mIoU and the strongest gra-
+dient proxy by +3.5 mIoU. These results justify per-episode
+layer selection as the primary performance driver and the
+natural entry point of HERA. The gap is larger on other
+VFM backbones, for example, DINOv2 [40].
+Adaptation Cost in New Target Domains.Many
+retraining-based and domain-generalization methods re-
+quire tens to hundreds of GPU-hours of computation on
+source data prior to deployment. In contrast, HERA follows
+a source-free, no-retraining test-time adaptation paradigm.
+For a new target domain, we run a single adaptation phase
+driven by the available supports and then reuse the adapted
+model for all remaining queries. Using a DINOv3 backbone
+in the 1-shot setting, the per-episode costs are 0.202 s for
+hierarchical layer selection, 0.280 s for the lightweight pa-
+rameter update, and 0.243 s for inference, with only 8.39M
+trainable parameters (2.69%). Each stage, therefore, adds
+only a small fraction of latency and memory relative to stan-
+dard inference. This design allows HERA to quickly spe-
+cialize a frozen VFM to a new domain while still delivering
+strong cross-domain performance.
+5. Conclusion
+We identify layer-wise transferability variation and noisy
+head-level interactions under domain shift, rather than lim-
+ited representational capacity, as the key bottlenecks when
+applying VFMs to CD-FSS. We introduce Hierarchical Ex-
+emplar Representation Adaptation (HERA), a three-stage
+select-regularize-calibrate VFM-based segmentation frame-
+work that learns effectively from limited labels and adapts
+to novel domains without source-data retraining. Across do-
+mains and backbones, HERA improves mIoU by over 4.1
+while updating 2.69% of its parameters, providing a low-
+overhead and practical way to deploy VFMs in CD-FSS.
+12392
+
+
+=== PAGE 9 ===
+Acknowledgements
+This work is supported in part by the National Natu-
+ral Science Foundation of China (62192783, 62276128,
+62406140), the Young Elite Scientists Sponsorship Pro-
+gram by China Association for Science and Technol-
+ogy (2023QNRC001), the Key Research and Development
+Program of Jiangsu Province under Grant (BE2023019),
+and Jiangsu Natural Science Foundation under Grant
+(BK20221441, BK20241200). The authors would like
+to thank Huawei Ascend Cloud Ecological Development
+Project for the support of Ascend 910 processors.
+References
+[1] Malik Boudiaf, Hoel Kervadec, Ziko Imtiaz Masud, Pablo
+Piantanida, Ismail Ben Ayed, and Jose Dolz. Few-shot seg-
+mentation without meta-learning: A good transductive infer-
+ence is all you need? InProceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+13979–13988, 2021. 4, 6
+[2] Sema Candemir, Stefan Jaeger, Kannappan Palaniappan,
+Jonathan P Musco, Rahul K Singh, Zhiyun Xue, Alexandros
+Karargyris, Sameer Antani, George Thoma, and Clement J
+McDonald. Lung segmentation in chest radiographs using
+anatomical atlases with nonrigid registration.IEEE transac-
+tions on medical imaging, 33(2):577–590, 2013. 6
+[3] Hao Chen, Yonghan Dong, Zheming Lu, Yunlong Yu, and
+Jungong Han. Pixel matching network for cross-domain few-
+shot segmentation. InProceedings of the IEEE/CVF winter
+conference on applications of computer vision, pages 978–
+987, 2024. 6
+[4] Jiayi Chen, Rong Quan, and Jie Qin. Cross-domain few-shot
+semantic segmentation via doubly matching transformation.
+arXiv preprint arXiv:2405.15265, 2024. 2
+[5] Shoufa Chen, Chongjian Ge, Zhan Tong, Jiangliu Wang,
+Yibing Song, Jue Wang, and Ping Luo. Adaptformer:
+Adapting vision transformers for scalable visual recogni-
+tion.Advances in Neural Information Processing Systems,
+35:16664–16678, 2022. 3
+[6] Zhe Chen, Yuchen Duan, Wenhai Wang, Junjun He, Tong
+Lu, Jifeng Dai, and Yu Qiao. Vision transformer adapter for
+dense predictions.arXiv preprint arXiv:2205.08534, 2022.
+3
+[7] Zhe Chen, Jiannan Wu, Wenhai Wang, Weijie Su, Guo Chen,
+Sen Xing, Muyan Zhong, Qinglong Zhang, Xizhou Zhu,
+Lewei Lu, et al. Internvl: Scaling up vision foundation mod-
+els and aligning for generic visual-linguistic tasks. InPro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 24185–24198, 2024. 2
+[8] Noel Codella, Veronica Rotemberg, Philipp Tschandl,
+M Emre Celebi, Stephen Dusza, David Gutman, Brian
+Helba, Aadi Kalloo, Konstantinos Liopyris, Michael
+Marchetti, et al. Skin lesion analysis toward melanoma
+detection 2018: A challenge hosted by the interna-
+tional skin imaging collaboration (isic).arXiv preprint
+arXiv:1902.03368, 2019. 6
+[9] Ilke Demir, Krzysztof Koperski, David Lindenbaum, Guan
+Pang, Jing Huang, Saikat Basu, Forest Hughes, Devis Tuia,
+and Ramesh Raskar. Deepglobe 2018: A challenge to parse
+the earth through satellite images. InProceedings of the
+IEEE conference on computer vision and pattern recognition
+workshops, pages 172–181, 2018. 6
+[10] Nanqing Dong and Eric P Xing. Few-shot semantic segmen-
+tation with prototype learning. InBMVC, page 4, 2018. 2
+[11] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge.International journal of computer
+vision, 88(2):303–338, 2010. 6
+[12] Qi Fan, Wenjie Pei, Yu-Wing Tai, and Chi-Keung Tang. Self-
+support few-shot semantic segmentation. InEuropean con-
+ference on computer vision, pages 701–719. Springer, 2022.
+1, 2, 6
+[13] Qi Fan, Kaiqi Liu, Nian Liu, Hisham Cholakkal,
+Rao Muhammad Anwer, Wenbin Li, and Yang Gao. Adapt-
+ing in-domain few-shot segmentation to new domains with-
+out retraining.arXiv preprint arXiv:2504.21414, 2025. 2
+[14] Yuxin Fang, Wen Wang, Binhui Xie, Quan Sun, Ledell Wu,
+Xinggang Wang, Tiejun Huang, Xinlong Wang, and Yue
+Cao. Eva: Exploring the limits of masked visual representa-
+tion learning at scale. InProceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+19358–19369, 2023. 2
+[15] Yuxin Fang, Quan Sun, Xinggang Wang, Tiejun Huang, Xin-
+long Wang, and Yue Cao. Eva-02: A visual representation
+for neon genesis.Image and Vision Computing, 149:105171,
+2024. 2
+[16] Taesik Gong, Jongheon Jeong, Taewon Kim, Yewon Kim,
+Jinwoo Shin, and Sung-Ju Lee. Note: Robust continual test-
+time adaptation against temporal correlation.Advances in
+Neural Information Processing Systems, 35:27253–27266,
+2022. 3
+[17] Zeyu Han, Chao Gao, Jinyang Liu, Jeff Zhang, and Sai Qian
+Zhang. Parameter-efficient fine-tuning for large models: A
+comprehensive survey.arXiv preprint arXiv:2403.14608,
+2024. 3
+[18] Kaiming He, Haoqi Fan, Yuxin Wu, Saining Xie, and Ross
+Girshick. Momentum contrast for unsupervised visual rep-
+resentation learning. InProceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+9729–9738, 2020. 4
+[19] Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr
+Dollár, and Ross Girshick. Masked autoencoders are scalable
+vision learners. InProceedings of the IEEE/CVF conference
+on computer vision and pattern recognition, pages 16000–
+16009, 2022. 2
+[20] Weizhao He, Yang Zhang, Wei Zhuo, Linlin Shen, Jiaqi
+Yang, Songhe Deng, and Liang Sun. Apseg: Auto-prompt
+network for cross-domain few-shot semantic segmentation.
+InProceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 23762–23772, 2024.
+2, 6
+[21] Jonas Herzog. Adapt before comparison: A new perspective
+on cross-domain few-shot segmentation. InProceedings of
+12393
+
+
+=== PAGE 10 ===
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 23605–23615, 2024. 1, 2, 6
+[22] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-
+Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al.
+Lora: Low-rank adaptation of large language models.ICLR,
+1(2):3, 2022. 3
+[23] Stefan Jaeger, Alexandros Karargyris, Sema Candemir, Les
+Folio, Jenifer Siegelman, Fiona Callaghan, Zhiyun Xue,
+Kannappan Palaniappan, Rahul K Singh, Sameer Antani,
+et al. Automatic tuberculosis screening using chest radio-
+graphs.IEEE transactions on medical imaging, 33(2):233–
+245, 2013. 6
+[24] Hong Jia, Young Kwon, Alessio Orsino, Ting Dang,
+Domenico Talia, and Cecilia Mascolo. Tinytta: Efficient
+test-time adaptation via early-exit ensembles on edge de-
+vices.Advances in Neural Information Processing Systems,
+37:43274–43299, 2024. 3
+[25] Juwon Kang, Nayeong Kim, Jungseul Ok, and Suha Kwak.
+Membn: Robust test-time adaptation via batch norm with
+statistics memory. InEuropean Conference on Computer Vi-
+sion, pages 467–483. Springer, 2024. 3
+[26] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. InProceedings of the IEEE/CVF international confer-
+ence on computer vision, pages 4015–4026, 2023. 2
+[27] Chunbo Lang, Gong Cheng, Binfei Tu, and Junwei Han.
+Learning what not to segment: A new perspective on few-
+shot segmentation. InProceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+8057–8067, 2022. 2
+[28] Chunbo Lang, Gong Cheng, Binfei Tu, Chao Li, and Jun-
+wei Han. Base and meta: A new perspective on few-shot
+segmentation.IEEE Transactions on Pattern Analysis and
+Machine Intelligence, 45(9):10669–10686, 2023. 2
+[29] Yoonho Lee, Annie S Chen, Fahim Tajwar, Ananya Ku-
+mar, Huaxiu Yao, Percy Liang, and Chelsea Finn. Surgical
+fine-tuning improves adaptation to distribution shifts.arXiv
+preprint arXiv:2210.11466, 2022. 2, 5
+[30] Shuo Lei, Xuchao Zhang, Jianfeng He, Fanglan Chen,
+Bowen Du, and Chang-Tien Lu. Cross-domain few-shot se-
+mantic segmentation. InEuropean conference on computer
+vision, pages 73–90. Springer, 2022. 2, 6
+[31] Gen Li, Varun Jampani, Laura Sevilla-Lara, Deqing Sun,
+Jonghyun Kim, and Joongkyu Kim. Adaptive prototype
+learning and allocation for few-shot segmentation. InPro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 8334–8343, 2021. 2
+[32] Xiang Li, Tianhan Wei, Yau Pun Chen, Yu-Wing Tai, and
+Chi-Keung Tang. Fss-1000: A 1000-class dataset for few-
+shot segmentation. InProceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+2869–2878, 2020. 6
+[33] Zhaoyang Li, Yuan Wang, Wangkai Li, Tianzhu Zhang, and
+Xiang Liu. Dual-agent optimization framework for cross-
+domain few-shot segmentation. InProceedings of the Com-
+puter Vision and Pattern Recognition Conference, pages
+9849–9859, 2025. 6, 7
+[34] Jian Liang, Ran He, and Tieniu Tan. A comprehensive sur-
+vey on test-time adaptation under distribution shifts.Interna-
+tional Journal of Computer Vision, 133(1):31–64, 2025. 2,
+3
+[35] Jianming Liu, Wenlong Qiu, and Haitao Wei. Textual and
+visual guided task adaptation for source-free cross-domain
+few-shot segmentation. InProceedings of the 33rd ACM
+International Conference on Multimedia, pages 5150–5159,
+2025. 6, 7
+[36] Yuhan Liu, Yixiong Zou, Yuhua Li, and Ruixuan Li. The
+devil is in low-level features for cross-domain few-shot seg-
+mentation. InProceedings of the Computer Vision and Pat-
+tern Recognition Conference, pages 4618–4627, 2025. 2, 6,
+7
+[37] Zhihe Lu, Sen He, Xiatian Zhu, Li Zhang, Yi-Zhe Song,
+and Tao Xiang. Simpler is better: Few-shot semantic seg-
+mentation with classifier weight transformer. InProceedings
+of the IEEE/CVF International Conference on Computer Vi-
+sion, pages 8741–8750, 2021. 2
+[38] Juhong Min, Dahyun Kang, and Minsu Cho. Hypercorrela-
+tion squeeze for few-shot segmentation. InProceedings of
+the IEEE/CVF international conference on computer vision,
+pages 6941–6952, 2021. 1, 2, 6
+[39] Jiahao Nie, Yun Xing, Gongjie Zhang, Pei Yan, Aoran Xiao,
+Yap-Peng Tan, Alex C Kot, and Shijian Lu. Cross-domain
+few-shot segmentation via iterative support-query correspon-
+dence mining. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 3380–
+3390, 2024. 1, 2, 6
+[40] Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 2, 8
+[41] Bohao Peng, Zhuotao Tian, Xiaoyang Wu, Chengyao Wang,
+Shu Liu, Jingyong Su, and Jiaya Jia. Hierarchical dense cor-
+relation distillation for few-shot segmentation. InProceed-
+ings of the IEEE/CVF conference on computer vision and
+pattern recognition, pages 23641–23651, 2023. 2
+[42] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. InInternational conference on machine learning, pages
+8748–8763. PmLR, 2021. 2
+[43] Maithra Raghu, Thomas Unterthiner, Simon Kornblith,
+Chiyuan Zhang, and Alexey Dosovitskiy. Do vision trans-
+formers see like convolutional neural networks?Advances
+in neural information processing systems, 34:12116–12128,
+2021. 2, 5
+[44] Yuji Roh, Qingyun Liu, Huan Gui, Zhe Yuan, Yujin Tang,
+Steven Euijong Whang, Liang Liu, Shuchao Bi, Lichan
+Hong, Ed H Chi, et al. Levi: generalizable fine-tuning
+via layer-wise ensemble of different views.arXiv preprint
+arXiv:2402.04644, 2024. 2, 5
+[45] Oriane Siméoni, Huy V V o, Maximilian Seitzer, Federico
+Baldassarre, Maxime Oquab, Cijo Jose, Vasil Khalidov,
+12394
+
+
+=== PAGE 11 ===
+Marc Szafraniec, Seungeun Yi, Michaël Ramamonjisoa,
+et al. Dinov3.arXiv preprint arXiv:2508.10104, 2025. 2,
+3, 7
+[46] Jiapeng Su, Qi Fan, Wenjie Pei, Guangming Lu, and Fanglin
+Chen. Domain-rectifying adapter for cross-domain few-shot
+segmentation. InProceedings of the IEEE/CVF conference
+on Computer Vision and Pattern Recognition, pages 24036–
+24045, 2024. 2, 6
+[47] Zhuotao Tian, Hengshuang Zhao, Michelle Shu, Zhicheng
+Yang, Ruiyu Li, and Jiaya Jia. Prior guided feature enrich-
+ment network for few-shot segmentation.IEEE transactions
+on pattern analysis and machine intelligence, 44(2):1050–
+1065, 2020. 2, 6
+[48] Jintao Tong, Yixiong Zou, Yuhua Li, and Ruixuan Li.
+Lightweight frequency masker for cross-domain few-shot se-
+mantic segmentation.Advances in Neural Information Pro-
+cessing Systems, 37:96728–96749, 2024. 1, 2, 6
+[49] Jintao Tong, Ran Ma, Yixiong Zou, Guangyao Chen, Yuhua
+Li, and Ruixuan Li. Adapter naturally serves as decoupler
+for cross-domain few-shot semantic segmentation.arXiv
+preprint arXiv:2506.07376, 2025. 6, 7
+[50] Jintao Tong, Yixiong Zou, Guangyao Chen, Yuhua Li,
+and Ruixuan Li. Self-disentanglement and re-composition
+for cross-domain few-shot segmentation.arXiv preprint
+arXiv:2506.02677, 2025. 2, 6, 7
+[51] Philipp Tschandl, Cliff Rosendahl, and Harald Kittler. The
+ham10000 dataset, a large collection of multi-source der-
+matoscopic images of common pigmented skin lesions.Sci-
+entific data, 5(1):1–9, 2018. 6
+[52] Dequan Wang, Evan Shelhamer, Shaoteng Liu, Bruno Ol-
+shausen, and Trevor Darrell. Tent: Fully test-time adaptation
+by entropy minimization.arXiv preprint arXiv:2006.10726,
+2020. 3
+[53] Kaixin Wang, Jun Hao Liew, Yingtian Zou, Daquan Zhou,
+and Jiashi Feng. Panet: Few-shot image semantic seg-
+mentation with prototype alignment. Inproceedings of
+the IEEE/CVF international conference on computer vision,
+pages 9197–9206, 2019. 1, 6
+[54] Qin Wang, Olga Fink, Luc Van Gool, and Dengxin Dai.
+Continual test-time domain adaptation. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 7201–7211, 2022. 3
+[55] Yuan Wang, Rui Sun, Zhe Zhang, and Tianzhu Zhang. Adap-
+tive agent transformer for few-shot segmentation. InEuro-
+pean conference on computer vision, pages 36–52. Springer,
+2022. 2
+[56] Jialu Xing, Jianping Liu, Jian Wang, Lulu Sun, Xi Chen,
+Xunxun Gu, and Yingfei Wang. A survey of efficient fine-
+tuning methods for vision-language models—prompt and
+adapter.Computers & Graphics, 119:103885, 2024. 3
+[57] Boyu Yang, Chang Liu, Bohao Li, Jianbin Jiao, and Qix-
+iang Ye. Prototype mixture models for few-shot semantic
+segmentation. InEuropean conference on computer vision,
+pages 763–778. Springer, 2020. 6
+[58] Chi Zhang, Guosheng Lin, Fayao Liu, Jiushuang Guo,
+Qingyao Wu, and Rui Yao. Pyramid graph networks with
+connection attentions for region-based one-shot semantic
+segmentation. InProceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision, pages 9587–9595,
+2019. 6
+[59] Chi Zhang, Guosheng Lin, Fayao Liu, Rui Yao, and Chunhua
+Shen. Canet: Class-agnostic segmentation networks with it-
+erative refinement and attentive few-shot learning. InPro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 5217–5226, 2019. 6
+[60] Gengwei Zhang, Guoliang Kang, Yi Yang, and Yunchao
+Wei. Few-shot segmentation via cycle-consistent trans-
+former.Advances in neural information processing systems,
+34:21984–21996, 2021. 1
+12395

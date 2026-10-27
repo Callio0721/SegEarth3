@@ -1,0 +1,106 @@
+# Secrets and local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# Python caches, test caches, and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
+
+# Editors and operating-system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local GitNexus code-knowledge graph. Rebuild it from tracked source instead
+# of publishing the machine-specific database and registry metadata.
+/.gitnexus/
+*.swp
+*.swo
+
+# Root-level datasets, downloaded assets, and model binaries
+/data/
+/dataset/
+/datasets/
+/pretrained/
+/weights/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+
+# Experiment outputs, logs, reports, and generated predictions
+/logs/
+/work_dirs/
+/show_dir/
+/outputs/
+/output/
+/runs/
+/wandb/
+/results/
+*.log
+*.jsonl
+!/tests/fixtures/*.jsonl
+*.xlsx
+seg_pred.png
+
+# Local papers, research notes, and presentation/office documents
+/paper/
+/参考论文/
+/tmp/
+/docs/
+/state.md
+/dataset_prepare.md
+/2512.08730v2.md
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+
+# Large or generated local resources. Keep the small demo input required by
+# demo.py, but do not publish visualizations or test images.
+/resources/*
+!/resources/oem_koeln_50.tif
+
+# Archives and temporary files (the OpenCLIP BPE .gz file is intentionally
+# allowed because it is a required tokenizer resource).
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.tmp
+*.temp
+*~
+
+# Local generated/backup files
+/configs/my_name.txt
+/example/
+/figs/
+/sam3_1.
+/segearthov3_segmentor(baseline).py
+/.git-official-backup/
+
+# Historical reference repositories are local research material, not runtime
+# dependencies of the retained baseline or role-functional text experiment.
+/SCORE-main/

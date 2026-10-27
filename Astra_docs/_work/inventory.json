@@ -1,0 +1,61 @@
+{
+  "configs": {
+    ".py": 38,
+    ".txt": 27,
+    ".json": 25
+  },
+  "tools": {
+    ".sh": 6,
+    ".py": 17
+  },
+  "sam3": {
+    ".py": 134,
+    ".gz": 1,
+    ".txt": 2,
+    ".yaml": 37,
+    ".tiff": 1
+  },
+  "logs": {
+    "(no extension)": 27,
+    ".json": 178,
+    ".csv": 150,
+    ".md": 29,
+    ".jsonl": 358,
+    ".xlsx": 140,
+    ".py": 294,
+    ".txt": 145,
+    ".log": 225,
+    ".npz": 432
+  },
+  "docs": {
+    "(no extension)": 6,
+    ".md": 10,
+    ".csv": 4,
+    ".pdf": 1,
+    ".png": 4,
+    ".py": 2,
+    ".svg": 1,
+    ".json": 7,
+    ".pptx": 1,
+    ".docx": 1,
+    ".bib": 1
+  },
+  "参考论文": {
+    "(no extension)": 1,
+    ".md": 4,
+    ".pdf": 69
+  },
+  "tests": {
+    ".py": 5
+  },
+  "3d": {},
+  "tmp": {
+    ".md": 1
+  },
+  "weights": {},
+  "output": {
+    ".pdf": 1,
+    ".png": 1,
+    ".svg": 1
+  }
+}

@@ -1,0 +1,989 @@
+=== PAGE 1 ===
+F2Net: A Frequency-Fused Network for Ultra-High Resolution
+Remote Sensing Segmentation
+Hengzhi Chen1 Liqian Feng1 Wenhua Wu1 Xiaogang Zhu2,∗
+Qiuxia Wu3 Lianlei Shan4 Kun Hu5,*
+1The University of Sydney 2Adelaide University 3South China University of Technology
+4Tsinghua University 5Edith Cowan University
+{hche6958,lfen0902,wewu6176}@uni.sydney.edu.au, xiaogang.zhu@adelaide.edu.au,
+qxwu@scut.edu.cn, shanglianlei18@mails.ucas.edu.cn, k.hu@ecu.edu.au
+Abstract
+Semantic segmentation of ultra-high-resolution (UHR) re-
+mote sensing imagery is critical for applications like envi-
+ronmental monitoring and urban planning but faces compu-
+tational and optimization challenges. Conventional meth-
+ods either lose fine details through downsampling or frag-
+ment global context via patch processing. While multi-
+branch networks address this trade-off, they suffer from
+computational inefficiency and conflicting gradient dynam-
+ics during training. We propose F2Net, a frequency-aware
+framework that decomposes UHR images into high- and
+low-frequency components for specialized processing. The
+high-frequency branch preserves full-resolution structural
+details, while the low-frequency branch processes down-
+sampled inputs through dual sub-branches capturing short-
+and long-range dependencies. A Hybrid-Frequency Fu-
+sion module integrates these observations, guided by two
+novel objectives: Cross-Frequency Alignment Loss ensures
+semantic consistency between frequency components, and
+Cross-Frequency Balance Loss regulates gradient magni-
+tudes across branches to stabilize training. Evaluated on
+DeepGlobe and Inria Aerial benchmarks, F2Net achieves
+state-of-the-art performance with mIoU of 80.22 and 83.39,
+respectively.1
+1. Introduction
+Semantic segmentation of remote sensing (RS) imagery
+is fundamental to various applications, including geospa-
+tial analysis [32], urban planning [33], and environmental
+monitoring [18]. With advances in RS technologies, ultra-
+high-resolution (UHR) imagery has become increasingly
+accessible, offering unprecedented spatial detail. While
+*Corresponding authors.
+1Code is available at:https://github.com/easm002/F2Net
+2048×1080images are conventionally considered high res-
+olution [1], UHR typically refers to those exceeding 4K res-
+olution [41]. For segmentation tasks, UHR images provide
+rich spatial context, but also introduce substantial computa-
+tional challenges due to their size and detail density.
+Conventional segmentation methods are tailored for
+moderate-resolution inputs (e.g.,256×256), which are
+∼100×smaller than UHR images. To adapt, early ap-
+proaches either downsample the full image [2, 45], sac-
+rificing fine details, or adopt patch-wise processing [30],
+which preserves local structure but loses global context. Re-
+cent advances move toward multi-branch architectures that
+jointly model local detail and global semantics. GLNet [5]
+introduces dual branches for coarse global input and high-
+resolution patches. ISDNet [12] improves this by directly
+extracting fine details from UHR inputs without cropping.
+SGNet [34] further generalizes this paradigm by leveraging
+surrounding context to enhance patch-level reasoning. De-
+spite improved performance, these methods face two key
+issues: (1) high computational cost due to redundant infer-
+ence (e.g., GLNet requires∼200 patches for a single UHR
+image); and (2) conflicting gradients across branches during
+joint training, leading to optimization imbalance and mis-
+aligned features.
+Therefore, we propose F2Net - a frequency-aware net-
+work. By decomposing UHR imagery into high- and low-
+frequency components, F2Net comprises three frequency
+aware branches: a high-frequency branch for detail perser-
+vation and two low-frequency subbranches for semantic ex-
+traction. The high-frequency branch retains full-resolution
+inputs and focuses on capturing finer details, such as edges
+and textures, which are critical for accurate boundaries. In
+contrast, the low-frequency branch processes a downsam-
+pled version of the image, encoding semantically rich yet
+spatially redundant features. This low-frequency branch is
+further divided into two sub-branches: one modeling short-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+13275
+
+
+=== PAGE 2 ===
+range dependencies and the other capturing long-range se-
+mantic context. A Hybrid-Frequency Fusion (HFF) mod-
+ule integrates the outputs of these branches. To ensure
+effective multi-branch training, we introduce two comple-
+mentary objectives: (1) Cross-Frequency Alignment Loss
+(CFAL) enforces semantic consistency between high- and
+low-frequency representations, facilitating coherent feature
+integration; and (2) Cross-Frequency Balance Loss (CFBL)
+regularizes the gradient magnitudes across branches, pro-
+moting balanced learning dynamics. Experiments on two
+UHR benchmarks -DeepGlobe[9] andInria Aerial[21] -
+demonstrate F2Net’s effectiveness.
+In summary, our key contributions are as follows:
+• A frequency-aware network - F2Net decomposes UHR
+RS images into high- and low-frequency components, en-
+abling efficient and detail-preserving segmentation.
+• We introduce two cross-frequency objectives for multi-
+branch learning on UHR imagery.
+• We achieve the state-of-the-art performance on two UHR
+benchmarks—DeepGlobeandInria Aerial.
+2. Related Work
+2.1. Segmentation
+Semantic segmentation, a fundamental task in computer vi-
+sion, aims to assign a categorical label to every pixel in an
+image. The field was revolutionized by Fully Convolutional
+Networks (FCN) [20], which first established the end-to-
+end, pixel-to-pixel training paradigm. Following this break-
+through, research diverged into several key strategies to ad-
+dress the inherent challenges of the task.
+One primary line of work focused on recovering spa-
+tial details lost during encoding. U-Net [27] became the
+archetype for this encoder-decoder approach, using skip-
+connections to fuse deep, semantic features with shallow,
+fine-grained features. This concept was further refined by
+architectures like UNet++ [46], which introduced nested
+and dense skip pathways to reduce the semantic gap be-
+tween encoder and decoder feature maps.
+A second strategy prioritized the aggregation of multi-
+scale context, which FCNs struggled with due to their lim-
+ited receptive fields. The DeepLab series [4] pioneered the
+use of atrous convolution to capture features at multiple
+scales without sacrificing spatial resolution. Concurrently,
+PSPNet [44] introduced a pyramid pooling module to effec-
+tively aggregate global context information.
+A third major challenge was the poor localization of ob-
+ject boundaries. Early methods combined CNN outputs
+with post-processing steps like Conditional Random Fields
+(CRFs) to refine edges [3]. Later, attention mechanisms
+were integrated directly into the CNN architecture, such as
+in Attention U-Net [23], which uses attention gates to sup-
+press irrelevant regions while highlighting salient features
+useful for the specific task.
+More recently, the success of Vision Transformers
+(ViT) [10] has instigated a shift away from pure CNNs.
+Transformer-based models, such as SegFormer [38], lever-
+age self-attention to effectively model long-range spatial de-
+pendencies. Further advancing the field, Mask2Former [7]
+proposed a novel mask classification paradigm, reformulat-
+ing segmentation as a query-based set prediction problem.
+2.2. Ultra High Resolution Segmentation
+Standard segmentation methods struggle with UHR im-
+ages due to memory constraints and structural complex-
+ity. Early solutions—downsampling or patch-wise process-
+ing—compromise global context or local detail [2, 45].
+Recent advances adopt two strategies: Transformer-based
+models and multi-branch architectures.
+Transformer-based approaches leverage the long-range
+dependency modeling capabilities of Transformers, often
+with modifications like limited positional encodings and
+lightweight decoders to manage memory overhead [38]. To
+further integrate local details, hybrid CNN-Transformer ar-
+chitectures have been proposed, combining the strengths
+of both backbones [43]. Some hybrid models introduce
+context-guided modules [14, 34] or patch-merging strate-
+gies [31] to enhance boundary consistency by aggregating
+information from neighboring patches. The multi-branch
+paradigm separates global and local processing, typically
+with a global branch handling downsampled inputs for con-
+text and a local branch focusing on high-resolution patches
+for detail [5, 12]. Extensions with multi-scale features, un-
+certainty estimation [25], and locality-aware designs help
+reduce boundary artifacts, but often increase latency due to
+overlapping patch inference [16].
+Yet, these methods rely on spatial partitioning (e.g.,
+cropping or patches), which can disrupt object integrity, our
+method enables simultaneous modeling of fine details and
+global context without introducing spatial artifacts.
+2.3. Representation Learning in Frequency Domain
+Representing images in the frequency domain is an increas-
+ingly effective technique in remote sensing, prized for its
+ability to capture both global context and fine-grained de-
+tails [24, 29, 35, 40, 42]. Methods such as wavelet de-
+composition separate inputs into complementary low- and
+high-frequency components to produce coherent predic-
+tions [17]. Others employ adaptive frequency filtering to
+sharpen inter-class boundaries [29] or use Fast Fourier Con-
+volution to add global context, thereby improving the de-
+tection of small objects [39]. Furthermore, transforms like
+DCT facilitate robust feature matching across varying con-
+ditions, such as illumination or seasonal shifts [42]. How-
+ever, approaches that fuse multiple frequency components
+face challenges with fusion strategies and training stabil-
+13276
+
+
+=== PAGE 3 ===
+ity [6, 26, 28]. These issues are particularly critical yet
+largely unexplored in the ultra-high-resolution (UHR) re-
+mote sensing domain.
+3. Methodology
+This section presents our novel framework; specific imple-
+mentations are detailed in Sec. 4. As shown in Figure 1,
+F2Net comprises high- and low-frequency branches, each
+specialized for distinct spectral representations to simplify
+learning and enhance task focus. A dynamic frequency de-
+composition module first splits the input into high- and low-
+frequency components. The high-frequency branch oper-
+ates on full-resolution features to preserve fine structural de-
+tails, while the low-frequency branch—capturing semanti-
+cally rich but redundant signals—is downsampled to reduce
+computation without sacrificing contextual integrity. The
+low-frequency branch is further split into short- and long-
+range sub-branches to model local and global dependen-
+cies, respectively. A hybrid-frequency fusion (HFF) mod-
+ule then integrates features across branches. To facilitate
+multi-branch optimization, we introduce two objectives: (1)
+Cross-Frequency Alignment Loss (CFAL) promotes seman-
+tic consistency across frequencies; and (2) Cross-Frequency
+Balance Loss (CFBL) equalizes gradient flow, ensuring sta-
+ble and balanced training.
+3.1. Problem Formulation
+Given a UHR remote sensing image,I∈R H×W×C , where
+H,W, andCdenote the height, width, and number of chan-
+nels of the image, respectively, semantic segmentation aims
+to estimate a segmentation mapS, which is defined as:
+S={s hwl ∈ {0,1} |1≤h≤H,1≤w≤W,1≤l≤L},
+(1)
+wheres hwl = 1indicates that pixel at position(h, w)be-
+longs to semantic classlands hwl = 0otherwise. Here,L
+denotes the total number of semantic classes. The predicted
+segmentation map generated by our method is denoted as
+ˆS={ˆshwl} ∈[0,1] H×W×L .
+3.2. Adaptive Frequency Decomposition
+We begin by applying a pointwise convolution to the input
+imageIfor cross-channel understanding as in [22], obtain-
+ing feature mapsX∈R H×W×D :
+X=Conv 1×1(I).(2)
+A uniform kernel, typically, struggles to capture spatially
+varying high-frequency details, as signal frequency can
+change significantly across different regions of the image.
+To address this, we introduce a dynamic kernel formulation
+strategy based on channel-wise grouping. Specifically, the
+feature mapXis uniformly split along the channel dimen-
+sion into multiple (N) groups:
+X= [X 1,X 2, . . . ,XN],X n ∈R H×W× D
+N .(3)
+For each groupX n, we create spatially-adaptive low-pass
+filters through normalized convolution:
+WLF
+n =Softmax(Conv(X n))∈R H×W×k 2
+,(4)
+wherekis the filter kernel size and the softmax operation
+apply along (k 2) dimension ensures non-negative weights
+that sum to one, enabling valid low-pass filtering behavior.
+The corresponding high-pass kernels are derived by sub-
+tracting from an identity kernel:
+WHF
+n [h, w,:] =1 k×k −W LF
+n [h, w,:],∀(h, w).(5)
+These dynamic filters are then applied to their respective
+feature groups:
+XLF
+n =X n ∗W LF
+n ,X HF
+n =X n ∗W HF
+n , (6)
+where∗denotes depthwise convolution. Finally, the de-
+composed low- and high-frequency components are recon-
+structed via channel-wise concatenation.
+XLF = [XLF
+1 , . . . ,XLF
+N ],X HF = [XHF
+1 , . . . ,XHF
+N ]. (7)
+The high-frequency branch adopts a multi-stage en-
+coder to extract hierarchical representations from the high-
+frequency inputX HF. Since its high resolution nature,
+State-Space Model (SSM) [19] based visual processing is
+adopted for the branch as SSM has shown significant im-
+provement in the long-sequence modeling. The process be-
+gins with a convolutional embedding layer, projecting the
+input into an initial feature space:
+Z(0) =Conv2D(X HF)∈R H0×W0×C0 (8)
+Feature extraction is then performed through multiple
+stages, each consisting ofLconsecutive Visual State Space
+(VSS) blocks. Within each block, the following operations
+are sequentially applied: 1) layer normalization is used to
+normalize the input features:
+Z(l)
+norm =LayerNorm
+
+Z(l−1)
+
+.(9)
+Then, an SS2D [19] captures spatial dependencies, and its
+output is combined with the residual input:
+Z(l)
+SS2D =Z (l−1) +SS2D
+
+Z(l)
+norm
+
+.(10)
+This is followed by a second normalization and passed
+through a feed-forward network (FFN). The final output of
+the block is computed as:
+Z(l) =Z (l)
+SS2D +FFN
+
+LayerNorm
+
+Z(l)
+SS2D
+
+.(11)
+13277
+
+
+=== PAGE 4 ===
+𝐿CE
+Patch 
+Partition
+VSS 
+Block
+Down 
+sampling
+VSS 
+Block
+Conv
+Dense
+Conv 
+Block
+Conv
+× 𝑛
+× 𝑛
+Segmentation 
+Head
+Downsampling Upsampling
+HFF
+Hybrid-Frequency 
+Fusion (HFF)
+𝐿CFAL
+𝐿CFAL
+𝐅𝑠
+𝐅𝑙
+𝐅𝑚
+High-frequency branch
+Short-Range Sub-Branch
+Long-Range Sub-Branch
+Low-frequency branch
+High-frequency 
+branch
+Short-range
+Sub-branch
+Long-range
+Sub-branch
+𝐅𝑠
+𝐅𝑙
+𝛩𝑚
+𝐅𝑚
+𝛩𝑠
+𝛩𝑙
+𝐿CFBL𝐿CFBL
+× 𝑛
+Patch
+Merging
+Adaptive 
+Frequency 
+Decomposition
+Transformer 
+Block
+𝐅s𝑙
+Transformer 
+Block
+Patch 
+Partition
+Feature Flow Gradient Flow
+Figure 1. Overview of F2Net’s multi-branch design. An adaptive frequency decomposition module splits the input into high- and low-
+frequency components. The high-frequency branch preserves details, while the low-frequency branch (with downsampling) includes short-
+and long-range sub-branches. A hybrid-frequency fusion (HFF) module integrates all features. Two auxiliary losses—Cross-Frequency
+Alignment Loss (CFAL) and Cross-Frequency Balance Loss (CFBL)—promote semantic consistency and balanced optimization.
+Downsampling is applied between consecutive stages to
+progressively enlarge the receptive field while maintain-
+ing computational efficiency. The final output of the high-
+frequency branch is denotedF m ∈R Hm×Wm×Cm.
+3.3. Low-Frequency Branch
+For comprehensive low-frequency semantic modeling, the
+downsampled low-frequency componentX LF is processed
+through two complementary subbranches. The short-range
+subbranch, built upon a dense convolutional block, produc-
+ing an outputF s ∈R Hs×Ws×Cs. To address the limited
+receptive field of CNNs, we introduce a long-range sub-
+branch based on TinyViT [36], which processes the input
+XLF to model long-range dependencies and generate global
+feature representationsF l ∈R Hl×Wl×Cl.
+3.4. Hybrid-Frequency Fusion
+Heterogeneous features from different branches may con-
+tain redundant or misaligned channels, which can hinder ef-
+fective integration. To address this, we introduce a Hybrid-
+Frequency Fusion (HFF) module that performs hierarchical
+feature aggregation. Specifically, HFF first integrates the
+outputs of the two low-frequency sub-branches to capture
+both short- and long-range context, and then fuses this rep-
+resentation with the high-frequency branch output to form
+the final unified feature.
+In detail, we first apply a channel-wise attention mech-
+anism to each low-frequency sub-branch, enhancing infor-
+mative channels while suppressing less relevant ones prior
+to fusion. GivenF s andF l, HFF evaluates the correspond-
+ing channel attentionsA s andA l:
+As =σ(MLP(Pool(F s)))∈R Cs ,
+Al =σ(MLP(Pool(F l)))∈R Cl ,
+(12)
+whereσrepresents a sigmoid activation function, MLP de-
+notes a multi-layer perceptron, and Pool indicates spatial
+average pooling. Next, we model cross-branch relation-
+ships:
+M=σ(A sAT
+l ).(13)
+The cross-branch attention matrixM∈R Cs×Cl is incor-
+porated with the original channel attention to enhance fea-
+ture interaction, allowing for more effective information ex-
+change between different branches. It is achieved via two
+separate MLPs for dimension matching purposes:
+˜As =σ(MLP s(M) +A s), ˜Al =σ(MLP(M) +A l).
+(14)
+We then apply these refined attentions to their correspond-
+ing branches and fuse them together:
+Fsl =Conv( ˜As ·F s) +Conv( ˜Al ·F l),(15)
+where two separate1×1convolution operations project
+features into a unified channel dimension to facilitate proper
+feature fusion.
+13278
+
+
+=== PAGE 5 ===
+The fused low-frequency featureF sl is subsequently
+combined with the high-frequency outputF m via a sec-
+ond HFF module, yielding the final integrated representa-
+tion. This comprehensive feature is then forwarded to the
+segmentation head to produce the final prediction.
+3.5. Cross-Frequency Loss & Optimization
+Cross-Frequency Alignment Loss. In F2Net, each fre-
+quency branch focuses on a distinct spectral component.
+In specific, the high-frequency branch and low-frequency
+branch are inherently asymmetric in both representation and
+semantic abstraction. Although these branches target com-
+plementary aspects of the image, they often encode differ-
+ent representations of the same semantic content. Without
+explicit alignment, this discrepancy may lead to semantic
+inconsistency during feature fusion and segmentation. To
+enforce coherent semantic understanding across high- and
+low-frequency branches, we introduce a cross-frequency
+alignment loss (CFAL). It encourages the branch outputs to
+converge at the semantic level, ensuring that the same object
+class is consistently represented across branches regardless
+of frequency bias. We implement CFAL using a symmetric
+Kullback–Leibler (KL) divergence, defined as:
+LCFAL = 1
+2 [DKL(Fsl ∥F m) +D KL(Fm ∥F sl)],(16)
+Cross-Frequency Balance Loss. Apart from the alignment
+issue, the asymmetry can lead to structurally imbalanced
+gradient magnitudes across branches during backpropaga-
+tion [6, 28]. Such imbalance can cause the optimization pro-
+cess to disproportionately favor one branch over the other,
+undermining the collaborative learning objective and result-
+ing in inefficient frequency feature fusion. To address this,
+we propose a cross-frequency balance loss (CFBL) that ex-
+plicitly regularizes the gradient norms of each frequency
+branch, ensuring that no single branch dominates the learn-
+ing dynamics. Formally, the CFBL is defined as:
+LCFBL =
+X
+Θ
+|GΘ − ¯G|,(17)
+whereG i(t) =||∇ ΘLCE||2 denotes the gradient magnitude
+with respect to a conventional segmentation cross-entropy
+lossL CE for the parametersΘof a particular branch, and ¯G
+is the mean gradient magnitude across all branches.
+Optimization. The overall lossLused for optimization
+combines the proposed cross-frequency losses: CFAL and
+CFBL, together with the segmentation lossL CE. It is for-
+mulated as a weighted sum:
+L=λ 1LCFAL +λ 2LCFBL +λ 3LCE,(18)
+whereλ 1,λ 2, andλ 3 are hyperparameters.
+4. Experiment
+4.1. Implementation & Evaluation Protocol
+Dataset. We evaluate our method on two benchmarks.
+DeepGlobe[9] contains 803 satellite images (2448×2448),
+split into 455/207/142 for training/validation/testing, with
+annotations for seven land-cover classes (urban, agricul-
+ture, rangeland, forest, water, barren, unknown), where
+the unknown class is excluded [12].Inria Aerial[21] in-
+cludes 180 aerial images (5000×5000) annotated with bi-
+nary building masks, following the split 126/27/27 for train-
+ing/validation/testing as in [16].
+Implementation Details.The short-range subbranch is im-
+plemented using DeepLabv3 [4] with a customized ResNet-
+18 backbone. The long-range subbranch adopts a 6-layer
+ViT-tiny architecture [10]. All backbones are initialized
+with weights pre-trained on ImageNet-1K. The Mamba
+backbone is built upon VMamba-Tiny-M2 [19], featuring
+a hierarchical structure of four stages with depths [2, 2, 4,
+2], and a base channel dimension 64. We set the channel
+grouping factorNin Eq. 3 to 8. We optimize all parameters
+using SGD with momentum 0.9, an initial learning rate of
+1×10 −3, and polynomial decay (power 0.9). Loss weights
+are set asλ 1 =λ 2 = 0.1,λ 3 = 1. Training runs for 40k
+iterations on Inria Aerial and 80k on DeepGlobe, with batch
+size 8 on a DGX-1 workstation (Tesla V100 GPUs).
+Baselines & metrics.We compare F2Net with state-
+of-the-art methods in two groups:(i) Conventional seg-
+mentation—FCN-8s [20], UNet [27], DeepLabv3+ [4],
+STDC [11], SegFormer [38], Mask2Former [7], and
+PointRend [15];(ii) UHR-specific—CascadePSP [8],
+PPN [37], MagNet [13], GLNet [5], FCtL [16], ISD-
+Net [12], SGNet [34], GPWFormer [14], RUE [25], and
+BPT [31]. We report accuracy via F1 and mIoU, and effi-
+ciency via FPS and memory. All FPS are measured on a
+single NVIDIA Tesla V100 for fair comparison.
+4.2. Comparison with State-of-the-Arts
+Quantitative comparison. Quantitative results are re-
+ported in Table 1 and Table 2 for DeepGlobe and In-
+ria Aerial, respectively. We compare conventional models
+adapted by cropping or downsampling and UHR-specific
+methods. On DeepGlobe, downsampling consistently im-
+proves throughput over cropping and often improves accu-
+racy for UNet and DeepLabv3+, while FCN-8s is a coun-
+terexample where cropping attains a slightly higher mIoU
+(71.80 vs 68.80). UHR-specific methods are stronger over-
+all: many exceed 70% mIoU, and our F2Net is the only
+model above 80% on DeepGlobe, reaching 80.22 mIoU and
+87.09 F1 at 24.30 FPS. This yields gains of +3.62 mIoU
+over BPT (76.60) and +4.78 over SGNet (75.44), while re-
+maining the third-fastest among methods with reported FPS
+(behind RUE at 44.38 FPS and ISDNet at 27.70 FPS). On
+13279
+
+
+=== PAGE 6 ===
+Inria Aerial, F2Net attains 83.39 mIoU and 91.19 F1, im-
+proving the previous best mIoU (RUE, 79.00) by +4.39. In
+terms of memory, F2Net uses 2,767 MB on DeepGlobe and
+5,534 MB on Inria Aerial, representing a deliberate accu-
+racy–efficiency trade-off at ultra-high resolutions. Overall,
+F2Net delivers the highest accuracy on both datasets while
+maintaining practical inference speed.
+Method mIoU↑F1↑FPS↑Mem. (MB)↓
+Conventional Segmentation
+Cropping
+UNet [27] 47.20 64.2 1.30 1,730
+FCN-8s [20] 71.80 82.6 4.55970
+DeepLabv3+ [4] 64.10 78.3 1.50 1,530
+SegFormer [38] 63.40 73.5 1.20 2,200
+Mask2Former [7] 63.90 74.1 0.80 4,500
+Downsampling
+UNet [27] 64.10 78.3 3.60 7,600
+FCN-8s [20] 68.80 79.8 7.91 1,984
+DeepLabv3+ [4] 70.10 82.5 4.50 3,210
+STDC [11]71.20 83.1 13.802,570
+UHR Segmentation
+CascadePSP [8] 68.50 79.7 0.11 3,236
+PPN [37] 71.90 – 12.90 1,193
+PointRend [15] 72.00 83.9 6.30 1,600
+MagNet [13] 73.20 84.6 0.82 1,565
+GLNet [5] 71.60 83.2 0.17 1,973
+FCtL [16] 73.50 83.8 0.13 4,450
+ISDNet [12] 73.30 85.18 27.70 1,948
+SGNet [34] 75.44 – 0.66 2,187
+GPWFormer [14] 75.80 85.4 – 2,380
+RUE [25] 75.10 –44.38 1,638
+BPT [31] 76.60 85.7 – 2,074
+Ours80.22 87.0924.30 2,767
+Table 1. Performance comparison onDeepGlobe. Quantitative
+results of conventional and UHR segmentation methods, showing
+mIoU, F1, FPS, and memory usage.
+Qualitative Analysis.Figures 2 and 3 present qualitative
+comparisons with key regions highlighted. These results
+demonstrate our model’s capability across diverse scenar-
+ios: DeepGlobe examples illustrate effective exploitation of
+large-scale semantic context for natural landscape disam-
+biguation, while Inria examples showcase accurate capture
+of high-frequency structural details in dense urban settings.
+In DeepGlobe (Fig. 2), our model exhibits strong long-
+range contextual modeling. In the first row, it accu-
+rately segments a narrow agricultural strip embedded within
+forest, maintaining feature continuity and topological in-
+tegrity—whereas competing methods (e.g., FCtL, GLNet)
+produce fragmented or missed detections. Similar behav-
+ior is observed in the second row, where our model cor-
+Method mIoU↑F1↑FPS↑Mem. (MB)↓
+Conventional Segmentation
+FCN-8s [20] 69.10 81.70 1.90 4050
+DeepLabv3+ [4] 55.90 – 1.67 5122
+STDC [11] 72.44 – 4.97 7410
+UHR Segmentation
+GLNet [5] 71.20 – 0.052663
+CascadePSP [8] 69.40 81.80 0.03 3236
+FCtL [16] 73.70 84.10 0.04 4330
+ISDNet [12] 74.23 86.35 6.90 4680
+GPWFormer [14] 76.50 – – 4710
+BPT [31] 77.10 86.30 – 4450
+RUE [25] 79.00 –10.893574
+Ours83.39 91.195.50 5534
+Table 2.Inria Aerialresults for conventional and UHR methods:
+mIoU, F1, FPS, and memory.
+Ground Truth Ours ISDNet FCtL GLNetUHR Image RUE
+Figure 2. Qualitative examples from the DeepGlobe dataset. Each
+color denotes a distinct semantic region: cyan for urban, yellow for
+agriculture, purple for rangeland, green for forest, blue for water,
+white for barren.
+rectly traces a continuous watercourse, while other SOTAs
+either fragment this linear structure (ISDNet, FCtL) or in-
+troduce substantial false positives along riverbanks (RUE).
+Our model also demonstrates robust contextual reasoning
+that mitigates common misclassifications across scales. In
+the third row, competing methods misclassify large bare
+patches within forest as rangeland due to insufficient con-
+textual information. Conversely, in the fourth row, they
+fail to recognize a small forest patch, incorrectly labeling
+it as surrounding barren land. Our model correctly classi-
+fies both cases, evidencing effective contextual awareness
+for both large regions and small isolated objects. The fifth
+13280
+
+
+=== PAGE 7 ===
+UHR Image Ground Truth Ours ISDNet FCtL
+ RUE
+Figure 3. Qualitative examples from the Inria Aerial dataset.
+White and black pixels denote building and non-building regions,
+respectively. For error visualization, red pixels highlight false neg-
+atives, and blue pixels indicate false positives in building detec-
+tion.
+row further validates this capability, where our method pro-
+duces the most accurate boundary delineation for a range-
+land patch within an urban block.
+In the Inria Aerial dataset (Fig. 3), where false negatives
+(red) and false positives (blue) visualize segmentation er-
+rors, our model achieves superior spatial precision. The
+second row illustrates this capability: our model correctly
+detects the building in the top-left region (missed by ISD-
+Net) while producing accurate boundaries for the complex
+building cluster in the top-right, substantially reducing clas-
+sification errors compared to FCtL and RUE. This precision
+in resolving high-frequency details is consistent across ex-
+amples. In the dense scenes of rows three and four, our
+segmentation exhibits the lowest error rates. In row five,
+containing numerous discrete buildings, our method accu-
+rately captures fine structures that baselines miss. Detailed
+class-wise gains demonstrating F2Net’s contextual reason-
+ing are in the supplementary material.
+4.3. Ablation Studies
+Effectiveness of frequency-aware branches.We inves-
+tigate the contribution of each branch in F2Net on Deep-
+Globe (Table 3). The high-frequency branch alone achieves
+72.5% mIoU, demonstrating that full-resolution frequency
+cues effectively capture boundary details while preserving
+global dependencies via the Mamba backbone. In contrast,
+the short-range CNN and long-range Transformer branches,
+both operating on downsampled inputs, yield 71.3% and
+71.9%, respectively, reflecting their limited ability to re-
+High-frequency Short-range Long-range mIoU↑
+✓72.5
+✓71.3
+✓71.9
+✓ ✓73.7
+✓ ✓76.5
+✓ ✓76.7
+✓ ✓ ✓80.22
+Table 3. Ablation study on the impact of different branch combina-
+tions onDeepGlobe. Best result in bold, second-best underlined.
+Hi-frequency Short Long mIoU↑Mem. (MB)↓
+Full 1/4 1/4 80.22 2,767
+Full 1/8 1/8 76.5 2,133
+1/2 1/4 1/4 75.1 2,789
+1/4 1/4 1/4 72.8 2,283
+1/4 1/2 1/2 — —
+Table 4. Ablation study on the input resolution of different
+branches on DeepGlobe. ”Short” and ”Long” denote the short-
+and long-range branches.
+cover fine boundaries after resolution reduction. When
+paired with the high-frequency branch, both short- and
+long-range branches lead to clear gains (76.7% and 76.5%),
+showing that local texture and global semantic reasoning
+complement frequency features in different ways. Finally,
+the three-branch configuration reaches 80.22% mIoU, ex-
+ceeding the best dual-branch combination by 3.5 points and
+the average single-branch result by over 8 points. This
+consistent improvement verifies the strong synergistic ef-
+fect among frequency, local, and global pathways, suggest-
+ing that integrating full-resolution high-frequency cues with
+multi-scale spatial reasoning is critical for accurate and ro-
+bust UHR segmentation.
+Impact of input resolution.Table 4 evaluates the in-
+fluence of input resolution on each branch. The high-
+frequency branch is highly resolution-sensitive: reducing
+its input to 1/2 and 1/4 of the original size leads to a sub-
+stantial mIoU drop of 5.1% and 7.4%, respectively, con-
+firming that full-resolution inputs are essential for preserv-
+ing boundary and texture details. In contrast, the short-
+and long-range branches exhibit better robustness to down-
+sampling. Lowering their resolution from 1/4 to 1/8 re-
+duces memory by 23% with a moderate 3.72% performance
+loss, indicating that global and local semantic reasoning
+can be efficiently modeled at coarser scales. Given the
+16GB GPU memory constraint duringtraining, the resolu-
+tion of low-frequency branches is limited to half of the orig-
+inal input. Overall, these findings validate the core princi-
+13281
+
+
+=== PAGE 8 ===
+LCE LCFBL LCFAL mIoU↑
+✓77.35
+✓ ✓78.80
+✓ ✓79.20
+✓ ✓ ✓80.22
+Table 5. Ablation study on different loss functions.
+Fusion Method mIoU↑GFLOPs↓
+Concat 76.10 48.7
+Add 74.60 45.2
+ASPP 77.30 61.5
+Cross-attention 72.40 93.8
+Our HFF80.2260.8
+Table 6. Ablation study on different feature fusion strategies. ”Our
+HFF” denotes our proposed fusion method. Best mIoU is in bold.
+ple of our frequency-aware design: full-resolution process-
+ing is indispensable for high-frequency details, while low-
+frequency semantics can be effectively captured at reduced
+resolutions—achieving a balanced trade-off between accu-
+racy and computational cost.
+Effectiveness of loss functions. Table 5 analyzes the im-
+pact of each loss component in our framework. Using
+only the standard Cross-Entropy (CE) loss yields 77.35%
+mIoU, serving as the baseline. Introducing the Cross-
+Frequency Balance Loss (CFBL) improves performance
+to 78.80% by stabilizing gradient magnitudes across het-
+erogeneous branches, thus facilitating balanced optimiza-
+tion between high- and low-frequency pathways. In par-
+allel, adding the Cross-Frequency Alignment Loss (CFAL)
+alone increases mIoU to 79.20%, confirming its effective-
+ness in aligning frequency-domain features and enhancing
+inter-branch semantic consistency. When both CFBL and
+CFAL are jointly applied with CE, F2Net attains the best
+performance of 80.22%, outperforming the CE-only base-
+line by 2.87%. This consistent improvement verifies that
+CFBL and CFAL act in complementary manners—one en-
+forcing training stability, the other ensuring semantic co-
+herence—together forming a cohesive objective that maxi-
+mizes the synergy among frequency-aware representations.
+Further empirical analysis detailing the gradient norm ra-
+tios and demonstrating the stabilization effect of CFBL is
+provided in the supplementary material.
+Hybrid-Frequency Fusion Analysis.We further evalu-
+ate the proposed Hybrid-Frequency Fusion (HFF) module
+against representative fusion strategies summarized in Ta-
+ble 6. Simple addition yields the lowest computational
+cost (45.2 GFLOPs) but only achieves 74.6% mIoU, in-
+dicating limited capability in integrating heterogeneous
+Method mIoU↑FPS↑
+Raw Input 74.20 11.3
+Gaussian filter 76.00 12.1
+Laplacian Pyramid 78.10 9.8
+AFD (Ours)80.2215.4
+Table 7. Ablation study on frequency decomposition strategies.
+frequency cues. Feature concatenation improves perfor-
+mance to 76.1% by retaining branch-specific information,
+yet its fusion remains shallow and lacks adaptive weight-
+ing. ASPP attains a moderate 77.3% mIoU by enlarg-
+ing the receptive field through multi-scale spatial context,
+but it ignores frequency interactions and increases com-
+putation (61.5 GFLOPs). Cross-attention, though theo-
+retically capable of modeling inter-branch dependencies,
+performs the worst (72.4%) due to excessive computation
+(93.8 GFLOPs) and overfitting to redundant correlations.
+Our HFF achieves the highest mIoU of 80.22% with mod-
+erate complexity (60.8 GFLOPs). This improvement stems
+from its frequency-wise gating mechanism, which adap-
+tively aligns multi-frequency features rather than simply
+merging them, enabling more effective cross-frequency in-
+teraction and balanced representation learning.
+Frequency Decomposition Analysis.We evaluate fre-
+quency decomposition strategies applied to the high-
+frequency branch summarized in Table 7. Directly pro-
+cessing raw full-resolution inputs yields the lowest mIoU
+of 74.2% due to the lack of explicit frequency separation.
+A Gaussian filter improves performance to 76.0% by sup-
+pressing noise but offers limited adaptability. The Lapla-
+cian Pyramid achieves higher accuracy (78.1%) by captur-
+ing multi-scale details, yet its fixed decomposition intro-
+duces additional computation and limits real-time efficiency
+(9.8 FPS). In contrast, our Adaptive Frequency Decompo-
+sition (AFD) attains the best balance between accuracy and
+efficiency, reaching 80.22% mIoU with 15.4 FPS. This gain
+arises from dynamic content-aware filtering, which allo-
+cates frequency emphasis based on spatial context, preserv-
+ing fine structures while accelerating inference.
+5. Conclusion
+We present F2Net, a frequency-aware framework for se-
+mantic segmentation of UHR remote sensing images. De-
+composing inputs into high- and low-frequency components
+allows F2Net to process structural details and semantics in
+parallel via specialized branches. The Hybrid-Frequency
+Fusion module integrates multi-scale features, while cross-
+frequency objectives stabilize training. Experiments on two
+widely-used benchmarks -DeepGlobeandInria Aerial-
+show state-of-the-art results.
+13282
+
+
+=== PAGE 9 ===
+Acknowledgments
+This work was partially supported by the ECU Early-Mid
+Career Researcher (EMCR) Grant Scheme.
+References
+[1] S. Ascher and E. Pincus.The Filmmaker’s Handbook: A
+Comprehensive Guide for the Digital Age. Plume, 1999. 1
+[2] Liang-Chieh Chen, Yi Yang, Jiang Wang, Wei Xu, and
+Alan L. Yuille. Attention to scale: Scale-aware semantic
+image segmentation. InCVPR, 2016. 1, 2
+[3] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L. Yuille. Deeplab: Semantic im-
+age segmentation with deep convolutional nets, atrous con-
+volution, and fully connected crfs.IEEE Transactions on
+Pattern Analysis and Machine Intelligence, 2018. 2
+[4] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian
+Schroff, and Hartwig Adam. Encoder-decoder with atrous
+separable convolution for semantic image segmentation. In
+ECCV, 2018. 2, 5, 6
+[5] Wuyang Chen, Ziyu Jiang, Zhangyang Wang, Kexin Cui,
+and Xiaoning Qian. Collaborative global-local networks for
+memory-efficient segmentation of ultra-high resolution im-
+ages. InCVPR, 2019. 1, 2, 5, 6
+[6] Zhao Chen, Vijay Badrinarayanan, Chen-Yu Lee, and An-
+drew Rabinovich. Gradnorm: Gradient normalization for
+adaptive loss balancing in deep multitask networks. InICML,
+2018. 3, 5
+[7] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention mask
+transformer for universal image segmentation. InCVPR,
+2022. 2, 5, 6
+[8] Ho Kei Cheng, Jihoon Chung, Yu-Wing Tai, and Chi-Keung
+Tang. Cascadepsp: Toward class-agnostic and very high-
+resolution segmentation via global and local refinement. In
+CVPR, 2020. 5, 6
+[9] Ilke Demir, Krzysztof Koperski, David Lindenbaum, Guan
+Pang, Jing Huang, Saikat Basu, Forest Hughes, Devis Tuia,
+and Ramesh Raskar. Deepglobe 2018: A challenge to parse
+the earth through satellite images. InCVPRW, 2018. 2, 5
+[10] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is
+worth 16x16 words: Transformers for image recognition at
+scale. InICLR, 2021. 2, 5
+[11] Mingyuan Fan, Shenqi Lai, Junshi Huang, Xiaoming Wei,
+Zhenhua Chai, Junfeng Luo, and Xiaolin Wei. Rethinking
+bisenet for real-time semantic segmentation. InCVPR, 2021.
+5, 6
+[12] Shaohua Guo, Liang Liu, Zhenye Gan, Yabiao Wang, Wuhao
+Zhang, Chengjie Wang, Guannan Jiang, Wei Zhang, Ran Yi,
+Lizhuang Ma, and Ke Xu. Isdnet: Integrating shallow and
+deep networks for efficient ultra-high resolution segmenta-
+tion. InCVPR, 2022. 1, 2, 5, 6
+[13] Chuong Huynh, Anh Tuan Tran, Khoa Luu, and Minh Hoai.
+Progressive semantic segmentation. InCVPR, 2021. 5, 6
+[14] Deyi Ji, Feng Zhao, and Hongtao Lu. Guided patch-grouping
+wavelet transformer with spatial congruence for ultra-high
+resolution segmentation. InIJCAI, 2023. 2, 5, 6
+[15] Alexander Kirillov, Yuxin Wu, Kaiming He, and Ross Gir-
+shick. Pointrend: Image segmentation as rendering. In
+CVPR, 2020. 5, 6
+[16] Qi Li, Weixiang Yang, Wenxi Liu, Yuanlong Yu, and
+Shengfeng He. From contexts to locality: Ultra-high reso-
+lution image segmentation via locality-aware contextual cor-
+relation. InICCV, 2021. 2, 5, 6
+[17] Yifan Li, Ziqian Liu, Junli Yang, and Haopeng Zhang.
+Wavelet transform feature enhancement for semantic seg-
+mentation of remote sensing images.Remote Sensing, 2023.
+2
+[18] Ziming Li, Bin Chen, Shengbiao Wu, Mo Su, Jing M. Chen,
+and Bing Xu. Deep learning for urban land use category clas-
+sification: A review and experimental assessment.Remote
+Sensing of Environment, 2024. 1
+[19] Yue Liu, Yunjie Tian, Yuzhong Zhao, Hongtian Yu, Lingxi
+Xie, Yaowei Wang, Qixiang Ye, Jianbin Jiao, and Yunfan
+Liu. Vmamba: Visual state space model. InNeurIPS, 2024.
+3, 5
+[20] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully
+convolutional networks for semantic segmentation. In
+CVPR, 2015. 2, 5, 6
+[21] Emmanuel Maggiori, Yuliya Tarabalka, Guillaume Charpiat,
+and Pierre Alliez. Can semantic labeling methods generalize
+to any city? the inria aerial image labeling benchmark. In
+IGARSS, 2017. 2, 5
+[22] Salma Abdel Magid, Yulun Zhang, Donglai Wei, Won-Dong
+Jang, Zudi Lin, Yun Fu, and Hanspeter Pfister. Dynamic
+high-pass filtering and multi-spectral attention for image
+super-resolution. InICCV, 2021. 3
+[23] Ozan Oktay, Jo Schlemper, Loic Le Folgoc, Matthew Lee,
+Mattias Heinrich, Kazunari Misawa, Kensaku Mori, Steven
+McDonagh, Nils Y Hammerla, Bernhard Kainz, et al. At-
+tention u-net: Learning where to look for the pancreas. In
+Medical Imaging with Deep Learning, 2018. 2
+[24] Botong Ou, Gang Shao, Baijian Yang, and Songlin Fei. Fo-
+calsr: Revisiting image super-resolution transformers with
+fourier-transform cross attention layers for remote sensing
+image enhancement.Geomatica, 2025. 2
+[25] Rong Qin, Xingyu Liu, Jinglei Shi, Liang Lin, and Jufeng
+Yang. Boosting the dual-stream architecture in ultra-high
+resolution segmentation with resolution-biased uncertainty
+estimation. InCVPR, 2025. 2, 5, 6
+[26] Nasim Rahaman, Aristide Baratin, Devansh Arpit, Felix
+Draxler, Min Lin, Fred Hamprecht, Yoshua Bengio, and
+Aaron Courville. On the spectral bias of neural networks.
+InICML, 2019. 3
+[27] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net:
+Convolutional networks for biomedical image segmentation.
+InMICCAI, 2015. 2, 5, 6
+[28] Ozan Sener and Vladlen Koltun. Multi-task learning as
+multi-objective optimization. InNeurIPS, 2018. 3, 5
+[29] Binbin Song, Songhan Min, Hui Yang, Yongchuang Wu, and
+Biao Wang. A fourier frequency domain convolutional neu-
+13283
+
+
+=== PAGE 10 ===
+ral network for remote sensing crop classification consider-
+ing global consistency and edge specificity.Remote Sensing,
+2023. 2
+[30] Robin Strudel, Ricardo Garcia, Ivan Laptev, and Cordelia
+Schmid. Segmenter: Transformer for semantic segmenta-
+tion. InICCV, 2021. 1
+[31] Haopeng Sun, Yingwei Zhang, Lumin Xu, Sheng Jin,
+and Yiqiang Chen. Ultra-high resolution segmentation via
+boundary-enhanced patch-merging transformer. InAAAI,
+2025. 2, 5, 6
+[32] Yuxi Sun, Shanshan Feng, Xutao Li, Yunming Ye, Jian
+Kang, and Xu Huang. Visual grounding in remote sensing
+images. InACMMM, 2022. 1
+[33] Di Wang, Jing Zhang, Bo Du, Minqiang Xu, Lin Liu,
+Dacheng Tao, and Liangpei Zhang. Samrs: Scaling-up re-
+mote sensing segmentation dataset with segment anything
+model. InNeurIPS, 2023. 1
+[34] Sai Wang, Yutian Lin, Yu Wu, and Bo Du. Toward real ultra
+image segmentation: Leveraging surrounding context to cul-
+tivate general segmentation model. InNeurIPS, 2024. 1, 2,
+5, 6
+[35] Penghui Wen, Mengwei He, Patrick Filippi, Na Zhao, Feng
+Zhang, Thomas Francis Bishop, Zhiyong Wang, and Kun
+Hu. DuoCast: Duo-probabilistic diffusion for precipitation
+nowcasting. InAAAI, 2026. 2
+[36] Kan Wu, Jinnian Zhang, Houwen Peng, Mengchen Liu, Bin
+Xiao, Jianlong Fu, and Lu Yuan. Tinyvit: Fast pretraining
+distillation for small vision transformers. InECCV, 2022. 4
+[37] Tong Wu, Zhenzhen Lei, Bingqian Lin, Cuihua Li, Yanyun
+Qu, and Yuan Xie. Patch proposal network for fast semantic
+segmentation of high-resolution images. InAAAI, 2020. 5, 6
+[38] Enze Xie, Wenhai Wang, Zhiding Yu, Anima Anandkumar,
+Jose M Alvarez, and Ping Luo. Segformer: Simple and ef-
+ficient design for semantic segmentation with transformers.
+InNeurIPS, 2021. 2, 5, 6
+[39] Hui Yang, Caili Zhou, Xiaoyu Xing, Yongchuang Wu, and
+Yanlan Wu. A high-resolution remote sensing road extrac-
+tion method based on the coupling of global spatial features
+and fourier domain features.Remote Sensing, 2024. 2
+[40] Yunsong Yang, Genji Yuan, and Jinjiang Li. Sffnet: A
+wavelet-based spatial and frequency domain fusion network
+for remote sensing segmentation.IEEE Transactions on
+Geoscience and Remote Sensing, 2024. 2
+[41] Xin Yu, Peng Dai, Wenbo Li, Lan Ma, Jiajun Shen, Jia Li,
+and Xiaojuan Qi. Towards efficient and scale-robust ultra-
+high-definition image demoir´eing. InECCV, 2022. 1
+[42] Qinyan Zeng, Bin Hui, Zhaoji Liu, Zheng Xu, and Miao He.
+A method combining discrete cosine transform with atten-
+tion for multi-temporal remote sensing image matching.Sen-
+sors, 2025. 2
+[43] Cheng Zhang, Wanshou Jiang, Yuan Zhang, Wei Wang,
+Qing Zhao, and Chenjie Wang. Transformer and cnn hy-
+brid deep neural network for semantic segmentation of very-
+high-resolution remote sensing imagery.IEEE Transactions
+on Geoscience and Remote Sensing, 2022. 2
+[44] Hengshuang Zhao, Jianping Shi, Xiaojuan Qi, Xiaogang
+Wang, and Jiaya Jia. Pyramid scene parsing network. In
+CVPR, 2017. 2
+[45] Hengshuang Zhao, Xiaojuan Qi, Xiaoyong Shen, Jianping
+Shi, and Jiaya Jia. Icnet for real-time semantic segmentation
+on high-resolution images. InECCV, 2018. 1, 2
+[46] Zongwei Zhou, Md Mahfuzur Rahman Siddiquee, Nima
+Tajbakhsh, and Jianming Liang. Unet++: A nested u-net ar-
+chitecture for medical image segmentation. InDLMIA, 2018.
+2
+13284

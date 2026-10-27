@@ -1,0 +1,15 @@
+from pathlib import Path
+p = Path(r"D:\论文\9.27论文\中文论文\绘图\role_functional_text_skeleton\annotate_next_step.py")
+s = p.read_text(encoding="utf-8")
+s = s.replace('arrow((1235, 340), (1235, 445), fill=(102, 133, 166, 255), width=3, head=13)\n', '''# route profile handoff around the panel title
+d.line((1735, 340, 1735, 485), fill=(102, 133, 166, 255), width=3)
+d.line((1735, 485, 1490, 485), fill=(102, 133, 166, 255), width=3)
+arrow((1520, 485), (1490, 485), fill=(102, 133, 166, 255), width=3, head=13)
+''')
+s = s.replace('text(1365, 635, "same π", 24, fill=(70, 100, 130, 255))\n', '')
+s = s.replace('text(875, 960, "Same profile and same role operator in both views", 25, fill=GREY)\ntext(875, 998, "Fusion is performed on aligned class-score fields", 25, fill=GREY)\ntext(875, 1036, "solid: data / computation     dashed: profile sharing", 22, fill=GREY)\n', '''text(900, 955, "same profile and role operator in both views", 24, fill=GREY)
+text(900, 990, "fuse aligned class-score fields; then apply the native decision", 24, fill=GREY)
+''')
+s = s.replace('text(845, 405, "merge role choices", 22, fill=(70, 100, 130, 255))\n', '')
+p.write_text(s, encoding='utf-8')
+print('edited')

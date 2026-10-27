@@ -1,0 +1,929 @@
+=== PAGE 1 ===
+SynCLIP: Synonym-Coherent Language-Image Pretraining for Robust
+Open-Vocabulary Dense Perception
+Mingjie Xie1 Guangjun He2* Dongli Xu3 Youtian Lin4 Hongjue Li1
+Pengming Feng2 Jian Guan5 Yue Deng1,6
+1Beihang University 2State Key Laboratory of Space Information System and Integrated Application
+3Independent Researcher 4Nanjing University 5Harbin Engineering University 6Beijing Zhongguancun Academy
+Abstract
+Open-vocabulary dense perception (OVDP) aims to local-
+ize objects unseen during training by leveraging textual
+knowledge. Despite the remarkable progress of recent
+CLIP-based approaches, we identify a critical limitation:
+synonym-induced grounding inconsistency, where semanti-
+cally equivalent expressions yield disparate spatial atten-
+tion patterns. This inconsistency undermines the robustness
+and performance of existing methods in real-world OVDP
+applications. To address this issue, we propose SynCLIP ,
+a Synonym-Coherent Language-Image Pretraining frame-
+work that enhances synonym-robust grounding for OVDP .
+SynCLIP introduces a Semantic-consistent Spatial Atten-
+tion alignment (SSA) module to enhance spatial attention
+consistency by minimizing discrepancies between attention
+maps of original and synonymous expressions. Further-
+more, a Spatial Attention Refinement (SAR) module selec-
+tively strengthens the most semantically relevant spatial
+regions within aligned maps for more precise and stable
+grounding. To support synonym-coherent pretraining, we
+also construct a Synonym-Enriched Visual Corpus (SEViC),
+which augments each category with multiple synonyms
+and textual definitions. Extensive experiments on multi-
+ple benchmarks demonstrate that SynCLIP substantially
+improves grounding consistency under diverse linguistic
+variants and achieves state-of-the-art performance among
+CLIP-based OVDP methods. Code is available athttps:
+//github.com/Justlovesmile/SynCLIP.
+1. Introduction
+Open-vocabulary dense perception (OVDP) aims to recog-
+nize and localize objects from novel categories that are not
+predefined in the training set by leveraging textual knowl-
+edge [45]. Unlike traditional dense perception tasks such
+as object detection and segmentation [6, 9], which oper-
+*Corresponding author.
+Figure 1. Illustration of synonym-induced grounding inconsis-
+tency. (a) shows inconsistent dense perception across diverse
+synonymous expressions. (b) presents performance degrada-
+tion caused by synonym-induced grounding inconsistency. Here,
+‘Novel’ and ‘Base’ denote the performance on unseen and seen
+categories, respectively.
+ate within a fixed label space and thus struggle to gener-
+alize to real-world environments with an open set of object
+categories [30, 34], OVDP employs textual expressions to
+flexibly represent labels. This language-driven supervision
+enables OVDP models to generalize beyond the closed-set
+categories when handling unseen categories. Consequently,
+OVDP has attracted growing attention for deployment in
+real-world applications such as robotics and autonomous
+driving [41, 44].
+To enable open-vocabulary capability, recent studies
+[3, 37, 42] commonly leverage vision-language models
+(VLMs) pretrained on large-scale image–text pairs, such as
+CLIP [16, 23, 25]. These methods transfer the global vi-
+sion–language alignment learned by VLMs to region-level
+representations, allowing visual regions to be associated
+with category-related textual expressions and thereby facili-
+tating the recognition and localization of unseen categories.
+For example, a series of approaches [29, 32, 33] enhance
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+31524
+
+
+=== PAGE 2 ===
+Figure 2. Comparison of spatial attention distributions generated
+by different models for synonymous expressions,e.g., synonyms
+and definition. Our method yields more consistent and semanti-
+cally aligned attention, indicating synonym-robust grounding.
+region-level vision–language alignment by employing tech-
+niques such as pseudo-region self-distillation or guidance
+from vision foundation models (VFMs). These strategies
+have led to notable improvements in OVDP tasks, including
+open-vocabulary detection (OVD) and segmentation (OVS).
+Despite these advances, existing CLIP-based OVDP
+methods overlook a critical issue,i.e., synonym-induced
+grounding inconsistency. When diverse synonyms or se-
+mantically equivalent expressions are used to describe the
+same object, they often yield inconsistent spatial attention
+distributions. Such variations reduce model robustness and
+cause performance degradation in real-world OVDP appli-
+cations. As shown in Figure 1, simply replacing the origi-
+nal label (e.g.,“zebra”) with synonymous expressions (e.g.,
+“striped horse”and“hippotigris”) results in a substantial
+drop in Average Precision (AP) for F-ViT [32] on the OV-
+COCO benchmark [19]. This observation reveals the sever-
+ity of synonym-induced grounding inconsistency and un-
+derscores the necessity for a synonym-coherent approach
+for real-world applications.
+Figure 2 further illustrates this issue through qualitative
+comparisons of several CLIP-based methods [23, 29]. For
+the same image, different synonymous terms (i.e.,“plane”,
+“airplane”and“aircraft”) and semantically equivalent ex-
+pressions (i.e.,“a powered flying vehicle with fixed wings
+... ”) yield markedly different spatial attention distributions,
+despite referring to the same visual object. Consequently,
+the model is guided toward different visual regions within
+the same image, as shown in rows one and two of Figure 2.
+Although CLIP [23] demonstrates strong global represen-
+tation capability, it lacks effective local region representa-
+tion and may direct attention to irrelevant areas. Region-
+level alignment approaches, such as DeCLIP [29], par-
+tially mitigate this limitation by reinforcing region-level vi-
+sion–language alignment. However, they still fail to ensure
+consistent attention across synonymous expressions, ulti-
+mately leading to inconsistent localization.
+To address this issue, we propose Synonym-Coherent
+Language-Image Pretraining (SynCLIP), a novel frame-
+work designed to achieve synonym-robust grounding for
+OVDP tasks. SynCLIP consists of two key components:
+a Semantic-consistent Spatial Attention alignment (SSA)
+module and a Spatial Attention Refinement (SAR) module,
+which jointly enforce consistent and precise spatial atten-
+tion across synonymous expressions. Specifically, SSA en-
+forces spatial attention consistency by minimizing the dis-
+crepancies between attention maps generated from original
+and semantically enriched synonymous expressions through
+a semantic alignment loss. This alignment effectively miti-
+gates attention shifts caused by linguistic variation, thereby
+improving the robustness of dense perception. To fur-
+ther refine spatial grounding, SAR adopts a semantic to-
+ken selection mechanism to identify the most semantically
+relevant spatial regions from enriched attention maps. It
+then leverages the spatial contextual reasoning capability
+of VFMs [22] to produce refined context-aware attention
+maps, which are subsequently aggregated to enhance at-
+tention accuracy and localization precision. In addition,
+we construct a Synonym-Enriched Visual Corpus (SEViC)
+that augments each category with multiple synonyms and
+textual definitions, serving as the foundation for synonym-
+coherent pretraining in SynCLIP.
+The effectiveness of SynCLIP is validated on multi-
+ple OVDP benchmarks. Experimental results demonstrate
+that SynCLIP significantly improves grounding consistency
+across diverse synonymous expressions and achieves state-
+of-the-art performance among CLIP-based methods. The
+main contributions of this paper are summarized as follows:
+• We are the first to identify and analyzesynonym-induced
+grounding inconsistencyin CLIP-based methods, and
+reveal its negative impact on OVDP tasks.
+• We propose SynCLIP, a novel framework that en-
+hancesspatial attention consistencyacrosssemanti-
+cally equivalent expressions, thereby enhancing ground-
+ing robustness in real-world OVDP scenarios.
+• We construct SEViC, a synonym-enriched image–text
+corpus that enhances category supervision with synonyms
+and definitions, providinga foundation for synonym-
+coherent language–image pretraining.
+• Extensive experiments on multiple benchmarks verify the
+effectiveness of SynCLIP, achieving state-of-the-art per-
+formance and improved grounding consistency.
+2. Related Work
+2.1. Vision-Language Pretraining
+Vision-language pretraining has emerged as a powerful
+paradigm for advancing visual understanding, particularly
+in open-vocabulary scenarios [45]. Among existing meth-
+ods, contrastive vision-language models, such as CLIP
+[23, 25], ALIGN [10] and Florence [39], have shown strong
+generalization and visual-language alignment by learning
+31525
+
+
+=== PAGE 3 ===
+from web-scale image-text pairs. These models align image
+and text embeddings in a shared feature space through con-
+trastive learning and have achieved remarkable success in
+tasks such as image-text retrieval and classification [4, 14].
+However, most of them perform alignment at the image
+level, relying on global representations without explicitly
+modeling the correspondence between local regions and
+textual expressions [42]. This design limits their effective-
+ness in OVDP tasks, where precise spatial grounding and
+text-aligned region-level representation are essential.
+To bridge this gap, several recent efforts have explored
+region-level vision-language alignment by adapting or fine-
+tuning CLIP to better model local interactions. For instance,
+CLIPSelf [32] aligns region-level features with their corre-
+sponding cropped image-level representations, without re-
+quiring explicit region-text annotations. CLIM [33] treats
+randomly sampled patches as pseudo regions and aligns
+them with corresponding text in a mosaicked image, en-
+abling spatially localized vision-language learning without
+box annotations. In contrast, DeCLIP [29] transfers spatial
+correlation patterns from VFMs for contextual consistency.
+These approaches have collectively improved the region-
+level alignment capabilities of CLIP-based models, thereby
+advancing their performance in OVDP tasks.
+Despite these efforts, existing methods still fail to en-
+sure consistent spatial attention across synonymous expres-
+sions. This limitation motivates our work, which explicitly
+addresses the need for synonym-robust grounding ability in
+real-world applications.
+2.2. Open-Vocabulary Dense Perception
+OVDP has attracted increasing attention for its ability to
+localize arbitrary visual concepts defined by textual cate-
+gories. It primarily includes two sub-tasks,i.e., OVD and
+OVS. In OVD, methods like ViLD [5], VLDet [18] and
+GLIP [15] utilize CLIP-derived text embeddings to rep-
+resent categories and align them with region proposals.
+These approaches typically treat text as classifiers or atten-
+tion queries. Similarly, in OVS, methods like ZSSeg [35]
+and OVSeg [17] usually follow a two-stage pipeline that
+first generates class-agnostic segmentation masks and then
+classifies each mask using CLIP-derived text embeddings.
+More recent approaches, such as SAN [36] and CAT-Seg
+[1], directly leverage CLIP embeddings to predict segmen-
+tation masks in an end-to-end manner. While these ap-
+proaches successfully extend CLIP to OVDP tasks, they
+overlook the critical issue of synonym-induced grounding
+inconsistency, which significantly reduces the robustness of
+existing methods in real-world applications.
+3. Proposed Method
+In this section, we introduce SynCLIP, a novel framework
+designed to enhance synonym-robust grounding ability for
+OVDP tasks. As illustrated in Figure 3, SynCLIP consists
+of two main components,i.e., semantic-consistent spatial
+attention alignment (SSA) and spatial attention refinement
+(SAR), which explicitly enforce consistent and precise spa-
+tial attention across diverse synonymous expressions.
+3.1. Preliminaries
+CLIP has become a foundational paradigm in vision-
+language research, which consists of a visual encoderF v(·)
+and a text encoderF t(·). The visual encoder is typically
+implemented using either convolutional neural networks
+(CNNs) [8] or vision transformers (ViTs) [2], while the text
+encoder usually adopts a standard transformer architecture
+to process textual inputs. In this study, we adopt the ViT-
+based variant of CLIP. Given an image-text pair, CLIP en-
+codes the imageI∈R 3×h×w and textTinto visual em-
+beddingz=F v(I)and text embeddingt=F t(T), re-
+spectively. Here,zis the dense feature of the image, which
+is obtained by slightly modifying the last attention block of
+Fv(·)following prior work [43].
+Specifically, letx={x 0,x 1,· · ·,x m}denote the input
+tokens to the last attention block of visual encoderF v(·),
+wherex∈R (m+1)×d andx 0 is the [CLS] token that cap-
+tures the global representation of the image. The remaining
+tokens, each representing ap×pimage patch, correspond
+to spatial locations, wherem=wh/p 2 is the total number
+of image patches. Thus,zis calculated as follows:
+q=Proj q(x),k=Proj k(x),v=Proj v(x),(1)
+y=x+Proj(Attn csav),(2)
+z=y+FFN(y), (3)
+whereq,kandvrepresent the query, key and value embed-
+ding, respectively. Proj(·)and FFN(·)denote the projection
+layers and feed-forward network, respectively.Attn csa
+represents the correlative self-attention process [27], which
+is formulated as follows:
+Attncsa =SoftMax(qq ⊤/τ)
++SoftMax(kk ⊤/τ),
+(4)
+where the temperature coefficientτis set to
+√
+dby de-
+fault. After obtaining the visual embeddingz, we dis-
+card the [CLS] token to attain dense feature representation
+Xdense ∈R m×d. For ease of description, the following sec-
+tions useX dense =F v(I)to represent the above process.
+3.2. Semantic-consistent Spatial Attention Align-
+ment
+To mitigate synonym-induced grounding inconsistency, we
+propose SSA, which promotes consistent spatial grounding
+by aligning the attention maps of original labels with those
+derived from semantically enriched expressions.
+31526
+
+
+=== PAGE 4 ===
+Figure 3. Illustration of the SynCLIP framework, which consists of two key components,i.e., semantic-consistent spatial attention align-
+ment (SSA) and spatial attention refinement (SAR) modules. SSA enforces consistent grounding by aligning spatial attention between
+original labels and semantically enriched expressions, thereby reducing synonym-induced inconsistency. SAR refines attention precision
+by selecting the most semantically relevant tokens and aggregating context-aware spatial correlations derived from vision foundation mod-
+els (VFMs). This synergistic design enables SynCLIP to achieve robust and precise grounding across diverse synonymous expressions.
+As SSA relies on sufficient textual variations to support
+this alignment, we first construct a synonym-enriched vi-
+sual corpus (SEViC), which augments category-level super-
+vision with diverse synonymous expressions, including syn-
+onyms and definitions. SEViC serves as a foundational re-
+source for learning robust language–image associations un-
+der expression diversity. Detailed construction of SEViC is
+described in Section 4.1.1.
+Based on SEViC, SSA leverages a set of semantically
+enriched expressions as reference guidance. Specifically,
+given an input imageIand a set of original labelsT label =
+{T label
+i }n
+i=1 (e.g.,“dog”), SSA first constructs the corre-
+sponding semantically enriched synonymous expressions
+Tsem ={T sem
+i }n
+i=1 by incorporating synonyms and defini-
+tions (e.g.,“dog, puppy, canine, a common domesticated
+carnivorous mammal ... ”). These enriched expressions pro-
+vide more comprehensive semantic grounding cues, whose
+attention maps tend to localize object regions more accu-
+rately and consistently. Therefore, they serve as reliable
+references for aligning the spatial attention of original la-
+bels. After that, bothT label andT sem are encoded by the
+frozen text encoderF t(·)of CLIP, yielding sentence-level
+text embeddingst label ∈R n×d andt sem ∈R n×d, wheren
+denotes the number of expressions anddis the embedding
+dimension.
+To model semantically consistent grounding, SSA em-
+ploys a teacher-student dual visual encoder architecture to
+extract dense visual representations. Given an input image
+I, the student modelF v(·)and its frozen counterpartF ∗
+v (·),
+serving as the teacher model, generate dense feature repre-
+sentationsX dense =F v(I)∈R m×d andX ∗
+dense =F ∗
+v (I)∈
+Rm×d, respectively. SSA then computes attention maps be-
+tween visual features and both original and semantically en-
+riched text embeddings, establishing a foundation for spa-
+tial attention alignment.
+Alabel = tlabelXdense
+⊤
+||tlabel|| · ||Xdense|| , (5)
+Asem = tsemX∗
+dense
+⊤
+||tsem|| · ||X∗
+dense|| , (6)
+whereA∈R n×m denotes the spatial attention maps be-
+tween the text and image embeddings. To enforce semantic
+consistency across diverse expressions referring to the same
+concept, SSA introduces the semantic alignment loss:
+Lsemantic = 1
+nm
+nX
+i=1
+mX
+j=1
+||Ai,j
+label −A i,j
+sem||2. (7)
+By minimizing the discrepancy between the attention
+distributions derived from original and enriched expres-
+sions, SSA encourages the model to produce consistent spa-
+tial attention across synonymous or semantically equivalent
+expressions, thereby enhancing the stability and coherence
+of spatial grounding regardless of expression diversity.
+3.3. Spatial Attention Refinement
+To further improve spatial grounding precision, we propose
+SAR, which consists of two stages,i.e., semantic token se-
+lection to identify the most semantically relevant spatial lo-
+cations, and context-aware attention aggregation to refine
+31527
+
+
+=== PAGE 5 ===
+spatial attention through contextual reasoning. SAR lever-
+ages the spatial representation capability of vision founda-
+tion models (VFMs) [22] to enhance both spatial accuracy
+and semantic coherence, leading to more reliable localiza-
+tion across synonymous expressions.
+3.3.1. Semantic Token Selection
+Given the attention maps of semantically enriched expres-
+sionsA sem, which capture the correlation between dense
+feature representationX ∗
+dense and the enriched text embed-
+dingt sem, SAR first identifies the most semantically rele-
+vant spatial locations via a semantic token selection mech-
+anism. Specifically, the top-ktokens with the highest atten-
+tion scores are selected for each enriched expression:
+K=TopK(A sem, k), (8)
+whereK ∈R n×k stores the indices of selected tokens
+acrossntext embeddings. A pretrained VFM model, de-
+noted asF VFM
+v (·), extracts the dense visual featureXVFM
+dense ∈
+Rm×d that encodes rich spatial context. Here,X VFM
+dense =
+{x1,x 2,· · ·,x m}represents the image tokens of VFM fea-
+ture, which has the same shape ofX ∗
+dense.
+Based on the indices inK, SAR computes the spatial cor-
+relation matrixSby evaluating cosine similarity between
+each selected token and all image tokens:
+si,j = xi ·x j
+max(||xi|| · ||xj||, ϵ), (9)
+whereϵis set to10 −8 by default to avoid division by zero at
+extrema. This results in a set ofkspatial correlation matri-
+ces per text embedding,i.e.,S={s i,j|i∈ K, j∈[1, m]} ∈
+Rn×k×m, each of which represents the spatial correlation
+from a key semantic location to the entire image.
+3.3.2. Context-Aware Attention Aggregation
+To obtain a refined and semantically coherent attention map,
+the spatial correlation matricesSare aggregated into a fi-
+nal attention mapA spa =Aggregator(S)∈R n×m, where
+Aggregator(·)computes the mean across thekselected to-
+kens. This simple averaging strategy proves empirically
+effective, as it highlights spatial regions that are consis-
+tently correlated with the most informative semantic cues.
+Figure 4 visualizes this process, showing how semantic at-
+tention, spatial correlation, and aggregated attention jointly
+contribute to SAR.
+Finally, to balance semantic relevance and spatial preci-
+sion, SAR fuses the semantic attentionA sem and the spatial
+correlation attentionA spa as:
+Aagg =αA spa +βA sem, (10)
+whereαandβcontrol the trade-off between spatial accu-
+racy and semantic consistency, and the effect of their val-
+ues is further analyzed in the Appendix. The refined atten-
+tionA agg supervises grounding accuracy and consistency
+Figure 4. Illustration of the SAR process withk=3. From left to
+right, we visualize the semantic attentionA sem, the spatial corre-
+lation attentionA spa, and the aggregated attentionA agg. The ag-
+gregated map preserves both semantic relevance and text-guided
+spatial localization.
+by minimizing the optimized semantic alignment loss:
+L+
+semantic = 1
+nm
+nX
+i=1
+mX
+j=1
+∥Ai,j
+label −A i,j
+agg∥2. (11)
+Through this refinement and aggregation mechanism,
+SAR enhances spatial fidelity of attention maps while pre-
+serving the semantics conveyed by enriched textual expres-
+sions, thereby ensuring semantic coherence and accurate
+spatial grounding across diverse synonymous expressions
+for robust performance in real-world OVDP scenarios.
+4. Experiments
+4.1. Datasets and Metrics
+4.1.1. Synonym-Enriched Visual Corpus
+To enable synonym-coherent language–image pretraining
+for robust OVDP, we construct a synonym-enriched vi-
+sual corpus (SEViC). SEViC augments category-level su-
+pervision with semantically consistent expressions, includ-
+ing synonyms and textual definitions, encouraging consis-
+tent grounding across synonymous expressions.
+To ensure generalizability, SEViC is built upon the train-
+ing images of COCO2017 dataset [19], a widely used
+benchmark offering diverse visual contexts. Since LVIS [7]
+extends COCO2017 with finer-grained and long-tailed an-
+notations over the same image set, we adopt category names
+from both datasets to form a comprehensive vocabulary of
+1,232 unique categories, covering both frequent and rare
+concepts. In addition, two meta-categories,“object”and
+“background”, are further added to represent special global
+semantics. To enrich linguistic supervision, we incorpo-
+rate the LVIS-provided synonyms and definitions where
+31528
+
+
+=== PAGE 6 ===
+# Class Definition Synonyms
+1 boata small vessel for traveling on water ... vessel, watercraft, small boat, ...
+2 giraffetall animal having a very long neck and legs ... giraffa camelopardalis, long-necked animal, ...
+3 frisbeea light, plastic disk propelled with a flip ... flying disc, throw disc, wham-o disc, ...
+Table 1. Examples of synonym-enriched textual expressions in SEViC. For each category, SEViC includes a concise definition and multiple
+semantically consistent synonyms, which are used to enrich linguistic supervision during synonym-coherent pretraining.
+available, and employ large language models (LLMs),e.g.,
+DeepSeek [20], to automatically generate multiple syn-
+onyms and concise definitions, as illustrated in Table 1. All
+generated expressions are validated via LLM-based consis-
+tency checks to ensure semantic fidelity. Each image is fi-
+nally paired with its associated categories and verified ex-
+pressions, forming a synonym-enhanced image–text corpus
+comprising 118,287 images, 1,234 categories, and 11,558
+semantically enriched expressions.
+SEViC serves as the foundation for pretraining SynCLIP,
+enabling the model to learn synonym-robust dense percep-
+tion, thereby mitigating the synonym-induced grounding in-
+consistency observed in CLIP-based models.
+4.1.2. Downstream Finetuning Datasets
+We conduct evaluations on two widely used benchmarks,
+i.e., OV-COCO [19] and OV-LVIS [7]. For OV-COCO,
+following the setup of previous work [33], we divide the
+80 classes in the COCO dataset [19] into 48 base classes
+and 17 novel classes. The training set comprises 107,761
+images containing annotations for base classes only, while
+evaluation is performed on a test set of 4,836 images with
+annotations for both base and novel classes. Detection per-
+formance is measured using the box Average Precision (AP)
+at IoU threshold 0.5, denoted as AP50, with a specific focus
+on APnovel
+50 , which reflects the model’s ability to generalize
+to novel classes.
+Regarding OV-LVIS, we retain 866 common and fre-
+quent classes in the LVIS dataset [7] as base classes and 337
+rare classes as novel classes, following the setup in ViLD
+[5]. Similarly, the training annotations are limited to base
+classes. We report mean Average Precision (mAP) of masks
+averaged over IoU thresholds from 0.5 to 0.95. The perfor-
+mance on rare (i.e., novel) classes, denoted as mAP mask
+r , is
+the primary evaluation metric in experiments.
+4.2. Implementation Details
+SynCLIP is implemented based on the DeCLIP framework
+[29], upon which we integrate the proposed SSA and SAR
+modules. The default weight of semantic alignment loss
+is set to 0.05. We use DINOv2 [22] as the VFM encoder.
+The balance coefficients for attention aggregation,i.e.,α
+andβ, are both set to 0.5 by default. Training is conducted
+using 4 GPUs with a batch size of 8 per GPU. We train
+our SynCLIP for 6 epochs using the AdamW [21] optimizer
+with a learning rate of2×10 −5 and a weight decay of0.1.
+For downstream tasks, we adopt F-ViT [32] as the base-
+line, forming our method,i.e., F-ViT+SynCLIP. All other
+hyper-parameters follow the default settings of the respec-
+tive baselines. Following a previous study [29, 32], we en-
+sure fair comparisons using the same training data as the
+corresponding baselines.
+4.3. Main Results
+We evaluate SynCLIP on two representative benchmarks
+[7, 19] to verify both its general performance and robust-
+ness to linguistic variations. Experiments are conducted
+in two stages. We first conduct benchmark comparisons
+with state-of-the-art methods to demonstrate the effective-
+ness of synonym-coherent pretraining. We then perform
+a synonym-robustness evaluation under synonym substitu-
+tion, further validating SynCLIP’s ability to maintain con-
+sistent grounding across diverse textual expressions.
+4.3.1. Benchmark Comparison
+To assess whether introducing synonym-coherent alignment
+benefits general OVDP performance, we evaluate SynCLIP
+under standard protocols. The core insight is that in-
+tegrating synonym-consistent supervision during pretrain-
+ing helps the model learn stable and semantically invari-
+ant vision–language attention. By reducing inconsisten-
+cies across synonymous expressions, SynCLIP acquires
+stronger category semantics, leading to improved novel-
+class recognition and generalization.
+Results on OV-COCO:As shown in Table 2a, SynCLIP
+significantly enhances the performance over F-ViT on the
+OV-COCO benchmark, achieving 43.6 and 49.8 AP novel
+50
+with ViT-B/16 and ViT-L/14 backbones, respectively. Be-
+yond raw accuracy, the improvement highlights a more
+semantically stable vision–language representation, where
+different lexical forms referring to the same concept yield
+consistent region–text alignment. This stability directly
+translates into stronger recognition of unseen classes, con-
+firming that SynCLIP’s synonym-coherent pretraining nar-
+rows the linguistic gap between base and novel categories,
+enabling SynCLIP to outperform previous methods on the
+OV-COCO.
+Results on OV-LVIS:Table 2b presents results on the
+more challenging OV-LVIS benchmark. FViT+SynCLIP
+achieves 27.8 and 37.2 mAP mask
+r with ViT-B/16 and ViT-
+31529
+
+
+=== PAGE 7 ===
+Method Venue Backbone APnovel50
+ViLD [5] ICLR2022 RN50 27.6
+F-VLM [13] ICLR2023 RN50 28.0
+OV-DETR [40] ECCV2022 RN50 29.4
+BARON-KD [31] CVPR2023 RN50 34.0
+RegionCLIP [42] CVPR2022 RN50x4 39.3
+CORA+ [34] CVPR2023 RN50x4 43.1
+OV-DQUO [28] AAAI2025 RN50x4 45.6
+RO-ViT [12] CVPR2023 ViT-L/16 33.0
+CFM-ViT [11] ICCV2023 ViT-L/16 34.1
+F-ViT+CLIPSelf [32] ICLR2024 ViT-B/16 37.6
+F-ViT+CLIPSelf [32] ICLR2024 ViT-L/14 44.3
+F-ViT+DeCLIP [29] CVPR2025 ViT-B/16 41.1
+F-ViT+DeCLIP [29] CVPR2025 ViT-L/14 46.2
+F-ViT+SynCLIP (Ours) - ViT-B/16 43.6
+F-ViT+SynCLIP (Ours) - ViT-L/14 49.8
+(a) Results on OV-COCO benchmark
+Method Venue Backbone mAPmaskr
+ViLD [5] ICLR2022 RN50 16.3
+OV-DETR [40] ECCV2022 RN50 17.4
+RegionCLIP [42] CVPR2022 RN50x4 22.0
+BARON-KD [31] CVPR2023 RN50 22.6
+OV-SAM [38] CVPR2024 RN50x16 24.0
+CORA+ [34] CVPR2023 RN50x4 28.1
+F-VLM [13] ICLR2023 RN50x64 32.8
+PromptOVD [24] Arxiv2023 ViT-B/16 23.1
+RO-ViT [12] CVPR2023 ViT-L/16 32.4
+F-ViT+CLIPSelf [32] ICLR2024 ViT-B/16 25.3
+F-ViT+CLIPSelf [32] ICLR2024 ViT-L/14 34.9
+F-ViT+DeCLIP [29] CVPR2025 ViT-B/16 26.8
+F-ViT+DeCLIP [29] CVPR2025 ViT-L/14 37.2
+F-ViT+SynCLIP (Ours) - ViT-B/16 27.8
+F-ViT+SynCLIP (Ours) - ViT-L/14 37.2
+(b) Results on OV-LVIS benchmark
+Table 2. Comparison with state-of-the-art methods. ‘RN50’ represents ResNet50 [8], where ‘RN50x4’ is scaled up by a factor of 4
+according to the scaling rules [26]. ‘B’ and ‘L’ in ViT-based methods stand for base and large model sizes. ‘/16’ and ‘/14’ indicate the
+downsample ratio of input images. The best results among methods using comparable backbones are highlighted in bold.
+L/14 backbones, respectively. The former surpasses all
+compared methods with similar backbones, while the lat-
+ter is comparable to the best existing result under the large-
+backbone setting. It is worth noting that OV-LVIS poses a
+fundamentally more challenging scenario than OV-COCO,
+as it involves fine-grained categories with long-tailed dis-
+tributions and extensive lexical overlap. Under such condi-
+tions, models tend to overfit to frequent names and strug-
+gle to generalize across semantically similar yet lexically
+diverse concepts. SynCLIP maintains competitive perfor-
+mance in this setting, indicating its ability to transfer cate-
+gory semantics beyond surface lexical cues.
+Across both OV-COCO and OV-LVIS, the consistent
+improvements can be attributed to SynCLIP’s synonym-
+coherent pretraining, which provides more stable and se-
+mantically aligned region–text attention. SSA reduces at-
+tention variation caused by lexical differences, and SAR
+further refines spatial grounding with context-aware cues.
+These two components jointly strengthen the underlying
+vision–language alignment, allowing SynCLIP to capture
+clearer category semantics and generalize more effectively
+to novel categories. This explains why SynCLIP is able to
+outperform existing SOTA methods under standard open-
+vocabulary settings.
+4.3.2. Synonym-Robust Dense Perception
+While the benchmark results demonstrate overall improve-
+ment, a key motivation of our SynCLIP is to enhance ro-
+bustness when the original category names are replaced
+with synonymous expressions. To assess this, we evalu-
+ate grounding performance under a synonym substitution
+Method syn. APnovel
+50 APbase
+50
+F-ViT+CLIPSelf [32] ✘ 37.6 54.9
+F-ViT+CLIPSelf [32] ✔ 28.8 (-8.8) 48.3 (-6.6)
+F-ViT+DeCLIP† [29] ✘ 41.0 50.9
+F-ViT+DeCLIP [29] ✔ 31.5 (-9.5) 48.7 (-2.2)
+F-ViT+SynCLIP (Ours) ✘ 43.6 51.8
+F-ViT+SynCLIP (Ours) ✔ 39.2 (-4.4) 51.2 (-0.6)
+Table 3. Robustness evaluation under synonym substitution on
+OV-COCO. APnovel
+50 measures grounding performance on novel
+classes, and AP base
+50 on base classes. ‘syn.’ indicates evaluation
+where category names are replaced by synonymous expressions,
+revealing each model’s sensitivity to linguistic variation.†denotes
+reproduced results.
+setting, following the same protocol used for comparing
+against state-of-the-art OVDP methods.
+Table 3 shows that existing approaches exhibit notable
+drops when synonyms are used: CLIPSelf decreases by8.8
+and DeCLIP [29] by9.5AP novel
+50 . SynCLIP also experiences
+a reduction, but the magnitude is smaller with only4.4,
+while base-class performance remains largely unchanged.
+This suggests that our synonym-coherent pretraining helps
+reduce the attention shifts introduced by linguistic varia-
+tions and leads to more stable grounding across semanti-
+cally equivalent expressions. Figure 5 provides comple-
+mentary qualitative evidence, showing that SynCLIP main-
+tains more coherent attention regions under different syn-
+onymous expressions.
+Together, these results align with the grounding inconsis-
+31530
+
+
+=== PAGE 8 ===
+(a) Top:“banner”vs. Bottom:“advertising banner”
+(b) Top:“bowl”vs. Bottom:“deep dish”
+Figure 5. Qualitative comparison of attention maps under synony-
+mous expressions. (a)“banner”vs.“advertising banner”and (b)
+“bowl”vs.“deep dish”. Compared with CLIPSelf and DeCLIP,
+SynCLIP maintains more stable and coherent localization across
+different but semantically equivalent expressions, providing quali-
+tative evidence for its improved robustness to linguistic variations
+and the effectiveness of synonym-coherent pretraining.
+SSA SAR APnovel
+50 APbase
+50 APall
+50
+✘ ✘ 41.0 50.9 48.3
+✔ ✘ 41.1 51.8 48.2
+✘ ✔ 42.2 52.2 49.6
+✔ ✔ 43.651.8 49.6
+Table 4. Ablation study of components in SynCLIP with F-ViT
+on the OV-COCO benchmark. Both SSA and SAR contribute to
+performance gains, and their combination yields the best novel-
+category results, demonstrating their complementarity.
+tency observed in our motivation and indicate that SynCLIP
+offers improved robustness to textual variability compared
+with prior OVDP methods.
+4.4. Ablation Study
+4.4.1. Component Analysis
+Table 4 shows the effectiveness of the main components
+in SynCLIP with F-ViT through quantitative results on
+the OV-COCO. Starting from the baseline, we observe an
+APnovel
+50 of 41.0 in the first row. Introducing SSA alone
+yields a marginal improvement to 41.1 AP novel
+50 , confirm-
+ing that its standalone effect is limited due to the redun-
+(a) Performance trends
+ (b) Spatial attention visualization
+Figure 6. Effect of the number of semantic tokens,i.e.,k. (a)
+shows performance trends on the OV-COCO benchmark withk
+increasing. (b) shows the qualitative comparison of spatial corre-
+lation attention,i.e.,A spa, with variouskvalues.
+dant information introduced by semantically enriched ex-
+pression, which hinders precise spatial attention. In con-
+trast, applying SAR alone significantly boosts AP novel
+50 to
+42.2, highlighting the importance of refining spatial atten-
+tion with semantic tokens. When combining both compo-
+nents, SynCLIP achieves the best performance with 43.6
+APnovel
+50 , demonstrating the complementary benefits of SSA
+and SAR in enhancing overall robustness and performance.
+4.4.2. Effect of Semantic Token Selection
+To analyze the effectiveness of the semantic token selection
+mechanism in SAR, we investigate how varying the num-
+ber of semantic tokens,i.e.,k, influences performance on
+the OV-COCO benchmark. As shown in Figure 6 (a), in-
+creasingkfrom 1 to 7 progressively enhances AP novel
+50 from
+42.5 to a peak of 43.6. However, further increasingkto
+10 and 20 causes the performance to drop to 42.2 and 41.5,
+respectively. This demonstrates that selecting a moderate
+number of semantic tokens (e.g.,k= 7) achieves an opti-
+mal trade-off between informativeness and noise suppres-
+sion, as shown in Figure 6 (b). Excessive token introduces
+irrelevant cues, which degrade spatial grounding accuracy.
+5. Conclusion
+This paper identifies synonym-induced grounding incon-
+sistency as a critical limitation in CLIP-based methods,
+where synonymous expressions cause divergent spatial
+attention and hinder robust dense perception. To address
+this, we propose SynCLIP, which enforces semantic
+coherence by aligning attention maps across synony-
+mous expressions and enhances spatial precision through
+semantic token selection and context-aware attention
+refinement. In addition, we construct SEViC that enriches
+category-level supervision with synonymous expressions,
+providing a foundation for pretraining SynCLIP. Extensive
+evaluations on multiple benchmarks demonstrate that
+SynCLIP significantly improves grounding consistency and
+achieves state-of-the-art performance, paving the way for
+more reliable and robust real-world OVDP applications.
+31531
+
+
+=== PAGE 9 ===
+References
+[1] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. CAT-Seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. InCVPR, pages 4113–4123, 2024. 3
+[2] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is
+worth 16x16 words: Transformers for image recognition at
+scale. InICLR, 2021. 3
+[3] Shenghao Fu, Junkai Yan, Qize Yang, Xihan Wei, Xiaohua
+Xie, and Wei-Shi Zheng. A hierarchical semantic distilla-
+tion framework for open-vocabulary object detection.IEEE
+TMM, 27:8835–8846, 2025. 1
+[4] Zhe Gan, Linjie Li, Chunyuan Li, Lijuan Wang, Zicheng Liu,
+and Jianfeng Gao. Vision-language pre-training: Basics, re-
+cent advances, and future trends.Found. Trends Comput.
+Graph. Vis., 14:163–352, 2022. 3
+[5] Xiuye Gu, Tsung-Yi Lin, Weicheng Kuo, and Yin Cui.
+Open-vocabulary object detection via vision and language
+knowledge distillation. InICLR, 2022. 3, 6, 7
+[6] Jian Guan, Mingjie Xie, Youtian Lin, Guangjun He, and
+Pengming Feng. EARL: An elliptical distribution aided
+adaptive rotation label assignment for oriented object detec-
+tion in remote sensing images.IEEE Trans. Geosci. Remote
+Sens., 61:1–15, 2023. 1
+[7] Agrim Gupta, Piotr Dollar, Ross Girshick, et al. LVIS: A
+dataset for large vocabulary instance segmentation. InCVPR,
+pages 5356–5364, 2019. 5, 6
+[8] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+Deep residual learning for image recognition. InCVPR,
+pages 770–778, 2016. 3, 7
+[9] Kaiming He, Georgia Gkioxari, Piotr Doll ´ar, and Ross Gir-
+shick. Mask R-CNN. InCVPR, pages 2961–2969, 2017.
+1
+[10] Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc Le, Yun-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representation
+learning with noisy text supervision. InICML, pages 4904–
+4916. PMLR, 2021. 2
+[11] Dahun Kim, Anelia Angelova, Weicheng Kuo, et al. Con-
+trastive feature masking open-vocabulary vision transformer.
+InICCV, pages 15602–15612, 2023. 7
+[12] Dahun Kim, Anelia Angelova, Weicheng Kuo, et al. Region-
+aware pretraining for open-vocabulary object detection with
+vision transformers. InCVPR, pages 11144–11154, 2023. 7
+[13] Weicheng Kuo, Yin Cui, Xiuye Gu, AJ Piergiovanni, and
+Anelia Angelova. F-VLM: Open-vocabulary object detec-
+tion upon frozen vision and language models. InICLR, 2023.
+7
+[14] Haiyan Lan, Shujun Li, Mingjie Xie, Xuanjia Zhao, Hongn-
+ing Liu, Pengming Feng, Dongli Xu, Guangjun He, and Jian
+Guan. Band prompting aided SAR and multi-spectral data
+fusion framework for local climate zone classification. In
+ICASSP, pages 1–5, 2025. 3
+[15] Liunian Harold Li, Pengchuan Zhang, Haotian Zhang, Jian-
+wei Yang, Chunyuan Li, Yiwu Zhong, Lijuan Wang, Lu
+Yuan, Lei Zhang, Jenq-Neng Hwang, et al. Grounded
+language-image pre-training. InCVPR, pages 10965–10975,
+2022. 3
+[16] Yanghao Li, Haoqi Fan, Ronghang Hu, Christoph Feichten-
+hofer, and Kaiming He. Scaling language-image pre-training
+via masking. InCVPR, pages 23390–23400, 2023. 1
+[17] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted CLIP. InCVPR, pages 7061–7070, 2023. 3
+[18] Chuang Lin, Peize Sun, Yi Jiang, Ping Luo, Lizhen Qu, Gho-
+lamreza Haffari, Zehuan Yuan, and Jianfei Cai. Learning
+object-language alignments for open-vocabulary object de-
+tection. InICLR, 2023. 3
+[19] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+Pietro Perona, Deva Ramanan, Piotr Doll´ar, and C Lawrence
+Zitnick. Microsoft COCO: Common objects in context. In
+ECCV, pages 740–755. Springer, 2014. 2, 5, 6
+[20] Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao
+Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng, Chenyu
+Zhang, Chong Ruan, et al. DeepSeek-v3 technical report.
+arXiv preprint arXiv:2412.19437, 2024. 6
+[21] Ilya Loshchilov and Frank Hutter. Decoupled weight decay
+regularization. InICLR, 2019. 6
+[22] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+DINOv2: Learning robust visual features without supervi-
+sion.Trans. Mach. Learn. Res., 2024. 2, 5, 6
+[23] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learn-
+ing transferable visual models from natural language super-
+vision. InICML, pages 8748–8763. PMLR, 2021. 1, 2
+[24] Hwanjun Song and Jihwan Bang. Prompt-guided transform-
+ers for end-to-end open-vocabulary object detection.arXiv
+preprint arXiv:2303.14386, 2023. 7
+[25] Quan Sun, Yuxin Fang, Ledell Wu, Xinlong Wang, and Yue
+Cao. EV A-CLIP: Improved training techniques for CLIP at
+scale.arXiv preprint arXiv:2303.15389, 2023. 1, 2
+[26] Mingxing Tan and Quoc Le. EfficientNet: Rethinking model
+scaling for convolutional neural networks. InICML, pages
+6105–6114. PMLR, 2019. 7
+[27] Feng Wang, Jieru Mei, and Alan Yuille. SCLIP: Rethinking
+self-attention for dense vision-language inference. InECCV,
+pages 315–332. Springer, 2024. 3
+[28] Junjie Wang, Bin Chen, Bin Kang, Yulin Li, Weizhi Xian,
+Yichi Chen, and Yong Xu. OV-DQUO: Open-vocabulary
+detr with denoising text query training and open-world un-
+known objects supervision. InAAAI, pages 7762–7770,
+2025. 7
+[29] Junjie Wang, Bin Chen, Yulin Li, Bin Kang, Yichi Chen,
+and Zhuotao Tian. DeCLIP: Decoupled learning for open-
+31532
+
+
+=== PAGE 10 ===
+vocabulary dense perception. InCVPR, pages 14824–14834,
+2025. 1, 2, 3, 6, 7
+[30] Jianzong Wu, Xiangtai Li, Shilin Xu, Haobo Yuan, Henghui
+Ding, Yibo Yang, Xia Li, Jiangning Zhang, Yunhai Tong,
+Xudong Jiang, et al. Towards open vocabulary learning: A
+survey.IEEE TPAMI, 46(7):5092–5113, 2024. 1
+[31] Size Wu, Wenwei Zhang, Sheng Jin, Wentao Liu, and
+Chen Change Loy. Aligning bag of regions for open-
+vocabulary object detection. InCVPR, pages 15254–15264,
+2023. 7
+[32] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Xiangtai Li,
+Wentao Liu, and Chen Change Loy. CLIPSelf: Vision trans-
+former distills itself for open-vocabulary dense prediction. In
+ICLR, 2024. 1, 2, 3, 6, 7
+[33] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Wentao Liu,
+and Chen Change Loy. CLIM: Contrastive language-image
+mosaic for region representation. InAAAI, pages 6117–6125,
+2024. 1, 3, 6
+[34] Xiaoshi Wu, Feng Zhu, Rui Zhao, and Hongsheng Li.
+CORA: Adapting CLIP for open-vocabulary detection with
+region prompting and anchor pre-matching. InCVPR, pages
+7031–7040, 2023. 1, 7
+[35] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. InECCV, pages 736–753. Springer, 2022.
+3
+[36] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. InCVPR, pages 2945–2954, 2023. 3
+[37] Yuhang Yang, Jinhong Deng, Wen Li, and Lixin Duan.
+ResCLIP: Residual attention for training-free dense vision-
+language inference. InCVPR, pages 29968–29978, 2025. 1
+[38] Haobo Yuan, Xiangtai Li, Chong Zhou, Yining Li, Kai Chen,
+and Chen Change Loy. Open-vocabulary SAM: Segment and
+recognize twenty-thousand classes interactively. InECCV,
+pages 419–437. Springer, 2024. 7
+[39] Lu Yuan, Dongdong Chen, Yi-Ling Chen, Noel Codella,
+Xiyang Dai, Jianfeng Gao, Houdong Hu, Xuedong Huang,
+Boxin Li, Chunyuan Li, et al. Florence: A new
+foundation model for computer vision.arXiv preprint
+arXiv:2111.11432, 2021. 2
+[40] Yuhang Zang, Wei Li, Kaiyang Zhou, Chen Huang, and
+Chen Change Loy. Open-vocabulary detr with conditional
+matching. InECCV, pages 106–122. Springer, 2022. 7
+[41] Yuhang Zheng, Xiangyu Chen, Yupeng Zheng, Songen Gu,
+Runyi Yang, Bu Jin, Pengfei Li, Chengliang Zhong, Zeng-
+mao Wang, Lina Liu, et al. GaussianGrasper: 3d lan-
+guage gaussian splatting for open-vocabulary robotic grasp-
+ing.IEEE Robot. Autom. Lett., 9(9):7827–7834, 2024. 1
+[42] Yiwu Zhong, Jianwei Yang, Pengchuan Zhang, Chunyuan
+Li, Noel Codella, Liunian Harold Li, Luowei Zhou, Xiyang
+Dai, Lu Yuan, Yin Li, et al. RegionCLIP: Region-based
+language-image pretraining. InCVPR, pages 16793–16803,
+2022. 1, 3, 7
+[43] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from CLIP. InECCV, pages 696–712. Springer,
+2022. 3
+[44] Yijie Zhou, Xianhui Cheng, Qiming Zhang, Lei Wang,
+Wenchao Ding, Xiangyang Xue, Chunbo Luo, and Jian
+Pu. ALGPT: Multi-agent cooperative framework for open-
+vocabulary multi-modal auto-annotating in autonomous
+driving.IEEE Trans. Intell. Veh., pages 1–15, 2024. 1
+[45] Chaoyang Zhu and Long Chen. A survey on open-
+vocabulary detection and segmentation: Past, present, and
+future.IEEE TPAMI, 46(12):8954–8975, 2024. 1, 2
+31533

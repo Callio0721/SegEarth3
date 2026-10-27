@@ -1,0 +1,1112 @@
+=== PAGE 1 ===
+Parameter-efficient Fine-tuning in Hyperspherical Space for Open-vocabulary
+Semantic Segmentation
+Zelin Peng1, Zhengqin Xu1, Zhilin Zeng1, Yu Huang1, Yaoming Wang2, and Wei Shen1(B)
+1MoE Key Lab of Artificial Intelligence, AI Institute, Shanghai Jiao Tong University
+2Meituan
+{zelin.peng, fate311, bernardeschi, yellowfish, wei.shen }@sjtu.edu.cn
+Abstract
+Open-vocabulary semantic segmentation seeks to label each
+pixel in an image with arbitrary text descriptions. Vision-
+language foundation models, especially CLIP , have recently
+emerged as powerful tools for acquiring open-vocabulary
+capabilities. However, fine-tuning CLIP to equip it with
+pixel-level prediction ability often suffers three issues: 1)
+high computational cost, 2) misalignment between the two
+inherent modalities of CLIP , and 3) degraded generalization
+ability on unseen categories. To address these issues, we pro-
+pose H-CLIP, a symmetrical parameter-efficient fine-tuning
+(PEFT) strategy conducted in hyperspherical space for both
+of the two CLIP modalities. Specifically, the PEFT strategy
+is achieved by a series of efficient block-diagonal learnable
+transformation matrices and a dual cross-relation commu-
+nication module among all learnable matrices. Since the
+PEFT strategy is conducted symmetrically to the two CLIP
+modalities, the misalignment between them is mitigated. Fur-
+thermore, we apply an additional constraint to PEFT on the
+CLIP text encoder according to the hyperspherical energy
+principle, i.e., minimizing hyperspherical energy during fine-
+tuning preserves the intrinsic structure of the original param-
+eter space, to prevent the destruction of the generalization
+ability offered by the CLIP text encoder. Extensive evalua-
+tions across various benchmarks show that H-CLIP achieves
+new SOTA open-vocabulary semantic segmentation results
+while only requiring updating approximately 4% of the to-
+tal parameters of CLIP . The code is available at: https:
+//github.com/SJTU-DeepVisionLab/H-CLIP.
+1. Introduction
+The aim of open-vocabulary semantic segmentation is to
+create a segmentation model capable of labeling each pixel
+in an image with categories that are not limited to a spe-
+B Corresponding Author: wei.shen@sjtu.edu.cn
+cific closed set according to text descriptions. Vision-
+language foundation models [5, 9, 10, 12, 18, 19, 21, 23, 30–
+33, 39, 45, 48, 52, 53, 55, 66], especially CLIP [ 45], are
+often utilized to endow open-vocabulary recognition capabil-
+ities. Consequently, open-vocabulary semantic segmentation
+essentially boil down to transferring these vision-language
+foundation models, originally trained with image-level su-
+pervision, to perform pixel-level predictions.
+To this end, current methods [ 7, 27, 47, 59, 61, 62, 65,
+67, 68] typically fine-tune CLIP on a benchmark dataset
+with segmentation annotations, i.e., COCO [2], to equip it
+with the segmentation ability. However, this often leads to
+three main issues. First, fine-tuning CLIP on limited cat-
+egories would affect its generalization ability, resulting in
+significant performance degradation on unseen categories.
+Second, current fine-tuning methods for open-vocabulary
+segmentation are usually asymmetrical [29, 61, 65], i.e., typ-
+ically freezing CLIP’s text encoder and fine-tuning its image
+encoder. This strategy inevitably causes a potential obstacle:
+misalignment. More specifically, the misalignment arises
+from different alignment granularities. The text encoder
+maintains image-to-text alignment, while the image encoder
+shifts from image-to-text to pixel-to-text alignment. Due to
+these different alignment goals, the optimization process is
+largely impeded, leading to sub-optimal performance. Third,
+although remarkable performance gains, these approaches of-
+ten rely on computationally extensive full fine-tuning, which
+raises concerns about scalability and affordability.
+To address these issues, we propose a symmetric
+parameter-efficient fine-tuning strategy for CLIP, dubbed
+H-CLIP. First, H-CLIP is fine-tuned in hyperspherical space,
+where uniform vector magnitudes enhance the continuity
+and smoothness of adjacent pixel features [56], improving
+boundary precision and regional consistency. Additionally,
+to preserve CLIP’s generalization ability, we are inspired by
+the hyperspherical energy principle [38, 44], which suggests
+that maintaining the same hyperspherical energy in the hy-
+persphere space during fine-tuning preserves the intrinsic
+structure, i.e., generalization capability. Specifically, we in-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+15009
+
+
+=== PAGE 2 ===
+troduce orthogonal constraints into the learnable matrices
+of CLIP’s text encoder, implemented in a block-diagonal
+form to efficiently ensure the invariance of hyperspherical
+energy throughout the fine-tuning process. Second, by fine-
+tuning both modalities of CLIP with a comparable number
+of parameters, we largely mitigate the misalignment. Then,
+to further enhance alignment between different modalities
+of CLIP, we introduce a dual cross-relation communication
+(DCRC) module to explicitly encourage cross-modal and
+cross-layer communications within all learnable matrices.
+Notably, DCRC encourages the alignment problem with min-
+imal overhead. Consequently, H-CLIP can adapt CLIP for
+open vocabulary semantic segmentation with only a small
+number of introduced learnable parameters.
+Extensive results demonstrate that H-CLIP achieves new
+state-of-the-art open-vocabulary semantic segmentation re-
+sults across three benchmarks by fine-tuning CLIP with ap-
+proximately 4% of the total parameters of CLIP.
+2. Related Work
+Open-vocabulary semantic segmentation Prior open-
+vocabulary semantic segmentation works [15, 69, 73] typi-
+cally perform this task through leveraging CLIP [45]. initial
+efforts like [73] directly fine-tune CLIP on mainstream seg-
+mentation datasets, e.g., COCO [ 2]. However, they claim
+that fine-tuning CLIP’s encoder significantly reduces its abil-
+ity to generalize to unseen classes. To address this issue,
+some methods [8, 14, 63, 64] swing to the opposite extreme,
+fine-tuning an additional mask generator [6] for segmenta-
+tion while keeping CLIP frozen to maintain generalization-
+oriented recognition. However, this frozen parameter space
+lacks segmentation awareness, resulting in a misalignment
+between regions and text descriptions [ 35]. Other stud-
+ies [7, 65, 67] propose an advanced solution that fine-tunes
+only selected parameters, e.g., certain layers of CLIP, to en-
+able pixel-level predictions while keeping most of CLIP’s pa-
+rameters fixed, thus minimizing losing of generalization. Al-
+though the advantages are remarkable, these methods often
+work with a very small learning rate, implicitly encouraging
+a small deviation from the pre-trained CLIP, limiting the seg-
+mentation performance. In a nutshell, the trade-off between
+preserving CLIP’s generalization and learning segmentation
+knowledge persists, hindering the final performance. Based
+on the paradigm of existing fine-tuning-based methods, our
+method explores a better trade-off from a fresh viewpoint:
+hyperspherical space.
+Large-scale model fine-tuning Along with the improve-
+ment of large-scale foundation models [ 25, 31, 32, 39, 46,
+49, 50, 70, 77], e.g., segment anything model [25], numer-
+ous fine-tuning works [4, 13, 37, 42, 43, 58, 71, 74, 75, 78]
+are proposed to adapt these models to various downstream
+scenarios. The core of these approaches lies in updating only
+limited parameters to capture the specific characteristics of
+different scenarios, while keeping most parameters fixed
+to maintain generalization. In contrast, fine-tuning CLIP
+for open-vocabulary semantic segmentation often meets a
+dilemma. On the one hand, limited parameters typically
+fall short in facilitating the transition from a classification
+model, i.e., CLIP, to a segmentation task. On the other hand,
+directly increasing the number of trainable parameters risks
+undermining CLIP’s ability to generalize to unseen classes,
+as experimented in CAT-Seg [7]. Most methods [ 61, 67]
+solve this issue by simply freezing CLIP’s text encoder and
+fine-tuning its image encoder, inevitably causing misalign-
+ment between the two modalities of CLIP. In this paper, we
+shed light on how to preserve generalization in a symmetric
+parameter-efficient fine-tuning manner and strive to explore
+an appropriate fine-tuning method for open-vocabulary se-
+mantic segmentation.
+3. Preliminaries
+3.1. Hyperspherical Energy Preservation
+This section explains the necessity of preserving hyperspher-
+ical energy during fine-tuning, which serves as the core
+mechanism enabling partial orthogonal parameterization
+(Sec. 4.1). Existing fine-tuning methods implicitly assume
+that a smaller Euclidean distance between the fine-tuned
+model and the pre-trained model indicates better preserva-
+tion of the pre-trained ability. However, Euclidean distance
+is insufficient to fully capture the degree of semantic preser-
+vation. Inspired by the Thomson problem [54], which seeks
+to determine the minimum electrostatic potential energy con-
+figuration of N mutually-repelling electrons on the surface
+of a unit sphere, we adopt the Hyperspherical Energy to
+characterize the diversity of the model.
+The hyperspherical energy function of a fully connected
+layer W is defined as:
+HE(W ) :=
+X
+i̸=j
+∥ ˆwi − ˆwj∥−1
+where ˆwi := wi/∥wi∥ denotes the i-th normalized neuron.
+The power of the model representation can be characterized
+by the hyperspherical energy of its neurons. Higher energy
+implies greater redundancy, while lower energy indicates
+that the neurons of the model are more diverse.
+To ensure that the generalization is not destroyed during
+fine-tuning, we hypothesize that a good fine-tuning model
+should minimize the difference in hyperspherical energy
+compared to the pre-trained model:
+min
+W
+HE(W ) − HE(W 0)
+
+⇔ min
+W
+
+X
+i̸=j
+∥ ˆwi − ˆwj∥−1 −
+X
+i̸=j
+∥ ˆw0
+i − ˆw0
+j ∥−1
+. (1)
+15010
+
+
+=== PAGE 3 ===
+It is evident that the attainable minimum is zero for Eq. (1).
+In this case, the hyperspherical energy satisfies an invari-
+ance property: applying the same orthogonal transformation
+to all neurons preserves pairwise hyperspherical similarity.
+Consequently, the minimum of zero can be achieved as long
+as W and W 0 differ only by a rotation or reflection, i.e.,
+W = RW 0 where R ∈ Rd×d is an orthogonal matrix
+(with determinant 1 for rotation or −1 for reflection).
+3.2. Tensor Product
+In this section, we introduce the fundamental concept to
+achieve dual cross relation communication (Sec. 4.2): tensor
+product. A p-order tensor is indexed by p indices and can be
+represented as a multidimensional array of data. Formally,
+a p-order tensor A can be written as A = ( ai1,i2,··· ,ip) ∈
+Rn1×n2×···np. Slices of a tensor are matrices defined from
+the tensor by holding all but two indices constant. For a
+3-order tensor, A(:, :, k) corresponds the kth frontal slice.
+For p-order tensors, matrix slices of p-order tensors can be
+referenced using linear indexing by reshaping the tensor into
+an n1 × n2 × n3n4 · · · np 3-order tensor and referring to
+the kth frontal slice as A(:, :, k). Ai ∈ Rn1×n2×···np−1 for
+i = 1, · · · , np denotes the (p − 1)-order tensor created by
+holding the pth index of A fixed at i. It is possible to create
+a tensor in a block circulant pattern, where each block is a
+tensor of (p − 1)-order:
+circ(A) =
+
+
+A1 Anp Anp−1 · · · A 2
+A2 A1 Anp · · · A 3
+... ... ... ... ...
+Anp Anp−1 Anp−2 · · · A 1
+
+ , (2)
+where circ(·) creates a block circulant tensor and the size of
+circ(A) is (n1np × n2np × · · · × np−2np × np−1). define
+unfold(·) to take an n1 × · · · × np tensor A and return an
+n1np × n2 × · · · np−1 block tensor in the following way:
+unfold(A) =
+A1 A2 · · · A np
+T
+. (3)
+The operation that takes unfold back to tensor form is the
+“fold” command. Specially,fold(·, np) takes an n1np ×n2 ×
+· · · ×np−1 block tensor and returns an n1 × · · · ×np tensor,
+defined as:
+fold(unfold(A), np) = A. (4)
+4. Methodology
+Fig. 1 illustrates the proposed H-CLIP framework, which
+is based on two core components: (1) POP updates the
+pre-trained parameter space of CLIP using a series of block-
+diagonal transformation matrices. According to analysis in
+Sec. 3.1, each parameter matrix in CLIP’s text encoder is
+orthogonal to preserve generalization. (2) DCRC integrates
+cross-modal and cross-layer communication across all tun-
+able matrices through a tensor product framework (Sec. 3.2),
+enhancing alignment between different modalities.
+4.1. Partial Orthogonal Parameterization
+The core idea of partial orthogonal parametrization (POP) is
+to introduce the concept of hyperspherical space for fine-
+tuning CLIP. In this hyperspherical space, we fine-tune
+CLIP’s text encoder under an orthogonality design princi-
+ple from OFT [44] to preserve the hyperspherical energy of
+the pre-trained parameter space. Similarly, we use Cayley
+parameterization [3] to ensure a tunable matrix R is strictly
+orthogonal, formally as:
+R = (I + Q)(I − Q)−1, (5)
+where Q is skew-symmetric. Guided by the observation
+in [29, 35] that CLIP’s generalization ability is primarily
+preserved in its text encoder, we impose an orthogonality
+constraint on the tunable matrices within CLIP’s text encoder
+during fine-tuning, which is defined as:
+R⊤R = RR⊤ = I, (6)
+where I is an identity matrix. Considering the relatively
+large dimension d of the pre-trained matrix, for better effi-
+ciency, we introduce a block-diagonal structure by parame-
+terizing R with b blocks, formally as:
+R = diag(R1, R2, · · · Ri, · · · , Rb)
+=
+
+
+R1
+...
+Rb
+
+ , (7)
+where Ri ∈ Rd/b×d/b. Specifically, denote
+RV = {Rv1, · · · , Rvℓ, · · · , RvL} and RE =
+{Re1, · · · , Reℓ, · · · , ReL} as the sets of block-diagonal
+matrices in CLIP’s image encoder and text encoder,
+respectively, where L is its number of Transformer layers,
+Rvℓ ∈ Rdv×dv, and Reℓ ∈ Rde×de. In practice, the
+dimensions of the tunable matrix Rvi ∈ Rdv×dv and
+Rei ∈ Rde×de are often not equal, e.g., dv = 768 and
+dv = 512 for ViT/16 version of CLIP. Considering that the
+dimension of each individual slice in a higher-order tensor
+must be consistent according to the tensor theorem, we use
+a block diagonal structure to align the matrix dimensions
+between the two modalities, and thus, it cannot be discarded.
+For notation simplicity, we set dv = de = d.
+4.2. Dual Cross Relation Communication
+Although in POP, we relax the orthogonal constraint for
+CLIP’s image encoder to learn segmentation capability, each
+layer of the image encoder still incorporates a limited num-
+ber of parameters, which largely restricts the flexibility of
+15011
+
+
+=== PAGE 4 ===
+…
+Dual Cross Relation 
+Communication
+Decoder
+Image
+Text
+Parameter Space
+ Fine-tuning
+ Orthogonal 
+Matrix
+ Frozen Pre-trained Weight
+…
+? ???
+…
+? ???
+? ???
+? ???
+…
+? ???
+? ???
+? ???
+…
+? ???
+? ???
+…
+? ???
+…
+? ???
+? ???
+? ???
+…
+? ???
+? ???
+? ???
+…
+? ???
+? ???
+…
+…
+q
+q
+q
+q
+d
+d
+Figure 1. A schematic representation of H-CLIP. In the H-CLIP framework, we propose a partial orthogonal fine-tuning strategy, where
+each pre-trained weight matrix is paired with a tuned block-diagonal transformation matrix, some of which are orthogonal to preserve
+generalization. Then, we introduce a dual cross-relation communication mechanism to facilitate communication among all matrices, enabling
+alignment between different modalities.
+the projection adjustment due to the limitation of Hidden
+Markov Chain along layers [ 28, 42, 57]. To address this
+limitation, one might consider fully fine-tuning instead of
+using a small number of parameters. However, this approach
+can cause a misalignment between image and text features in
+CLIP, resulting in sub-optimal performance [67]. Based on
+the above analysis, we introduce Dual Cross-Relation Com-
+munication (DCRC), which facilitates interaction among
+different layers and modalities (i.e., text and image). DCRC
+explicitly enhances the flexibility of fine-tuned projection
+adjustments and prevents misalignment issues.
+DCRC introduces cross-layer and cross-modality commu-
+nication among different block-diagonal matrices, achieved
+through two relation projections. To do this, we first treat
+all blocks in ℓth layer as an individual slice in this 3-order
+tensor Tℓ, which is derived as follows:
+Tℓ = [Rvℓ1, Reℓ1, · · · , Rvℓi, Reℓi,
+· · · , Rvℓb, Reℓb] ∈ Rq×q×(b+b), (8)
+where q = d/b. Then, we treat the tensor Tℓ as an individual
+slice within a 4-order tensor T , defined as follows:
+T = [T1, T2, · · · , Tℓ, · · · , TL] ∈ Rq×q×(b+b)×L. (9)
+Initially, according to the characteristics of gradient propaga-
+tion in deep learning theory, i.e., chain rule, each frontal slice
+R·ℓi ∈ { Rq×q}(b+b)×L is updated sequentially in CLIP’s
+encoder. As a result, updating the T lacks cross-frontal-slice
+communication, limiting the flexibility of adjusting fine-
+tuned projection. To address this, we introduce two special
+tensor products, i.e., 3-order T-product and Higher-order
+T-product.
+Definition 4.1(3-order T-product)For A ∈ Rn1×n2×n3
+and B ∈ Rn2×l×n3, the 3-order T-product C ∈
+Rn1×l××n3 = A ∗ B is defined as:
+C = A ∗ B = fold(circ(A) · unfold(B)), (10)
+where “ * ” represents a tensor product, “·” represents stan-
+dard matrix product.
+Definition 4.2(Higher-order T-product) For A ∈
+Rn1×n2×n3···×np and B ∈ Rn2×l×n3×···×np, the High-
+order T-product C ∈ Rn1×l×n3···×np = A ∗ B is defined
+as:
+C = A ∗ B = fold(circ(A) ∗ unfold(B)). (11)
+If A ∈ Rn1×n2×n3, according to the 3-order T-product,
+there is an invertible transform S3(·) : Rn1×n2×n3 →
+Rn1×n2×n3 in third dimension and it transform the Eq. (10)
+as:
+C = S−1
+3 (S3(A) ⊙ S3(B))
+= S−1
+3 ( ¯A ⊙ ¯B) = S−1
+3 ( ¯C), (12)
+where ¯C = ¯A ⊙ ¯B denotes the frontal-slice-wise prod-
+uct (Definition 2.1 refers to [ 22]) ¯C(; , ; , i) = ¯A(; , ; , i) ·
+¯B(; , ; , i), i = 1, 2, · · · , n3 and S−1
+3 (·) is the inverse trans-
+form of S3(·). According to the definition of the frontal-slice-
+wise product, the invertible transform S3(·) is formulated
+as:
+¯A = S3(A) = A ×3 S3, (13)
+where “×3” denotes the mode-3 product and S3 ∈ Rn3×n3
+is an arbitrary invertible matrix. Similarly, the inverse trans-
+form of Eq. (13) is derived as:
+A = S−1
+3 ( ¯A) = ¯A ×3 S−1
+3 . (14)
+15012
+
+
+=== PAGE 5 ===
+Similarly, if A ∈ Rn1×n2×···×np, according to the Higer-
+order T-product, there are invertible transform Si(·) :
+Rn1×n2×···×np → Rn1×n2×···×np , i = 3 , 4, · · · , p in ith
+dimension and they transform the Eq. (11) as:
+C = ˜S−1( ˜S(A) ⊙ ˜S(B)) = ˜S−1( ¯A ⊙ ¯B) = ˜S−1( ¯C), (15)
+where ˜S(A) = Sp(Sp−1(· · · S3(A) · · ·)), ¯C = ¯A ⊙ ¯B de-
+notes the frontal-slice-wise product ¯C(; , ; , i) = ¯A(; , ; , i) ·
+¯B(; , ; , i), i = 1 , 2, · · · , n3n4 · · · np and ˜S−1(·) is the in-
+verse transform of ˜S(·). Similarly, the inverse transform ˜S(·)
+is formulated as:
+¯A = ˜S(A) = A ×3 S3 ×4 S4 · · · ×p Sp, (16)
+and its inverse transform is derived as:
+A = ˜S−1( ¯A) = ¯A ×3 S−1
+3 ×4 S−1
+4 · · · ×p S−1
+p . (17)
+Derivation. please refer to supplementary material. ■
+According to Eqs. (15), (16) and (17), we adopt its
+idea and design arbitrary invertible relation matrix S3 ∈
+R(b+b)×(b+b) and S4 ∈ RL×L to capture the cross-modality
+and cross-layer information in T . Then the updated tensor
+Tw is formulated as:
+Tw = T × 3 S3 ×4 S4 ∈ Rq×q×(b+b)×L, (18)
+where the relation matrix S3 and S4 are learnable. To better
+capture the nonlinear interactions inside the whole parameter
+space, we further adopt k layers deep neural network (DNN)
+f3(·) and f4(·) to replace the transform ×3S3 and ×4S4,
+respectively, and the DNN f3(·) is formulated as:
+f3(T ) = σ(· · · σ(A ×3 W1) · · ·) ×3 Wk, (19)
+where σ(·) is a nonlinear scalar function and matrices
+{Wj ∈ R(b+b)}k
+j=1. The DNN f4(·) is similar. Finally,
+the T is updated by T = T + αTw, where α ∈ R(b+b)×L
+is a learnable parameter.
+4.3. Overall Architecture
+Overall, we develop a H-CLIP framework, and for an input
+feature map Mℓ in the ℓth Transformer layer of CLIP, the
+adjusted feature map provided by H-CLIP, ˜Mℓ, is formally
+via:
+˜Mℓ = Fℓ(Mℓ; TℓWℓ). (20)
+where Wℓ is a pre-trained weight matrix in ℓth layer of
+CLIP’s encoder,Tℓ is a 3-order tensor that is comprised of
+all the matrices R in ℓth layer, and Fℓ represents ℓth layer of
+CLIP’s encoder.
+Fine-tuning Stage. During the fine-tuning phase, H-CLIP is
+fine-tuned in conjunction with the original parameter space
+of CLIP, which is loaded from the pre-trained checkpoint
+and remains frozen.
+Loss Function. Following previous works [7, 61], we in-
+corporate a cross-entropy loss, denoted as Lce, for the fine-
+tuning of CLIP.
+5. Experiments
+5.1. Experimental Setup
+Datasets. Following previous studies [7, 61], we utilizes the
+COCO-Stuff dataset [ 2] as our training set. This dataset
+comprises approximately 118,000 densely annotated im-
+ages across 171 distinct semantic categories. During infer-
+ence, we carry out comparisons with state-of-the-art meth-
+ods across several semantic segmentation datasets, including
+ADE20K [72], PASCAL VOC [11], and PASCAL-Context
+[41]. Detailed descriptions of the datasets are provided in
+the supplementary material.
+Evaluation metric. Following prior works [7, 61], we adopt
+mean Intersection over Union (mIoU) to evaluate the seman-
+tic segmentation performance on the three benchmarks.
+Implementation Details. We implement our method using
+the Transformer-based CLIP model. Following the protocol
+established in [7], we evaluate our results on two versions
+of the CLIP model: ViT-B/16 and ViT-L/14. We follow the
+same experimental setup as [7]. Besides, we use the Adam
+optimizer [24] with an initial learning rate of 5 × 10−6 for
+CLIP, and a weight decay of 10−4. Training is conducted
+with one image per mini-batch. We setq = 128 for balancing
+efficiency and performance. The weights are adjusted in
+the attention layer in line with most PEFT methods, e.g.,
+LoRA [17]. The function f3(·) and f4(·) are implemented
+using two 2-layer MLPs. We act the cost-based approach
+provided in [7] as our decoder. All models are trained over
+80,000 iterations on 4 NVIDIA RTX 3090 GPUs.
+5.2. Main Results
+Comparing to SOTAs. Here, we compare our proposed
+H-CLIP with several state-of-the-art methods, as shown
+in Table 1, using six test sets across three benchmarks.
+Overall, we achieve the best results. Most existing open-
+vocabulary semantic segmentation methods employ tradi-
+tional fine-tuning approaches, i.e., full or partial fine-tuning
+(tuning certain layers of CLIP). While these methods offer
+sufficient flexibility for learning new knowledge, they often
+result in a significant performance drop on unseen classes,
+as observed with OVSeg [35]. Among these methods, CAT-
+Seg [7] achieves performance comparable to ours. However,
+its fine-tuning scheme is manually controlled through differ-
+ent layer combinations, necessitating a careful design to bal-
+ance generalization and flexibility, while ours does not suffer
+from such an issue. Then, compared to SAN [65], another
+parameter-efficient fine-tuning method that introduces only
+a limited number of tunable parameters, our approach sig-
+nificantly outperforms it, achieving improvements of 6.6%
+on the PC-459 dataset and 3.9% on the PC-59 dataset
+with ViT-B/16 as the base model. These results demonstrate
+the effectiveness of our method in preserving generalization
+while learning segmentation knowledge.
+15013
+
+
+=== PAGE 6 ===
+Model VLM Additional Backbone Fine-tuning Space A-847 PC-459 A-150 PC-59 PAS-20 PAS-20b
+Traditional Fine-Tuning
+ZS3Net [1] - ResNet-101 E - - - 19.4 38.3 -
+LSeg [29] CLIP ViT-B/32 ResNet-101 E - - - - 47.4 -
+ZegFormer [8] CLIP ViT-B/16 ResNet-101 E 4.9 9.1 16.9 42.8 86.2 62.7
+ZSseg [64] CLIP ViT-B/16 ResNet-101 E 7.0 - 20.5 47.7 88.4 -
+OpenSeg [14] ALIGN ResNet-101 E 4.4 7.9 17.5 40.1 - 63.8
+OVSeg [35] CLIP ViT-B/16 ResNet-101c E 7.1 11.0 24.8 53.3 92.6 -
+ZegCLIP [76] CLIP ViT-B/16 - E - - - 41.2 93.6 -
+SED [61] CLIP ConvNeXt-B - E 11.4 18.6 31.6 57.3 94.4 -
+CAT-Seg [7] CLIP ViT-B/16 - E 12.0 19.0 31.8 57.5 94.6 77.3
+Parameter-efficient Fine-Tuning
+SAN [65] CLIP ViT-B/16 Side Adapter E 10.1 12.6 27.5 53.8 94.0 -
+Ours CLIP ViT-B/16 - H 12.5 19.4 32.4 57.9 95.2 78.2
+Traditional Fine-Tuning
+LSeg [29] CLIP ViT-B/32 ViT-L/16 E - - - - 52.3 -
+OpenSeg [14] ALIGN Eff-B7 E 8.1 11.5 26.4 44.8 - 70.2
+OVSeg [35] CLIP ViT-L/14 Swin-B E 9.0 12.4 29.6 55.7 94.5 -
+SAN [65] CLIP ViT-L/14 - E 12.4 15.7 32.1 57.7 94.6 -
+ODISE [63] CLIP ViT-L/14 Stable Diffusion E 11.1 14.5 29.9 57.3 - -
+SED [61] CLIP ConvNeXt-L - E 13.9 22.6 35.2 60.6 96.1 -
+FC-CLIP [67] CLIP ConvNeXt-L - E 14.8 18.2 34.1 58.4 95.4 -
+CAT-Seg [7] CLIP ViT-L/14 - E 16.0 23.8 37.9 63.3 97.0 82.5
+Parameter-efficient Fine-Tuning
+SAN [65] CLIP ViT-L/14 Side Adapter E 12.4 15.7 32.1 57.7 94.6 -
+Ours CLIP ViT-L/14 - H 16.5 24.2 38.4 64.1 97.7 83.2
+Table 1. Comparison with state-of-the-art methods on standard benchmarks. The best-performing results are presented in bold, while
+the second-best results are underlined. “E”: Euclidean Space. “H”: Hypersphere Space.
+Methods OVSeg [35] CAT-Seg [7] SAN [65] Ours
+Param. (M) 147.2 39.5 8.4 5.6
+Methods LoRA [17] VPT [20] OFT [44] Ours
+Training time (h) 11.8 14.1 16.1 12.2
+Table 2. Efficiency comparison in terms of learnable parameters
+and training times.
+Qualitative results. Here, we visualize our method’s rep-
+resentative example segmentation results against prevailing
+methods, e.g., CAT-Seg [7] in the A-150 dataset. As shown
+in Figs. 2, we observe that our approach is able to general-
+ize on diverse scenarios and produce more accurate results.
+More visualizations can be found in supplemental materials.
+Efficiency comparison. We compare the efficiency of our
+method with other approaches, including OVSeg [35], CAT-
+Seg [7], and SAN [65], all of which utilize CLIP ViT mod-
+els. The comparison, summarized in Table 2, shows that
+our method employs the fewest trainable parameters while
+balancing the generalization of the pre-trained model and
+the flexibility for learning new knowledge. Besides, we com-
+pare the training time of our method with other representative
+PEFT methods based on ViT-B/16 backbone, which shows
+comparable training time costs. Additionally, since we in-
+troduce a lightweight architecture for calculating relations,
+specifically two relation matrices, the inference overhead is
+negligible during the inference phase.
+Generalization on other dense prediction tasks. We val-
+idate our method on an open-vocabulary object detection
+task [ 26, 40] and experiment on COCO dataset follow-
+ing [60] in Table 5. The results demonstrate that our method
+can generalize to mainstream dense prediction tasks, includ-
+ing segmentation and detection.
+5.3. Ablative Studies
+Ablation of Main Components. Here, we conduct an abla-
+tion study to demonstrate the benefits of each component of
+our proposed H-CLIP: partial orthogonal fine-tuning (POP)
+and dual cross-relation communication (DCRC). Our base-
+line, denoted as “Freeze” in row 1 of Table 3, keeps the
+weights of CLIP frozen. Additionally, we implement a
+mainstream parameter-efficient fine-tuning (PEFT) method,
+LoRA [17], for comparison with a similar number of learn-
+able parameters, as shown in row 2. Note that LoRA can
+improve performance compared to the baseline, demonstrat-
+15014
+
+
+=== PAGE 7 ===
+Method POP DCRC Parameter counts (M) A-847 PC-459 A-150 PC-59 PAS-20 PAS-20 b
+Freeze (baseline) - - 0 4.4 6.6 24.8 49.4 92.5 71.9
+Methods for Parameter-efficient Fine-Tuning
+LoRA [17] - - 7.5 11.4 17.6 28.6 55.1 94.2 76.7
+OFT [44] - - 3.8 10.9 18.0 30.2 53.7 93.7 74.3
+VPT [20] - - 2.2 5.7 10.2 23.7 54.3 93.8 75.1
+Adapter [16] - - 7.5 10.4 16.5 28.8 54.9 94.2 75.2
+LST [51] - - 19.8 7.2 12.7 27.0 56.8 95.4 76.3
+SSF [34] - - 0.6 6.9 15.2 28.6 52.1 93.2 72.8
+Ours
+✓ ✗ 5.62 12.3 19.0 31.6 56.4 94.6 76.3
+H-CLIP ✗ ✓ 0.01 7.6 10.9 26.8 53.6 92.7 74.5
+✓ ✓ 5.63 12.5 19.4 32.4 57.9 95.2 78.2
+Table 3. Ablation study on the components of H-CLIP and universal PEFT methods, i.e.,“LoRA” [ 17], “OFT” [44], “VPT” [20],
+“Adapter” [16], “LST” [51] and “SSF” [34]. “POP”: Partial Orthogonal Parameterization. “DCRC”: Dual Cross Relation Communication.
+Towards easy to compare, we exclude the segmentation decoder when calculating the number of learnable parameters. The base model is
+ViT-B/16.
+Block dimension q Parameter counts (M) A-847 PC-459 A-150 PC-59 PAS-20 PAS-20 b
+256 × 256 22.52 12.4 19.2 32.7 57.6 95.4 77.9
+(a) 128 × 128 5.63 12.5 19.4 32.4 57.9 95.2 78.2
+64 × 64 1.41 11.7 18.4 31.7 56.9 95.0 76.4
+Orthogonal Constraint Parameter counts (M) A-847 PC-459 A-150 PC-59 PAS-20 PAS-20 b
+w/o 7.51 11.9 18.5 32.2 57.5 95.3 76.9
+(b) with 3.76 12.2 19.1 31.4 57.1 94.3 76.8
+POP 5.63 12.5 19.4 32.4 57.9 95.2 78.2
+Table 4. Ablation study on different designs in POP. We show the impact of (a) different block dimensionsq and (b) orthogonal constraints.
+The base model is ViT-B/16.
+Methods APBase
+50 APNovel
+50
+CLIP 21.6 36.4
+Traditional Fine-Tuning
+CLIM [60] 25.7 42.5
+Parameter-efficient Fine-Tuning
+LoRA [17] 24.4 41.5
+OFT [44] 24.1 41.7
+H-CLIP (ours) 25.1 42.9
+Table 5. Comparisons on fine-tuning CLIP for an open-
+vocabulary object detection task on the COCO dataset [36]. Re-
+sults are measured by the box AP at IoU threshold 0.5.
+ing that PEFT is a viable approach for this task. However,
+the goal of traditional PEFT methods, which update weights
+using a small number of learnable parameters, does not nec-
+essarily preserve the generalization capability of pre-trained
+CLIP. In contrast, we introduce the principle of hyperspher-
+ical energy, which effectively ensures the minimum under-
+mining of CLIP’s intrinsic semantic structure, resulting in
+improved performance. Then, comparing row 10 to row 2,
+we observe significant performance gains, indicating that our
+results are driven by our targeted solution rather than merely
+the number of parameters. Moreover, row 8 shows that using
+only POP preserves generalization on unseen classes, par-
+ticularly in the A-847 dataset. Meanwhile, solely adapting
+DCRC shows limited improvement, as the role of DCRC is
+to facilitate communication between the two modalities, and
+its parameter count is significantly smaller than that of POP
+(0.01M vs. 5.62M). Finally, integrating DCRC with POP
+yields clear performance gains, e.g., a 12.6% improvement
+on the PC-459 dataset.
+Discussion of POP. Table 4 presents experiments introduc-
+ing different designs into POP. The design of POP is related
+to (1) block dimension, i.e., q, and (2) how orthogonality
+constraints are applied. In (a), the results show that larger q
+generally performs better than smaller q. However, we find
+15015
+
+
+=== PAGE 8 ===
+Image Ground truth CAT-Seg [7] Ours
+Figure 2. Comparison of qualitative reults on ADE20K [72] with 150 categories. We compare H-CLIP with a state-of-the-art method, i.e.,
+CAT-Seg [7].
+a good trade-off between performance and parameter effi-
+ciency, with q = 128 working well across datasets and tasks.
+Therefore, we maintain this setting in other experiments. In
+(b), we show that both blindly applying orthogonality con-
+straints to the learnable matrices of all layers and not using
+any constraints at all can degrade performance on several
+datasets, demonstrating the value of our analysis with the
+hyperspherical energy principle. Notably, when orthogonal
+constraints are applied to both CLIP’s image and text en-
+coders to strictly preserve the original semantic structures,
+our approach shares similarities with OFT [ 44]. However,
+POP and OFT differ in two key aspects: (1) Motivation:
+OFT is originally proposed as a text-to-image fine-tuning
+method that applies orthogonal constraints to the stable dif-
+fusion model with prompts from a frozen text encoder, fo-
+cusing on transfer across text-to-image scenarios. In con-
+trast, POP applies orthogonal constraints to the text encoder,
+which enables greater flexibility in fine-tuning the image
+encoder and facilitating CLIP’s transfer from text-to-image
+to text-to-pixel tasks. (2) Parameterization Strategy: OFT
+independently reparameterizes each weight within individ-
+ual layer parameter spaces using matrix-based parameters,
+while POP employs ann-order tensor representation, which
+lays the foundation for DCRC to achieve communication
+across different parameter spaces.
+6. Conclusion
+In this paper, we propose a H-CLIP framework to address
+three issues: 1) high computational cost, 2) misalignment
+between the two inherent modalities of CLIP, and 3) de-
+graded generalization ability on unseen categories when
+equipping CLIP with pixel-level prediction ability for open-
+vocabulary semantic segmentation. Specifically, we propose
+a symmetrical parameter-efficient fine-tuning (PEFT) strat-
+egy conducted in hyperspherical space for both of the two
+CLIP modalities. Specifically, the PEFT strategy is achieved
+by a series of efficient block-diagonal learnable transfor-
+mation matrices and a dual cross-relation communication
+module among all learnable matrices to mitigate misalign-
+ment between different modalities. Furthermore, we apply
+an additional constraint to PEFT on the CLIP text encoder
+according to the hyperspherical energy principle, i.e., mini-
+mizing hyperspherical energy during fine-tuning preserves
+the intrinsic structure of the original parameter space, to pre-
+vent the destruction of the generalization ability offered by
+the CLIP text encoder. Extensive experiments demonstrate
+that the proposed H-CLIP framework generalized improves
+segmentation performance across several benchmarks while
+introducing approximately 4% of CLIP’s total parameters.
+We hope our approach will provide a new direction and
+inspire future research in this field.
+15016
+
+
+=== PAGE 9 ===
+Acknowledgments
+This work was supported by the NSFC under Grant
+62322604, 62176159 and 62401361, and in part
+by the Shanghai Municipal Science and Technol-
+ogy Major Project under Grant 2021SHZDZX0102.
+References
+[1] Maxime Bucher, Tuan-Hung Vu, Matthieu Cord, and Patrick
+P´erez. Zero-shot semantic segmentation. Advances in Neural
+Information Processing Systems, 32, 2019. 6
+[2] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. InProceedings of the
+IEEE conference on computer vision and pattern recognition,
+pages 1209–1218, 2018. 1, 2, 5
+[3] Arthur Cayley. Sur quelques propri ´et´es des d ´eterminants
+gauches. 1846. 3
+[4] Tianrun Chen, Lanyun Zhu, Chaotao Ding, Runlong Cao,
+Shangzhan Zhang, Yan Wang, Zejian Li, Lingyun Sun, Papa
+Mao, and Ying Zang. Sam fails to segment anything? –
+sam-adapter: Adapting sam in underperformed scenes: Cam-
+ouflage, shadow, and more, 2023. 2
+[5] Yen-Chun Chen, Linjie Li, Licheng Yu, Ahmed El Kholy,
+Faisal Ahmed, Zhe Gan, Yu Cheng, and Jingjing Liu. Uniter:
+Universal image-text representation learning. In European
+conference on computer vision , pages 104–120. Springer,
+2020. 1
+[6] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexander
+Kirillov, and Rohit Girdhar. Masked-attention mask trans-
+former for universal image segmentation. In Proceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 1290–1299, 2022. 2
+[7] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag Arnab,
+Paul Hongsuck Seo, and Seungryong Kim. Cat-seg: Cost ag-
+gregation for open-vocabulary semantic segmentation, 2024.
+1, 2, 5, 6, 8
+[8] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 11583–11592, 2022. 2, 6
+[9] Zi-Yi Dou, Aishwarya Kamath, Zhe Gan, Pengchuan Zhang,
+Jianfeng Wang, Linjie Li, Zicheng Liu, Ce Liu, Yann Le-
+Cun, Nanyun Peng, et al. Coarse-to-fine vision-language
+pre-training with fusion in the backbone. Advances in neural
+information processing systems, 35:32942–32956, 2022. 1
+[10] Zi-Yi Dou, Yichong Xu, Zhe Gan, Jianfeng Wang, Shuohang
+Wang, Lijuan Wang, Chenguang Zhu, Pengchuan Zhang, Lu
+Yuan, Nanyun Peng, et al. An empirical study of training
+end-to-end vision-and-language transformers. In Proceedings
+of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 18166–18176, 2022. 1
+[11] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge. International journal of computer
+vision, 88:303–338, 2010. 5
+[12] Zhe Gan, Yen-Chun Chen, Linjie Li, Chen Zhu, Yu Cheng,
+and Jingjing Liu. Large-scale adversarial training for vision-
+and-language representation learning. Advances in Neural
+Information Processing Systems, 33:6616–6628, 2020. 1
+[13] Peng Gao, Shijie Geng, Renrui Zhang, Teli Ma, Rongyao
+Fang, Yongfeng Zhang, Hongsheng Li, and Yu Qiao. Clip-
+adapter: Better vision-language models with feature adapters.
+International Journal of Computer Vision, 132(2):581–595,
+2024. 2
+[14] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scaling
+open-vocabulary image segmentation with image-level labels.
+In European Conference on Computer Vision, pages 540–557.
+Springer, 2022. 2, 6
+[15] Kunyang Han, Yong Liu, Jun Hao Liew, Henghui Ding, Jiajun
+Liu, Yitong Wang, Yansong Tang, Yujiu Yang, Jiashi Feng,
+Yao Zhao, et al. Global knowledge calibration for fast open-
+vocabulary segmentation. In Proceedings of the IEEE/CVF
+International Conference on Computer Vision , pages 797–
+807, 2023. 2
+[16] Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna
+Morrone, Quentin De Laroussilhe, Andrea Gesmundo, Mona
+Attariyan, and Sylvain Gelly. Parameter-efficient transfer
+learning for nlp. In International conference on machine
+learning, pages 2790–2799. PMLR, 2019. 7
+[17] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-
+Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen.
+LoRA: Low-rank adaptation of large language models. In
+International Conference on Learning Representations, 2022.
+5, 6, 7
+[18] Ming Hu, Kun Yuan, Yaling Shen, Feilong Tang, Xiaohao Xu,
+Lin Zhou, Wei Li, Ying Chen, Zhongxing Xu, Zelin Peng,
+et al. Ophclip: Hierarchical retrieval-augmented learning
+for ophthalmic surgical video-language pretraining. arXiv
+preprint arXiv:2411.15421, 2024. 1
+[19] Zhicheng Huang, Zhaoyang Zeng, Yupan Huang, Bei Liu,
+Dongmei Fu, and Jianlong Fu. Seeing out of the box: End-to-
+end pre-training for vision-language representation learning.
+In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 12976–12985, 2021. 1
+[20] Menglin Jia, Luming Tang, Bor-Chun Chen, Claire Cardie,
+Serge Belongie, Bharath Hariharan, and Ser-Nam Lim. Visual
+prompt tuning. In European Conference on Computer Vision,
+pages 709–727. Springer, 2022. 6, 7
+[21] Aishwarya Kamath, Mannat Singh, Yann LeCun, Gabriel Syn-
+naeve, Ishan Misra, and Nicolas Carion. Mdetr-modulated
+detection for end-to-end multi-modal understanding. In Pro-
+ceedings of the IEEE/CVF International Conference on Com-
+puter Vision, pages 1780–1790, 2021. 1
+[22] Eric Kernfeld, Misha Kilmer, and Shuchin Aeron. Ten-
+sor–tensor products with invertible linear transforms. Linear
+Algebra and its Applications, 485:545–570, 2015. 4
+[23] Wonjae Kim, Bokyung Son, and Ildoo Kim. Vilt: Vision-and-
+language transformer without convolution or region supervi-
+sion. In International conference on machine learning, pages
+5583–5594. PMLR, 2021. 1
+[24] Diederik P Kingma and Jimmy Ba. Adam: A method for
+stochastic optimization. arXiv preprint arXiv:1412.6980 ,
+2014. 5
+15017
+
+
+=== PAGE 10 ===
+[25] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. In Proceedings of the IEEE/CVF International Confer-
+ence on Computer Vision, pages 4015–4026, 2023. 2
+[26] Weicheng Kuo, Yin Cui, Xiuye Gu, AJ Piergiovanni, and
+Anelia Angelova. F-vlm: Open-vocabulary object detection
+upon frozen vision and language models. arXiv preprint
+arXiv:2209.15639, 2022. 6
+[27] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang Wang,
+Litong Feng, and Wayne Zhang. Proxyclip: Proxy attention
+improves clip for open-vocabulary segmentation. InEuropean
+Conference on Computer Vision, pages 70–88. Springer, 2024.
+1
+[28] Jungbeom Lee, Jooyoung Choi, Jisoo Mok, and Sungroh
+Yoon. Reducing information bottleneck for weakly supervised
+semantic segmentation. Advances in Neural Information
+Processing Systems, 34:27408–27421, 2021. 4
+[29] Boyi Li, Kilian Q Weinberger, Serge Belongie, Vladlen
+Koltun, and Rene Ranftl. Language-driven semantic seg-
+mentation. In International Conference on Learning Repre-
+sentations, 2022. 1, 3, 6
+[30] Junnan Li, Ramprasaath Selvaraju, Akhilesh Gotmare, Shafiq
+Joty, Caiming Xiong, and Steven Chu Hong Hoi. Align
+before fuse: Vision and language representation learning
+with momentum distillation. Advances in neural information
+processing systems, 34:9694–9705, 2021. 1
+[31] Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi. Blip:
+Bootstrapping language-image pre-training for unified vision-
+language understanding and generation. In International
+conference on machine learning, pages 12888–12900. PMLR,
+2022. 2
+[32] Liunian Harold Li, Pengchuan Zhang, Haotian Zhang, Jian-
+wei Yang, Chunyuan Li, Yiwu Zhong, Lijuan Wang, Lu Yuan,
+Lei Zhang, Jenq-Neng Hwang, et al. Grounded language-
+image pre-training. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+10965–10975, 2022. 2
+[33] Xiujun Li, Xi Yin, Chunyuan Li, Pengchuan Zhang, Xiaowei
+Hu, Lei Zhang, Lijuan Wang, Houdong Hu, Li Dong, Furu
+Wei, et al. Oscar: Object-semantics aligned pre-training for
+vision-language tasks. In Computer Vision–ECCV 2020: 16th
+European Conference, Glasgow, UK, August 23–28, 2020,
+Proceedings, Part XXX 16, pages 121–137. Springer, 2020. 1
+[34] Dongze Lian, Daquan Zhou, Jiashi Feng, and Xinchao Wang.
+Scaling & shifting your features: A new baseline for efficient
+model tuning. Advances in Neural Information Processing
+Systems, 35:109–123, 2022. 7
+[35] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+7061–7070, 2023. 2, 3, 5, 6
+[36] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+Pietro Perona, Deva Ramanan, Piotr Doll´ar, and C Lawrence
+Zitnick. Microsoft coco: Common objects in context. In
+Computer Vision–ECCV 2014: 13th European Conference,
+Zurich, Switzerland, September 6-12, 2014, Proceedings, Part
+V 13, pages 740–755. Springer, 2014. 7
+[37] Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee.
+Visual instruction tuning. Advances in neural information
+processing systems, 36, 2024. 2
+[38] Weiyang Liu, Rongmei Lin, Zhen Liu, Lixin Liu, Zhiding
+Yu, Bo Dai, and Le Song. Learning towards minimum hyper-
+spherical energy. Advances in neural information processing
+systems, 31, 2018. 1
+[39] Jiasen Lu, Dhruv Batra, Devi Parikh, and Stefan Lee. Vilbert:
+Pretraining task-agnostic visiolinguistic representations for
+vision-and-language tasks. Advances in neural information
+processing systems, 32, 2019. 1, 2
+[40] Yuheng Lu, Chenfeng Xu, Xiaobao Wei, Xiaodong Xie,
+Masayoshi Tomizuka, Kurt Keutzer, and Shanghang Zhang.
+Open-vocabulary point-cloud object detection without 3d an-
+notation. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pages 1190–1199,
+2023. 6
+[41] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and
+semantic segmentation in the wild. In Proceedings of the
+IEEE conference on computer vision and pattern recognition,
+pages 891–898, 2014. 5
+[42] Zelin Peng, Zhengqin Xu, Zhilin Zeng, Lingxi Xie, Qi Tian,
+and Wei Shen. Parameter efficient fine-tuning via cross block
+orchestration for segment anything model. In IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition (CVPR),
+2024. 2, 4
+[43] Zelin Peng, Zhengqin Xu, Zhilin Zeng, Xiaokang Yang, and
+Wei Shen. Sam-parser: Fine-tuning sam efficiently by pa-
+rameter space reconstruction. In Proceedings of the AAAI
+Conference on Artificial Intelligence, pages 4515–4523, 2024.
+2
+[44] Zeju Qiu, Weiyang Liu, Haiwen Feng, Yuxuan Xue, Yao
+Feng, Zhen Liu, Dan Zhang, Adrian Weller, and Bernhard
+Sch¨olkopf. Controlling text-to-image diffusion by orthogo-
+nal finetuning. Advances in Neural Information Processing
+Systems, 36:79320–79362, 2023. 1, 3, 6, 7, 8
+[45] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. In International conference on machine learning, pages
+8748–8763. PMLR, 2021. 1, 2
+[46] Baptiste Roziere, Jonas Gehring, Fabian Gloeckle, Sten
+Sootla, Itai Gat, Xiaoqing Ellen Tan, Yossi Adi, Jingyu Liu,
+Tal Remez, J´er´emy Rapin, et al. Code llama: Open founda-
+tion models for code. arXiv preprint arXiv:2308.12950, 2023.
+2
+[47] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. In European Conference on Com-
+puter Vision, pages 139–156. Springer, 2024. 1
+[48] Wei Shen, Zelin Peng, Xuehui Wang, Huayu Wang, Jiazhong
+Cen, Dongsheng Jiang, Lingxi Xie, Xiaokang Yang, and Qi
+15018
+
+
+=== PAGE 11 ===
+Tian. A survey on label-efficient deep image segmentation:
+Bridging the gap between weak supervision and dense pre-
+diction. IEEE transactions on pattern analysis and machine
+intelligence, 45(8):9284–9305, 2023. 1
+[49] Amanpreet Singh, Ronghang Hu, Vedanuj Goswami, Guil-
+laume Couairon, Wojciech Galuba, Marcus Rohrbach, and
+Douwe Kiela. Flava: A foundational language and vision
+alignment model. In Proceedings of the IEEE/CVF Confer-
+ence on Computer Vision and Pattern Recognition , pages
+15638–15650, 2022. 2
+[50] Weijie Su, Xizhou Zhu, Yue Cao, Bin Li, Lewei Lu, Furu
+Wei, and Jifeng Dai. Vl-bert: Pre-training of generic visual-
+linguistic representations. arXiv preprint arXiv:1908.08530,
+2019. 2
+[51] Yi-Lin Sung, Jaemin Cho, and Mohit Bansal. Lst: Ladder
+side-tuning for parameter and memory efficient transfer learn-
+ing. Advances in Neural Information Processing Systems, 35:
+12991–13005, 2022. 7
+[52] Hao Tan and Mohit Bansal. Lxmert: Learning cross-modality
+encoder representations from transformers. arXiv preprint
+arXiv:1908.07490, 2019. 1
+[53] Feilong Tang, Zile Huang, Chengzhi Liu, Qiang Sun, Harry
+Yang, and Ser-Nam Lim. Intervening anchor token: Decoding
+strategy in alleviating hallucinations for mllms. In The Thir-
+teenth International Conference on Learning Representations.
+1
+[54] JJ Tomson. On the structure of the atom: an investigation of
+the stability and periods of osciletion of a number of corpus-
+cles arranged at equal intervals around the circumference of
+a circle; with application of the results to the theory atomic
+structure. Philos. Mag. Series 6, 7(39):237, 1904. 2
+[55] Jianfeng Wang, Xiaowei Hu, Zhe Gan, Zhengyuan Yang,
+Xiyang Dai, Zicheng Liu, Yumao Lu, and Lijuan Wang.
+Ufo: A unified transformer for vision-language representation
+learning. arXiv preprint arXiv:2111.10023, 2021. 1
+[56] Tongzhou Wang and Phillip Isola. Understanding contrastive
+representation learning through alignment and uniformity on
+the hypersphere. In International conference on machine
+learning, pages 9929–9939. PMLR, 2020. 1
+[57] Zifeng Wang, Xi Chen, Rui Wen, Shao-Lun Huang, Ercan
+Kuruoglu, and Yefeng Zheng. Information theoretic counter-
+factual learning from missing-not-at-random feedback. Ad-
+vances in Neural Information Processing Systems, 33:1854–
+1864, 2020. 4
+[58] Chaoyi Wu, Xiaoman Zhang, Ya Zhang, Yanfeng Wang, and
+Weidi Xie. Pmc-llama: Further finetuning llama on medical
+papers. arXiv preprint arXiv:2304.14454, 2023. 2
+[59] Jianzong Wu, Xiangtai Li, Shilin Xu, Haobo Yuan, Henghui
+Ding, Yibo Yang, Xia Li, Jiangning Zhang, Yunhai Tong,
+Xudong Jiang, et al. Towards open vocabulary learning: A
+survey. IEEE Transactions on Pattern Analysis and Machine
+Intelligence, 46(7):5092–5113, 2024. 1
+[60] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Wentao Liu,
+and Chen Change Loy. Clim: Contrastive language-image
+mosaic for region representation. In Proceedings of the AAAI
+Conference on Artificial Intelligence, pages 6117–6125, 2024.
+6, 7
+[61] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and Yanwei
+Pang. Sed: A simple encoder-decoder for open-vocabulary
+semantic segmentation, 2023. 1, 2, 5, 6
+[62] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas Breuel, Jan Kautz, and Xiaolong Wang. Groupvit:
+Semantic segmentation emerges from text supervision. In
+Proceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 18134–18144, 2022. 1
+[63] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panoptic
+segmentation with text-to-image diffusion models. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 2955–2966, 2023. 2, 6
+[64] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. In European Conference on Computer Vi-
+sion, pages 736–753. Springer, 2022. 2, 6
+[65] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xiang
+Bai. Side adapter network for open-vocabulary semantic
+segmentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 2945–
+2954, 2023. 1, 2, 5, 6
+[66] Haochen Xue, Feilong Tang, Ming Hu, Yexin Liu, Qidong
+Huang, Yulong Li, Chengzhi Liu, Zhongxing Xu, Chong
+Zhang, Chun-Mei Feng, et al. Mmrc: A large-scale bench-
+mark for understanding multimodal large language model in
+real-world conversation. arXiv preprint arXiv:2502.11903,
+2025. 1
+[67] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip. In NeurIPS,
+2023. 1, 2, 4, 6
+[68] Fei Zhang, Tianfei Zhou, Boyang Li, Hao He, Chaofan
+Ma, Tianjiao Zhang, Jiangchao Yao, Ya Zhang, and Yan-
+feng Wang. Uncovering prototypical knowledge for weakly
+open-vocabulary semantic segmentation. Advances in Neural
+Information Processing Systems, 36:73652–73665, 2023. 1
+[69] Fei Zhang, Tianfei Zhou, Boyang Li, Hao He, Chaofan
+Ma, Tianjiao Zhang, Jiangchao Yao, Ya Zhang, and Yan-
+feng Wang. Uncovering prototypical knowledge for weakly
+open-vocabulary semantic segmentation. Advances in Neural
+Information Processing Systems, 36:73652–73665, 2023. 2
+[70] Haotian Zhang, Pengchuan Zhang, Xiaowei Hu, Yen-Chun
+Chen, Liunian Li, Xiyang Dai, Lijuan Wang, Lu Yuan, Jenq-
+Neng Hwang, and Jianfeng Gao. Glipv2: Unifying localiza-
+tion and vision-language understanding. Advances in Neural
+Information Processing Systems, 35:36067–36080, 2022. 2
+[71] Renrui Zhang, Jiaming Han, Chris Liu, Peng Gao, Ao-
+jun Zhou, Xiangfei Hu, Shilin Yan, Pan Lu, Hongsheng
+Li, and Yu Qiao. Llama-adapter: Efficient fine-tuning of
+language models with zero-init attention. arXiv preprint
+arXiv:2303.16199, 2023. 2
+[72] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset. International
+Journal of Computer Vision, 127:302–321, 2019. 5, 8
+15019
+
+
+=== PAGE 12 ===
+[73] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. In European Conference on Computer
+Vision, pages 696–712. Springer, 2022. 2
+[74] Kaiyang Zhou, Jingkang Yang, Chen Change Loy, and Ziwei
+Liu. Conditional prompt learning for vision-language models.
+In IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), 2022. 2
+[75] Kaiyang Zhou, Jingkang Yang, Chen Change Loy, and Zi-
+wei Liu. Learning to prompt for vision-language models.
+International Journal of Computer Vision (IJCV), 2022. 2
+[76] Ziqin Zhou, Yinjie Lei, Bowen Zhang, Lingqiao Liu, and
+Yifan Liu. Zegclip: Towards adapting clip for zero-shot
+semantic segmentation. Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition (CVPR),
+2023. 6
+[77] Deyao Zhu, Jun Chen, Xiaoqian Shen, Xiang Li, and Mo-
+hamed Elhoseiny. Minigpt-4: Enhancing vision-language
+understanding with advanced large language models. arXiv
+preprint arXiv:2304.10592, 2023. 2
+[78] Xiangyang Zhu, Renrui Zhang, Bowei He, Aojun Zhou, Dong
+Wang, Bin Zhao, and Peng Gao. Not all features matter:
+Enhancing few-shot clip with adaptive prior refinement. In
+Proceedings of the IEEE/CVF International Conference on
+Computer Vision, pages 2605–2615, 2023. 2
+15020

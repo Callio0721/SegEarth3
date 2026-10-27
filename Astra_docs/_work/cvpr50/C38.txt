@@ -1,0 +1,1187 @@
+=== PAGE 1 ===
+SkySense-VITA: Towards Universal In-context Segmentation
+of Multi-modal Remote Sensing Imagery
+Kang Wu1*, Lei Yu2, Junwei Luo1∗, Bo Dang1, Junjian Zhang2, Xiangyuan Cai2,
+Hongwei Hu2, Jingdong Chen2, Yansheng Li1†
+1Wuhan University 2Ant Group
+{kangwu, yansheng.li}@whu.edu.cn
+https://kang-wu.github.io/SkySense-VITA
+Abstract
+While recent foundation models for remote sensing segmen-
+tation have shown notable progress, they still fall short in
+processing diverse multi-modal inputs, synergizing comple-
+mentary prompt types, and leveraging semantic hierarchies.
+To address these limitations, we introduce SkySense-VITA,
+a unified in-context segmentation model, which synergisti-
+cally processes both optical and Synthetic Aperture Radar
+(SAR) imagery usingVIsual,TextuAl, or fused prompts.
+Based on a novel prompt-and-prediction decoupling strat-
+egy, we propose the VITA-Former and VITA-Decoder to de-
+couple multi-modal prompt fusion and prediction process,
+allowing the model to flexibly support visual-only, textual-
+only, and fused prompt modes. We train SkySense-VITA with
+a progressive two-stage strategy: a first stage of Image-
+Level Alignment Pretraining featuring optical-SAR align-
+ment, and a second stage of Pixel-Level In-context Pretrain-
+ing using Semantic Granularity Annealing (SGA), a coarse-
+to-fine curriculum that enables robust hierarchical learn-
+ing. To support this training, we introduce our new large-
+scale, multi-modal Sky-VT-300k dataset. Extensive experi-
+ments show SkySense-VITA establishes a new state-of-the-
+art (SOTA) on 18 datasets, with an average performance
+lead of over 10% mean Intersection over Union (mIoU).
+1. Introduction
+Semantic segmentation of remote sensing imagery is a fun-
+damental technology for Earth observation, critical for ap-
+plications like urban planning and disaster response [2,
+47, 52]. However, the dominant “one model, one task”
+paradigm relies on specialized models trained with expen-
+sive, large-scale annotated datasets. This dependency re-
+sults in poor generalization to new geographic regions, sen-
+sor types, or classes, hindering scalable planetary analysis.
+Recently, researchers have begun developing remote
+*indicates interns at Ant Group. † Corresponding author.
+(a) Remote Sensing Foundation Model
+(b) SAM-like Model
+(c) Ours: SkySense-VITA
+…
+SAM-like Models
+…
+User Interaction
+❄
+Task-specificTuningAutomaticInference
+NoTuningNeed User Interaction
+…
+SkySense-VITA
+…
+❄ Cross-imageVisual Prompts
+Textual Prompts
+RSFM
+Extensive  images
+Fine-tuning
+🔥
+RSFM
+RSFM
+………
+RSFM
+Multi-modalInput
+OpticalOnly
+NoTuning
+AutomaticInferenceMulti-modalInput
+OpticalOpticalSAR
+OpticalOpticalOptical
+OpticalSAROptical
+Visual + Textual Prompts
+uMajor damaged buildinguSeverely damaged building
+uMajor damaged buildinguSeverely damaged building
+🔥
+🔥
+🔥Self-supervised Pretraining
+FlexibleSupport 
+Inner-imageVisual Prompts
+Figure 1. Comparison of remote sensing image segmentation
+paradigms. (a) Conventional remote sensing foundation mod-
+els require task-specific fine-tuning, limiting their flexibility. (b)
+SAM-like models require user interaction at inference time, can-
+not leverage textual prompts, and lack native support for SAR im-
+agery. (c) Our proposed SkySense-VITA is tuning-free, operates
+without per-image user interaction, and supports both optical and
+SAR remote sensing imagery.
+sensing foundation models (RSFM) [6, 9, 12, 18, 21, 24, 26,
+31, 39, 50], typically by pretraining on massive unlabeled
+datasets to learn transferable representations (Fig. 1(a)). Al-
+though these RSFMs can be extended to multi-modal inputs
+and boost downstream performance [53], they still suffer
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+20553
+
+
+=== PAGE 2 ===
+from a critical limitation: their adaptation requires a time-
+consuming and labor-intensive fine-tuning process, which
+is impractical for time-critical applications. More recently,
+a new frontier has emerged with fine-tuning-free universal
+segmentation models. A representative work is the Segment
+Anything Model (SAM) [14, 35] shown in Fig. 1(b), which
+achieves rapid task adaptation via per-image user interac-
+tion without parameter modification. However, SAM is lim-
+ited for remote sensing, as it is trained on natural images and
+struggles with the domain gap, especially for SAR images.
+Furthermore, its reliance on per-image user interaction pre-
+vents large-scale automated processing. While pioneering
+works [17, 52, 56, 60] have explored prompt-based archi-
+tectures for universal segmentation in remote sensing, they
+suffer from three key limitations:
+First, limited modality support. Remote sensing imagery
+is inherently multi-modal, with optical sensors providing
+rich textural details and SAR offering all-weather, all-time
+capability [9]. A unified segmentation model should sup-
+port both modalities for robust deployment, while current
+methods [17, 60] are designed exclusively for optical im-
+agery, rendering them inapplicable to SAR imagery and
+limiting real-world application.
+Second, limited prompt type support. Existing universal
+models in remote sensing are divided into visual-prompt-
+based [52] and textual-prompt-based methods [17, 56, 60],
+each with distinct limitations. Visual prompts, which use
+reference images and masks, provide rich visual context but
+suffer from task granularity ambiguity. For instance, acar
+annotation could also mean thevehicle, or thetransporta-
+tionsuper-category. Textual-prompt-based methods suffer
+from semantic ambiguity. For instance, a single term like
+plantcan refer to eithervegetationor apower plant. They
+also fail to capture vast intra-class visual variance, as text
+alone cannot encode specific stylistic nuances, such as the
+dramatically different appearance ofhousesacross conti-
+nents [43]. Consequently, jointly supporting both prompt
+types is crucial for flexible and robust generalization.
+Third, limited semantic hierarchy consideration. Remote
+sensing categories are naturally hierarchical (e.g.,car⊂ve-
+hicle). Existing methods [17, 52, 56] typically treat classes
+as a flat list, ignoring crucial structural knowledge and forc-
+ing the model to learn difficult, fine-grained classes from
+scratch without the benefit of coarse-level contextual pri-
+ors. It also exacerbates inter-class confusion, thereby com-
+promising the structure and robustness of the feature space.
+To address these limitations, we introduce SkySense-
+VITA, a unified in-context segmentation model that pro-
+cesses both optical and SAR imagery and supports visual,
+textual, and fused prompts, where “in-context” means seg-
+mentation conditioned on external prompts (visual exem-
+plars, textual descriptors, or their combinations) without
+task-specific fine-tuning. To train model at scale, we con-
+struct Sky-VT-300k, a large dataset of optical and SAR re-
+mote sensing images with pixel-level semantic annotations
+and aligned visual exemplars and textual descriptors, cov-
+ering more than 300,000 samples across 176 categories.
+Building on SkySense’s decoupled backbone [9], we in-
+troduce learnable modality tokens that aggregate modality-
+specific features across layers, improving robustness un-
+der heterogeneous sensors. We further develop VITA-
+Former and VITA-Decoder based on a decoupling strat-
+egy for prompts and predictions: VITA-Former performs
+prompt decoupling, fusing visual and textual cues while
+retaining modality-specific pathways; VITA-Decoder per-
+forms prediction decoupling, jointly optimizing the visual,
+textual, and fused branches to mitigate cross-branch inter-
+ference and maximize per-branch performance. Finally, we
+introduce a progressive two-stage pretraining pipeline: 1)
+Image-Level Alignment Pretraining, which aligns optical
+and SAR representations via cross-modal learning; and 2)
+Pixel-Level In-Context Pretraining with Semantic Granular-
+ity Annealing (SGA), a semantic-tree–guided coarse-to-fine
+curriculum that reduces semantic conflicts and improves
+generalization. Experiments on in-distribution and out-of-
+distribution benchmarks show that SkySense-VITA consis-
+tently outperforms prior models across datasets and metrics.
+Our main contributions are:
+• We introduce SkySense-VITA, a unified in-context seg-
+mentation model that jointly supports optical/SAR inputs
+and visual, textual, and fused prompting.
+• We develop a progressive pretraining strategy named
+SGA to obtain robust, hierarchy-aware representations.
+• Extensive evaluations on 18 datasets demonstrate SOTA
+performance, achieving an average gain exceeding 10%
+mIoU compared to existing baselines.
+2. Related Work
+2.1. Remote Sensing Foundation Model
+RSFMs excel at learning robust feature representations
+from extensive unlabeled data via self-supervised learning.
+Predominant methods include contrastive learning [9, 12,
+24, 26, 50] and Masked Image Modeling [6, 18, 21, 31, 39],
+with some works combing both [27, 29]. Despite excel-
+lent generalization on diverse data, these RSFMs necessi-
+tate task-specific fine-tuning for downstream segmentation
+tasks. To overcome it, we propose SkySense-VITA, an
+in-context segmentation model that handles diverse remote
+sensing tasks without fine-tuning.
+2.2. In-context Segmentation
+In-context learning was popularized by GPT-3 [1] and
+adapted to vision by Painter [48]. SegGPT [49] fur-
+ther modeled in-context segmentation via in-context color-
+ing, enabling few-shot generalization without fine-tuning.
+20554
+
+
+=== PAGE 3 ===
+SkySense
+SkySense
+Mask Pooling…Visual Prompt Tokens
+TargetImage
+PromptImage
+PromptAnno.
+Text Encoder…Textual Prompt Tokens
+Prompt Feature
+Target Feature
+VITA Former
+uCornuWheatu…
+VITADecoder
+…
+In-context  QueriesTarget Prediction
+Multi-modal In-context Samples
+Target FlowPrompt Flow
+Shareweights
+Modality Prototypes
+OpticalSAR…
+…
+uWateruBuildingu…
+…
+…
+…PromptText
+(Point/Box/Masks)
+……VisualTextualFused
+Visual
+Textual
+Fused
+…
+…
+…
+…
+Figure 2. Overview of the model architecture of SkySense-VITA.
+Subsequent work falls into three paradigms: (i) SAM-
+based [23, 38, 40, 57], which generate prompts via cross-
+image correspondence via DINOv2 [32] and segment with
+SAM [14] but incur high compute; (ii) query-based [15,
+22], which use MaskFormer-style decoupling and prompt
+engineering to handle diverse tasks; and (iii) response-
+based [28], which design specialized decoders to refine
+cross-image correspondences. In remote sensing, Sky-
+Sense++ [52] introduces semantic-band to transfer in-
+context learning to randomized index segmentation, im-
+proving segmentation performance.
+2.3. Open-V ocabulary Segmentation for Remote
+Sensing
+Open-vocabulary semantic segmentation aims to segment
+arbitrary categories in the open world by textual prompts.
+In remote sensing, SegEarth-OV [17] is the first training-
+free open-vocabulary semantic segmentation framework,
+introducing a feature upsampler to recover spatial detail.
+SkySense-O [60] further adopts a vision-centric modeling
+principle, leveraging knowledge graph to correct alignment
+ambiguities induced by language guidance.
+Most above methods support only one prompt type and
+therefore inherit its limitations. Although some [13, 36]
+combine visual and textual prompts, they operate on per-
+image prompts in natural images and lack mechanisms to
+synergize both. In contrast, SkySense-VITA tackles the un-
+derexplored cross-image in-context setting, supporting vi-
+sual, textual, and fused prompts across optical and SAR via
+prompt–prediction decoupling for robust fusion.
+3. SkySense-VITA
+In this section, we present the pretraining dataset, model
+architecture and pretraining details of SkySense-VITA.
+3.1. Pretraining Dataset
+For Image-level Alignment Pretraining, we create a dataset
+of co-located optical-SAR-text triplets by adding SAR im-
+agery with the optical imagery from [60]. For pixel-level
+in-context pretraining, we construct Sky-VT-300k dataset, a
+diverse dataset of over 300,000 samples aggregated from 12
+sources [8, 20, 30, 41, 44–46, 51, 52, 54, 60]. This dataset
+spans 7 satellite platforms and 176 classes, covers both op-
+tical and SAR modalities, and provides pixel-level masks
+with aligned visual exemplars and textual descriptors for in-
+context training.
+3.2. Model Architecture
+In Fig. 2, our architecture has two flows: a target flow en-
+codes the target image and generates segmentation masks,
+and a prompt flow encodes visual and/or textual prompts to
+produce in-context queries. The overall pipeline consists of
+three parts: Multi-modal Feature Extraction, Multi-modal
+Prompt Fusion, and Prompt-Guided Decoding.
+Multi-modal Feature Extraction.Given a target image
+xtgt and a prompt pair(x pmt, vpmt, tpmt), wherex pmt is
+the prompt image,v pmt is its visual annotation, andt pmt
+is the class name. We extract featuresF tgt andF pmt us-
+ing a factorized encoder [9] from optical and SAR inputs.
+We construct visual prompt tokensP V ∈R N×C by class-
+wise masked average pooling fromF pmt andv pmt. Textual
+prompt tokensP T ∈R N×C are obtained by encoding cate-
+gory namest pmt with a pretrained text encoder [33].
+Multi-modal Prompt Fusion by VITA-Former .To flex-
+ibly support visual-only, textual-only, and fused prompt-
+ing, VITA-Former performs early fusion over visual, tex-
+tual, and fused prompt tokens (Fig. 3). We first mitigate
+the optical/SAR discrepancy by injecting modality proto-
+typesP M into the visual tokens via cross-attention, yield-
+20555
+
+
+=== PAGE 4 ===
+…Visual PromptTokens…Textual PromptTokens
+ModalityPrototypes
+Target Feature…In-context Queries
+Self-AttentionCross-Attention
+× N
+VITA Former
+…Fused PromptTokens
+… …VisualTextFused
+VTF
+VTF
+OpticalSAR…Cross-Attention Self-AttentionMask…
+Figure 3. Overview of VITA-Former for feature fusion.
+ing domain-adaptedP ′
+V. HereP M are learnable modality-
+aware tokens (two prototypes for optical and SAR) that are
+shared across layers and updated end to end. We then con-
+catenate[P ′
+V, P T, P F], where the fused tokensP F are ini-
+tialized fromP T by a linear projection. A masked self-
+attention enforces the following: (i)P ′
+V andP T are isolated
+to preserve uni-modal specificity, and (ii)P F can attend to
+both to absorb cross-modal cues. Finally, cross-attention
+with target featuresF tgt produces three in-context prompt
+queries{Q k
+ctx}k∈{V,T,F} corresponding to the visual (V),
+textual (T), and fused (F) modes.
+Self-AttentionCross-AttentionFFN
+Masks
+In-context Queries
+TargetFeature
+× NVITA DecoderQuery Embedding LayerV
+TF………VisualSegmentation Queries
+S1S2S3
+……… TextualFused
+……… ………
+Copy
+VisualTextualFusedVisualTextualFused
+………VisualTextualFusedVisualTextualFused
+Class Logits
+S1S2S3
+VisualPredictionTextualPredictionsFusedPredictions
+Self-Attention MaskS1S2S3
+TF
+V
+Figure 4. Overview of VITA-Decoder for decoupled decoding.
+Prompt-Guided Decoupled Decoding by VITA-Decoder .
+VITA-Decoder in Fig. 4 follows a query-based design [3, 4]
+with explicit mode decoupling. We replicate learnable seg-
+mentation queries into three copies,Q V
+seg, QT
+seg, QF
+seg, and
+pair them with the in-context queriesQ k
+ctx. All queries
+Q={Q k
+seg, Qk
+ctx}k∈{V,T,F} are first concatenated, passed
+through a Query Embedding Layer for modality and type
+encoding, and then refined by a decoder stackDusing: (i)
+block diagonal masked self-attention to isolate modes and
+reduce cross-branch interference, and (ii) cross-attention to
+Ftgt. Let the refined queries beQ ′k
+seg andQ ′k
+ctx. Mask pre-
+dictionsM k are obtained follows Mask2Former [4]:
+Mk =F mask
+ 
+Q′k
+seg, ϕ(F tgt)
+
+, k∈ {V,T,F}, (1)
+whereϕ(·)projects encoder features to the mask space.
+Fmask maps query tokens to mask embeddings and com-
+putes per-pixel logits via a dot product withϕ(F tgt). For
+class assignment, we replace a fixed classifier with fully
+prompt-guided classification using similarity toQ ′k
+ctx:
+Pk = softmax
+ 
+norm(Q′k
+seg) norm(Q′k
+ctx)⊤/τ
+
+, (2)
+wherenorm(·)denotesℓ 2 normalization andτis a temper-
+ature for scaling the logits. The final output˜y k is obtained
+by combiningM k andP k.
+3.3. Pretraining
+Our pretraining employs a progressive two-stage pipeline.
+The first stage focuses on Image-level Alignment Pretrain-
+ing to bridge the domain gap between the optical and SAR.
+The second stage, Pixel-level In-context Pretraining, learns
+to segment prompt-specified categories under a semantic
+hierarchy, enabling coarse-to-fine learning with visual and
+textual prompts.
+Image-level Alignment Pretraining.To efficiently align
+SAR to the pretrained optical–text space, we adopt an in-
+direct alignment strategy [25]. The optical encoderE opt is
+frozen and only the SAR encoderE SAR is trained. Given a
+co-registered pair(x opt, xSAR), we create two augmented
+SAR viewsx a
+SAR andx b
+SAR and extract global embed-
+dings{f opt, f a
+SAR, f b
+SAR}via global average pooling after
+feature extraction. We optimize two objectives: an intra-
+modal contrastive lossL CL on(f a
+SAR, f b
+SAR)to learn robust
+SAR features, and a cross-modal alignment lossL CMA be-
+tweenf a
+SAR and the fixedf opt to anchor SAR to the optical
+space [16]. The stage lossL img is:
+Limg =λ CL LCL(f a
+SAR, f b
+SAR)
++λ CMA LCMA(f a
+SAR, fopt), (3)
+whereλ CL andλ CMA balance the terms.
+SemanticTr eeNaturalEnvironmentBuiltEnvironmentMobileObjectsAtmosphericFeaturesWaterFeaturesVegetationTe rra i n/LandCoverLargeWaterBodiesFlowingWaterSmall/StillWaterWaterStates/PartsOcean/SeaLakeRiverCanalDitchRifflePondReservoirFloodWaterTrees/ForestShrubs/HerbaceousGrasslandsTreeIsolatedTreeTreeClusterForestArborForestConiferousDeciduousShrubland/BushLowVegetationMeadowLawn/ArtificialMeadowGrasslandGreenbeltGeologicalFeaturesBareSurfacesShorelinesOtherMountain/RidgeRock/RockyAreaIslandBareLand/SoilSand/DuneDesertWasteland/DebrisBeachShore/BankClearingSnow
+Buildings/StructuresTransportationInfrastructureAgricultural/AquacultureRecreational/PublicAreasStreetFurnitureBuildingsIndustrial/UtilityEnergyInfrastructureSmallStructures
+BuildingIntactBuildingDamagedBuildingResidentialRoofCourtyardIndustrialAreaSewageTreatmentPlantStorageTa n kDamMiscStructureConduitSolarPanel/PlantWindTurbineGreenhouseGazeboFenceRoad/GroundParking/ServiceRailAirWaterRoad/StreetPath/UnpavedRoadPaved/ImperviousSurfacePerviousSurfaceRoundaboutBridgeOverpassSeparatorIsolationStripParkingAreaRestAreaRailway/TrainTrackRailwayStationAirport/AirstripRunwayHelipadHarbor/QuayFarmingLandFieldTypesPlantationsAquacultureAgriculturalLandField(General)PlowedLandT erracedFieldPaddyFieldWaterFieldDryCroplandIrrigatedFieldOrchard/Garden/PlantationFishPondSportsFacilitiesPublicSpacesStadiumBaseballFieldBasketballCourtTe n n i sCourtSoccerFieldGroundTrackFieldSwimmingPoolGolfCourseParkPlaygroundSquareGraveyardStreetLampBenchVehiclesCar/SmallVehicleLargeVehicleTrainAirplaneHelicopterShip/BoatCloudCloudShadow
+Training Step
+Dominant Level
+Middle Classesl=2
+Coarse Classesl=1
+Fine  Classesl=3
+SGASample EngineHierarchicalSemantic Tree Semantic Annealing Schedule
+Semantics
+Strategy
+Figure 5. Overview of Semantic Granularity Annealing.
+Pixel-level In-Context Pretraining.Remote sensing cate-
+gories are hierarchical. Inspired by [37, 60], we use Qwen-
+3 [55] to construct a semantic treeToverCclasses with
+depthL, where leaves are fine-grained categories and ances-
+tors are coarser super-classes shown in Fig. 5. For any leaf
+ci, let its ancestral path beA(c i) ={c (1)
+i , . . . , c(L)
+i }from
+coarse to fine, withc (L)
+i =c i. We propose Semantic Gran-
+ularity Annealing (SGA) to achieve coarse to fine semantic
+20556
+
+
+=== PAGE 5 ===
+Methods Publication
+Optical SAR
+FLAIR Potsdam FBP LoveDA iSAID JL-16 OAM-TCD GF1-WHU AIR-PVQuickQuake
+BuildingsETCI-Flood
+In-context Segmentation Model (One-shot)
+Painter [48] CVPR23 22.48 11.10 6.31 8.58 22.33 5.33 20.52 3.70 3.10 30.18 -
+SegGPT [49] ICCV23 25.99 27.82 19.87 31.44 30.11 10.17 35.80 27.39 38.42 7.04 -
+PerSAM [57] ICLR24 23.91 24.02 11.82 27.31 25.34 9.09 28.21 18.36 37.32 27.31 -
+DINOv [15] CVPR24 34.39 47.07 18.28 25.50 25.94 9.15 37.05 27.61 26.46 30.56 -
+SINE [22] NIPS24 30.23 23.94 14.67 19.89 20.96 10.21 28.78 23.21 18.80 23.91 -
+SEGIC [28] ECCV24 39.17 58.80 24.02 34.02 46.41 10.41 41.36 31.91 32.12 35.48 -
+SkySense++* [52] NMI25 44.50 62.70 41.62 47.25 47.74 20.13 43.39 20.73 47.51 46.94 -
+Open-vocabulary Segmentation Model (Zero-shot)
+SegEarth-OV [17] CVPR25 32.19 34.80 20.02 32.01 19.93 9.80 4.31 23.44 5.25 28.12 -
+SkySense-O [60] CVPR25 27.01 23.42 8.09 34.61 20.93 1.30 33.14 18.24 35.52 28.55 -
+SkySense-VITA(Visual) - 53.29 71.34 47.04 56.11 56.07 23.81 45.69 70.12 56.5575.85 27.40
+SkySense-VITA(Text) - 63.02 81.5358.8760.5461.55 36.66 47.2369.4357.8775.59 29.27
+SkySense-VITA(Visual+Text) -64.03 81.9457.2662.0859.89 35.97 46.7871.2757.55 75.25 29.58
+Table 1. Comparison of segmentation performance across different in-distribution datasets. Values represent mIoU (%). * indicates that
+this model was retrained on the fully aligned training dataset. - indicates that the model does not support this dataset.
+learning. Unlike hard-staged approaches, SGA introduces
+a smooth, probabilistic curriculum to prevent catastrophic
+forgetting for coarse classes of some datasets. We first de-
+fine a continuous target granularityµ(t)∈[1, L]:
+γ(t) = 1−cos
+ 
+π·min(1, t/T)
+
+2 ,
+µ(t) = 1 +γ(t) (L−1),
+(4)
+whereTis the total training steps.µ(t)transitions from
+1(coarse) att= 0toL(fine) att=T. At stept, we
+sample a discrete levell∈ {1, . . . , L}from a probability
+distributionp(l|t), which is centered atµ(t)and controlled
+by a temperatureτ SGA:
+p(l|t) = exp (−|l−µ(t)|/τ SGA)PL
+j=1 exp (−|j−µ(t)|/τ SGA)
+. (5)
+A pixelxwith leaf labelc i is then trained to predict its
+ancestor at the sampled level,y=c (l)
+i .
+As visualized in Fig. 5 forL=3,T=10,000, andτ SGA =
+0.95, early training favors coarse categories and gradually
+shifts to fine categories. This reduces forgetting and stabi-
+lizes training, especially for mixed datasets with heteroge-
+neous granularity depths.
+The pixel-level objective follows set prediction [4] and
+sums over the three output modesk∈ {V,T,F}. For each
+mode, we perform Hungarian matching against the level-l
+targets by SGA and compute the pretraining lossL pixel:
+Lpixel =
+X
+k∈{V,T,F}
+NqX
+i=1
+
+λcls Lcls
+ 
+Pk(i), c (l)
+ˆσ(i)
+
++λ mask Lmask
+ 
+Mk(i), a (l)
+ˆσ(i)
+
+,
+(6)
+whereN q is the number of query,L cls is cross-entropy over
+level-lclasses andL mask combines Dice and Focal losses.
+Unmatched queries are supervised as no-object as in [4].
+4. Experiments
+4.1. Implementation Details
+Pretraining.The first Image-level Alignment Pretraining
+runs on a cluster of 80 A100 GPUs. The second Pixel-
+Level In-context Pretraining runs on 8 A100 GPUs. For this
+stage, we train the model on our new Sky-VT-300k dataset
+for 10,000 iterations with a batch size of 64. More details,
+including optimizer settings and learning rate schedules, are
+included in the supplementary materials.
+Architecture.We employ the factorized SkySense encoder
+from [9] and the pretrained text encoder from CLIP [33].
+The total model size is 1.1B parameters. This is composed
+of 969M parameters for the image encoder and 149M for
+the text encoder. The VITA-Former and VITA-Decoder are
+lightweight and efficient, comprising only 18M parameters.
+4.2. Performance on In-distribution Tasks
+We adopt FLAIR [8], Potsdam [10], FBP [44],
+LoveDA [46], iSAID [51], JL-16 [52], OAM-TCD [45],
+GF1-WHU [20], AIR-PV [54], QuickQuake Buildings [41],
+and ETCI-Flood [30] datasets for in-distribution evaluation.
+The pretraining datasets and evaluation benchmarks are
+completely disjoint to avoid data leakage. We report mIoU
+of in-context segmentation models under one-shot setting
+and open-vocabulary segmentation models under zero-shot
+setting. For our SkySense-VITA, we apply these one-shot
+and zero-shot settings to its visual-only and textual-only
+modes, respectively.
+Tab. 1 show that natural-image in-context models (e.g.,
+Painter, SegGPT) transfer poorly to remote sensing tasks.
+Furthermore, while remote sensing open-vocabulary seg-
+20557
+
+
+=== PAGE 6 ===
+Methods Publication Domain generalization Class generalization
+Vaihingen DeepGlobe GLH-Water C2S-SAR FloodNet SOS GLVM-Post
+In-context Segmentation Model (One-shot)
+Painter [48] CVPR23 5.96 19.51 35.96 - 24.84 - 6.82
+SegGPT [49] ICCV23 47.84 23.04 61.93 - 38.90 - 39.45
+PerSAM [15] CVPR24 18.18 31.24 52.66 - 34.39 - 3.30
+DINOv [57] ICLR24 33.29 42.95 64.42 - 34.69 - 3.94
+SINE [22] NIPS24 23.57 33.46 50.18 - 33.10 - 2.68
+SEGIC [28] ECCV24 59.45 37.16 51.54 - 60.02 - 5.18
+SkySense++* [52] NMI25 55.37 49.63 74.28 - 54.92 - 18.50
+Open-vocabulary Segmentation Model (Zero-shot)
+SegEarth-OV [17] CVPR25 31.66 52.58 12.91 - 43.13 - 3.32
+SkySense-O [60] CVPR25 28.24 17.14 24.40 - 29.87 - 4.91
+SkySense-VITA(Visual) - 51.62 47.02 82.0221.18 53.19 34.49 14.20
+SkySense-VITA(Text) - 60.94 51.27 86.09 16.83 57.52 14.19 44.97
+SkySense-VITA(Fused) -62.75 53.06 86.8516.82 62.19 39.25 46.08
+Table 2. Comparison of segmentation performance across out-of-distribution datasets, including domain and class generalization evalua-
+tion. Values represent mIoU (%). * indicates that this model was retrained on the fully aligned training dataset. - indicates that the model
+does not support this dataset.
+SkySense++ (V)SkySense-O (T)
+SkySense-VITA (V)
+Ground Truth
+SkySense-VITA (T)SkySense-VITA (V+T)
+Water
+Target Image
+Figure 6. Qualitative out-of-distribution results on GLH-Water.
+Our model consistently produces more precise and complete
+masks for both unseen domains.
+mentation models like SkySense-O [60] are trained on re-
+mote sensing data, they rely solely on text prompts and neg-
+ative sampling, without visual references, leading to weak
+per-class in-context performance.
+For a fair comparison, we retrain SkySense++ on Sky-
+VT-300k with aligned settings. The results demonstrate that
+SkySense-VITA constantly outperforms SkySense++ in
+visual-only, textual-only, and fused-prompt modes, achiev-
+ing an average improvement of over 18%.
+In terms of SAR support, competing methods strug-
+gle with dual-polarization(VV/VH) inputs from ETCI-
+Flood [30]. SkySense-VITA, benefiting from its natively
+supports SAR imagery, establishes a strong new bench-
+mark, achieving 29.58 % mIoU in fused-prompt mode. Due
+to low-quality visual prompts for small-sized categories
+in 1-shot settings [42], fusion occasionally underperforms
+textual-only mode, which can be mitigated by increasing
+visual prompt number (see Supplementary Materials).
+4.3. Performance on Out-of-distribution Tasks
+We evaluate out-of-distribution generalization from two
+critical perspectives. First, we assess domain generalization
+on [5, 7, 11, 19], where test datasets do not overlap with
+the training data, but their categories are seen during train-
+ing. For example, the Vaihingen [11] shares classes with the
+Potsdam [10] but differs significantly in domain (e.g., sen-
+sor characteristics, geographic location). This setup strin-
+gently evaluates a model’s ability to generalize to new do-
+mains for known categories. Second, we assess class gen-
+eralization on [34, 58, 59]. In these tasks, both the domain
+and the majority of classes are novel (e.g.,flooded roadis
+not present in the training set). This evaluation measures
+the model’s generalization capability across categories.
+Table 2 presents the results for both domain and class
+generalization. In the domain generalization evaluation,
+generalist models trained on natural images continue to ex-
+hibit limited performance. The in-context segmentation
+methods, benefiting from the inclusion of domain-specific
+visual information , achieve better results. For instance,
+SkySense++ leads the best-performing open vocabulary
+model, SkySense-O, by 49.88% on GLH-Water dataset,
+highlighting the advantage of in-context visual prompts
+for domain adaptation. Our SkySense-VITA demonstrates
+competitive performance under the visual-prompt setting,
+and under textual and fused prompts consistently outper-
+forms all other methods, demonstrating superior domain
+generalization ability. In the class generalization tasks,
+SkySense-VITA demonstrates an outstanding capability for
+discovering new classes, which we attribute to its synergis-
+tic support for both visual and textual prompts. This is par-
+ticularly evident on the FloodNet dataset, where the fused
+prompt mode achieves an mIoU of 62.19 %, surpassing the
+best single-modality prompt, textual-only, by over 4%.
+We provide a qualitative comparison by visualizing the
+outputs of various models on the GLH-Water datasets in
+Fig. 6. The visual results confirm our quantitative findings:
+our model produces significantly cleaner and more accu-
+rate segmentation masks for both unseen domains and novel
+classes, whereas competing methods often suffer from seg-
+mentation artifacts or missed detections.
+20558
+
+
+=== PAGE 7 ===
+4.4. Discussions & Ablation Studies
+Effectiveness of VITA-Former .We validate the VITA-
+Former’s effectiveness in Tab. 3. The baseline (w/oVITA-
+Former) feeds prompt tokens to the decoder and uses a
+“naive” fusion (channel-concat&conv) for the fused mode.
+Our full model with VITA-Former is superior across all
+modes (visual, textual, and fused). Crucially, the base-
+line’s naive fusion often performs worse than its best single-
+modality input. Our VITA-Former avoids this by selectively
+integrating features to resolve conflicts. To more intuitively
+illustrate this, we provide a visualization of the response
+maps in Fig. 7, showing how the prompt tokens from the
+VITA-Former attend to the image features. We show ex-
+amples forbridgeon iSAID andtreeon FloodNet. The
+results show that after passing through the VITA-Former,
+the prompt tokens for the textual and fused branches take
+more attention to the target region, demonstrates the VITA-
+Former’s effectiveness in fusing and refining prompt infor-
+mation.
+Dataset Method V-only T-only V+T
+Potsdam w/o VITA-Former 68.72 80.27 79.49
+w/ VITA-Former71.34 81.53 81.94
+ETCI-Flood w/o VITA-Former27.6314.15 20.26
+w/ VITA-Former 27.4029.27 29.58
+FloodNet w/o VITA-Former 49.48 55.19 47.96
+w/ VITA-Former53.19 57.52 62.19
+Table 3. Ablation study on the VITA-Former: Visual-only (V),
+Textual-only (T), and Fused (V+T). All metrics are mIoU (%).
+Before
+After
+VisualTextualV+T
+VisualTextualV+T
+(a) (b)
+Figure 7. Response maps showing how prompt tokens attend to
+image features. After the VITA-Former, the textual (T) and fused
+(V+T) prompt tokens attend more strongly to their target regions:
+(a)bridge(iSAID) and (b)tree(FloodNet).
+Impact of Decoupled DecodingOur prompt-guided de-
+coupled decoding is the key to co-optimizing the visual-
+only, textual-only, and fused output modes within a sin-
+gle model. This design allows for the joint optimization
+of all prompt combinations while maintaining robust per-
+formance even when only a single modality is available at
+inference. To validate this, we conduct an ablation study
+comparing our full model with a baseline trained only on
+fused visual and textual prompts, which bypasses our de-
+coupled design. The results in Tab. 4 show that the base-
+line model suffers a severe performance collapse when pre-
+sented with only visual or textual prompts at inference time,
+with its mIoU dropping by over 24%. In contrast, our
+Method V-only T-only Fused
+w/o Decoupled 33.12 34.57 59.31
+w/ Decoupled 53.19 57.52 62.19
+Table 4. Ablation study on the Prompt-Guided Decoupled Decod-
+ing strategy on the FloodNet dataset. The baseline is trained only
+on fused prompts. All metrics are mIoU (%).
+model with decoupled decoding achieves strong results in
+both uni-modal settings, notably retaining 57.52% mIoU
+on FloodNet with only the textual prompt. Furthermore,
+our approach also yields a performance gain in the fused-
+prompt mode. This clearly demonstrates the outstanding
+flexibility and effectiveness of our decoupled decoding de-
+sign, which successfully optimizes for all three modes si-
+multaneously.
+Method ETCI-Flood FloodNet
+w/o Prototypes 25.81 59.12
+w/ Prototypes (Add) 14.39 50.45
+w/ Prototypes (Cross-Attn) 29.58 62.19
+Table 5. Ablation study on modality prototypes (mIoU (%)).
+Ablation Study on the Modality Prototypes.We verify
+the effect of introducing modality prototypes (P M ) in the
+VITA-Former. Tab. 5 shows the results. Adding the proto-
+types brings a 3.77% mIoU improvement to the SAR dataset
+(ETCI-Flood) and 3.07% to the optical dataset (Flood-
+Net), demonstrating the effectiveness of explicitly injecting
+modality-specific information. We also compare our cross-
+attention fusion method with a simple “add” operation. The
+results show that directly adding the prototypes degrades
+performance. This suggests that the prototypes are not just
+learning a simple offset but are encoding rich, modality-
+specific information that must be fused intelligently via at-
+tention, rather than naively combined.
+Effectiveness of Image-level Alignment Pretraining.We
+assess the Image-level Alignment Pretraining for the SAR
+encoder by comparing an aligned model with an unaligned
+baseline that directly inherits the SAR encoder from Sky-
+Sense (no Stage 1). All other settings are matched. Table 6
+reports mIoU on ETCI-Flood and C2S-SAR. Aligned im-
+plementation yields consistent gains: +2.76 mIoU on ETCI-
+Flood and +3.14 mIoU on C2S-SAR, indicating that image-
+level alignment narrows the optical–SAR gap.
+Method ETCI-Flood C2S-SAR
+Unaligned 26.82 13.68
+Aligned 29.58 16.82
+Table 6. Effectiveness of Image-Level Pretraining for the SAR
+encoder. All metrics are mIoU (%).
+Ablation Study on the SGA Strategy.We assess SGA
+on iSAID and FloodNet. Unless noted, SGA uses a cosine
+schedule with depthL= 3, temperatureτ= 0.95, and total
+stepsT= 10000as defined in Sec. 3.3. Table 7 shows that
+20559
+
+
+=== PAGE 8 ===
+SGA improves performance by +2.18 mIoU on iSAID and
++1.16 mIoU on FloodNet, supporting the effectiveness of
+coarse-to-fine hierarchical training.
+Method iSAID FloodNet
+w/o SGA 57.71 61.03
+w/ SGA 59.89 62.19
+Table 7. Ablation study on the Semantic Granularity Annealing
+(SGA) strategy. All metrics are mIoU (%).
+Impact of Point/Box/Mask.Our mask pooling extraction
+method is flexible, allowing us to accept points, boxes, or
+masks as visual prompts. We test this capability on iSAID
+and FloodNet. For “Point”, we randomly sample 5 points
+from the ground truth mask and use the same points across
+all compared methods for fairness. For “Box”, we use the
+tight axis-aligned (minimum enclosing horizontal) bound-
+ing box. Tab. 8 shows that the performance of our model
+consistently improves as the visual prompt becomes more
+precise (from Point to Box to Mask). Furthermore, fusing
+the textual prompt provides an additional boost across all
+three visual prompt types, again confirming the benefit of
+our multi-modal fusion.
+Prompt Type iSAID FloodNet
+V-only V+T V-only V+T
+Point (5) 23.97 45.83 29.16 54.40
+Box 24.81 49.23 29.34 55.41
+Mask 56.07 59.89 53.19 62.19
+Table 8. Performance with visual-only (V) and fused (V+T)
+prompts. Values represent mIoU (%)
+Comparison with SAM Series.SAM [14, 35] is designed
+for intra-image visual prompting, whereas SkySense-VITA
+is optimized for inter-image “in-context” segmentation. To
+compare, we adapt our model to an intra-image setting.
+As shown in Tab. 9, SAM outperforms SkySense-VITA in
+the visual-only mode, which is expected given SAM’s high
+optimization for this specific task. However, SkySense-
+VITA’s strengths are evident in its flexibility: unlike SAM,
+it natively supports SAR and can fuse textual prompts.
+The results show that when textual prompts are integrated,
+SkySense-VITA significantly improves over 27% mIoU in
+all setting and even surpasses the performance of SAM2
+by average 7.52 in mIoU, demonstrating the power of our
+multi-modal fusion. The qualitative results in Fig. 8 con-
+firm that even in 1-shot setting, our model achieves excel-
+lent accuracy, and can be further refined in difficult scenes
+by adding more visual points.
+Prompt Scaling PerformanceA key feature of visual
+prompting is the ability to scale performance by increasing
+number of prompts. We investigate this scaling behavior on
+FloodNet dataset. Fig. 9 shows that for both visual-only and
+fused modes, performance steadily increases as more visual
+prompt examples are added, eventually plateauing after 8
+Method Point(1) Point(5) Point(10) Point(50)
+SAM 52.33 65.42 67.89 67.95
+SAM2 46.52 68.22 71.21 66.60
+SkySense-VITA(V) 27.84 32.09 43.27 50.51
+SkySense-VITA(V+T)56.84 72.99 75.25 77.57
+Table 9. Comparison with SAM and SAM2 on intra-image
+prompting. Values represent mIoU (%).
+Point (1) Point (10)
+SAM2
+Ours
+Point(50)
+Ground Truth
+SAM1
+Point (5)
+Figure 8. Qualitative comparison with SAM/SAM2.Both point
+and textual prompts are used for SkySense-VITA.
+prompts. The fused mode is consistently superior to the
+visual-only mode. However, its growth curve is less steep,
+as the textual prompt already provides a strong semantic
+prior, and the additional visual prompts serve to refine an
+already-strong baseline.
+1 5 8 16 32
+Number of visual prompts
+50.0
+52.5
+55.0
+57.5
+60.0
+62.5
+65.0
+67.5
+70.0mIoU (%)
+Visual-only
+Textual-only
+Visual + Textual
+Figure 9. Performance scaling as the number of visual prompts
+(masks) increases, for both visual-only and fused modes.
+5. Conclusion
+We introduced SkySense-VITA, a unified in-context seg-
+mentation model to synergistically handle optical and SAR
+imagery using visual, textual, or fused prompts. Our
+model addresses key prior limitations through two main
+contributions: (1) a novel prompt-and-prediction decou-
+pling architecture (VITA-Former and VITA-Decoder) for
+robust, interference-free co-optimization, and (2) a progres-
+sive training strategy featuring SGA for robust coarse-to-
+fine learning. Supported by our new Sky-VT-300k dataset,
+SkySense-VITA establishes a new SOTA on 18 segmenta-
+tion tasks of remote sensing imagery. For future work, we
+plan to extend our model to diverse Earth observation sen-
+sors and temporal dynamics.
+20560
+
+
+=== PAGE 9 ===
+Acknowledgment
+This work was supported in part by the National Key
+Research and Development Program of China under
+Grant 2024YFB3909001, in part by the National Natural
+Science Foundation of China under Grant 42371321,
+in part by the Key Research and Development Pro-
+gram of Hubei Province under Grant 2025BAB024,
+in part by National Natural Science Foundation of
+China Young Student Basic Research Program (for
+Ph.D. Students) under Grant 425B2008, and Ant Group.
+References
+[1] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Sub-
+biah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakan-
+tan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Lan-
+guage models are few-shot learners.Advances in neural in-
+formation processing systems, 33:1877–1901, 2020. 2
+[2] Wei Chen, Lorenzo Bruzzone, Bo Dang, Yuan Gao, Youm-
+ing Deng, Jin-Gang Yu, Liangqi Yuan, and Yansheng Li.
+Rest: Holistic learning for end-to-end semantic segmentation
+of whole-scene remote sensing imagery.IEEE Transactions
+on Pattern Analysis and Machine Intelligence, 2025. 1
+[3] Bowen Cheng, Alex Schwing, and Alexander Kirillov. Per-
+pixel classification is not all you need for semantic segmen-
+tation.Advances in neural information processing systems,
+34:17864–17875, 2021. 4
+[4] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention mask
+transformer for universal image segmentation. InProceed-
+ings of the IEEE/CVF conference on computer vision and
+pattern recognition, pages 1290–1299, 2022. 4, 5
+[5] Cloud to Street, Microsoft, and Radiant Earth Foundation. A
+global flood events and cloud cover dataset (version 1.0). Ra-
+diant MLHub, 2022.https://registry.opendata.
+aws/c2smsfloods/. 6
+[6] Yezhen Cong, Samar Khanna, Chenlin Meng, Patrick Liu,
+Erik Rozi, Yutong He, Marshall Burke, David Lobell, and
+Stefano Ermon. Satmae: Pre-training transformers for tem-
+poral and multi-spectral satellite imagery.Advances in Neu-
+ral Information Processing Systems, 35:197–211, 2022. 1,
+2
+[7] Ilke Demir, Krzysztof Koperski, David Lindenbaum, Guan
+Pang, Jing Huang, Saikat Basu, Forest Hughes, Devis Tuia,
+and Ramesh Raskar. Deepglobe 2018: A challenge to parse
+the earth through satellite images. InProceedings of the
+IEEE conference on computer vision and pattern recognition
+workshops, pages 172–181, 2018. 6
+[8] Anatol Garioud, Nicolas Gonthier, Loic Landrieu, Apolline
+De Wit, Marion Valette, Marc Poup ´ee, S´ebastien Giordano,
+et al. Flair: a country-scale land cover semantic segmen-
+tation dataset from multi-source optical imagery. InAd-
+vances in Neural Information Processing Systems. Curran
+Associates, Inc., 2024. 3, 5
+[9] Xin Guo, Jiangwei Lao, Bo Dang, Yingying Zhang, Lei
+Yu, Lixiang Ru, Liheng Zhong, Ziyuan Huang, Kang Wu,
+Dingxiang Hu, et al. Skysense: A multi-modal remote sens-
+ing foundation model towards universal interpretation for
+earth observation imagery. InProceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition,
+pages 27672–27683, 2024. 1, 2, 3, 5
+[10] ISPRS. 2d semantic labeling contest - potsdam.
+https : / / www . isprs . org / resources /
+datasets / benchmarks / UrbanSemLab / 2d -
+sem-label-potsdam.aspx, 2018. 5, 6
+[11] ISPRS. 2d semantic labeling contest - vaihin-
+gen.https : / / www . isprs . org / resources /
+datasets/benchmarks/UrbanSemLab/2d- sem-
+label-vaihingen.aspx, 2018. 6
+[12] Pallavi Jain, Bianca Schoen-Phelan, and Robert Ross. Self-
+supervised learning for invariant representations from multi-
+spectral and sar images.IEEE Journal of Selected Topics in
+Applied Earth Observations and Remote Sensing, 15:7797–
+7808, 2022. 1, 2
+[13] Qing Jiang, Feng Li, Zhaoyang Zeng, Tianhe Ren, Shilong
+Liu, and Lei Zhang. T-rex2: Towards generic object detec-
+tion via text-visual prompt synergy. InEuropean Conference
+on Computer Vision, pages 38–57. Springer, 2024. 3
+[14] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. InProceedings of the IEEE/CVF international con-
+ference on computer vision, pages 4015–4026, 2023. 2, 3,
+8
+[15] Feng Li, Qing Jiang, Hao Zhang, Tianhe Ren, Shilong Liu,
+Xueyan Zou, Huaizhe Xu, Hongyang Li, Jianwei Yang,
+Chunyuan Li, et al. Visual in-context prompting. InPro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 12861–12871, 2024. 3, 5, 6
+[16] Junnan Li, Ramprasaath Selvaraju, Akhilesh Gotmare,
+Shafiq Joty, Caiming Xiong, and Steven Chu Hong Hoi.
+Align before fuse: Vision and language representation learn-
+ing with momentum distillation.Advances in neural infor-
+mation processing systems, 34:9694–9705, 2021. 4
+[17] Kaiyu Li, Ruixun Liu, Xiangyong Cao, Xueru Bai, Feng
+Zhou, Deyu Meng, and Zhi Wang. Segearth-ov: Towards
+training-free open-vocabulary segmentation for remote sens-
+ing images. InProceedings of the Computer Vision and Pat-
+tern Recognition Conference, pages 10545–10556, 2025. 2,
+3, 5, 6
+[18] Xuyang Li, Danfeng Hong, and Jocelyn Chanussot. S2mae:
+A spatial-spectral pretraining foundation model for spectral
+remote sensing data. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+24088–24097, 2024. 1, 2
+[19] Yansheng Li, Bo Dang, Wanchun Li, and Yongjun Zhang.
+Glh-water: A large-scale dataset for global surface water de-
+tection in large-size very-high-resolution satellite imagery.
+InProceedings of the AAAI Conference on Artificial Intelli-
+gence, pages 22213–22221, 2024. 6
+[20] Zhiwei Li, Huanfeng Shen, Huifang Li, Guisong Xia, Paolo
+Gamba, and Liangpei Zhang. Multi-feature combined cloud
+and cloud shadow detection in gaofen-1 wide field of view
+20561
+
+
+=== PAGE 10 ===
+imagery.Remote sensing of environment, 191:342–358,
+2017. 3, 5
+[21] Zhihao Li, Biao Hou, Siteng Ma, Zitong Wu, Xianpeng Guo,
+Bo Ren, and Licheng Jiao. Masked angle-aware autoencoder
+for remote sensing images. InEuropean Conference on Com-
+puter Vision, pages 260–278. Springer, 2024. 1, 2
+[22] Yang Liu, Chenchen Jing, Hengtao Li, Muzhi Zhu, Hao
+Chen, Xinlong Wang, and Chunhua Shen. A simple im-
+age segmentation framework via in-context examples. In
+The Thirty-eighth Annual Conference on Neural Information
+Processing Systems, 2024. 3, 5, 6
+[23] Yang Liu, Muzhi Zhu, Hengtao Li, Hao Chen, Xinlong
+Wang, and Chunhua Shen. Matcher: Segment anything with
+one shot using all-purpose feature matching. InICLR, 2024.
+3
+[24] Utkarsh Mall, Bharath Hariharan, and Kavita Bala. Change-
+aware sampling and contrastive learning for satellite images.
+InProceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 5261–5270, 2023. 1,
+2
+[25] Utkarsh Mall, Cheng Perng Phoo, Meilin Kelsey Liu,
+Carl V ondrick, Bharath Hariharan, and Kavita Bala. Re-
+mote sensing vision-language foundation models without
+annotations via ground remote alignment.arXiv preprint
+arXiv:2312.06960, 2023. 4
+[26] Oscar Manas, Alexandre Lacoste, Xavier Gir ´o-i Nieto,
+David Vazquez, and Pau Rodriguez. Seasonal contrast: Un-
+supervised pre-training from uncurated remote sensing data.
+InProceedings of the IEEE/CVF International Conference
+on Computer Vision, pages 9414–9423, 2021. 1, 2
+[27] Mat ´ıas Mendieta, Boran Han, Xingjian Shi, Yi Zhu, and
+Chen Chen. Towards geospatial foundation models via con-
+tinual pretraining. InProceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision, pages 16806–16816,
+2023. 2
+[28] Lingchen Meng, Shiyi Lan, Hengduo Li, Jose M Alvarez,
+Zuxuan Wu, and Yu-Gang Jiang. Segic: Unleashing the
+emergent correspondence for in-context segmentation. In
+European Conference on Computer Vision, pages 203–220.
+Springer, 2024. 3, 5, 6
+[29] Dilxat Muhtar, Xueliang Zhang, Pengfeng Xiao, Zhenshi Li,
+and Feng Gu. Cmid: A unified self-supervised learning
+framework for remote sensing image understanding.IEEE
+Transactions on Geoscience and Remote Sensing, 61:1–17,
+2023. 2
+[30] NASA-IMPACT. Etci-2021-flood-detection.https :
+//huggingface.co/datasets/blanchon/ETCI-
+2021-Flood-Detection, 2021. 3, 5, 6
+[31] Mubashir Noman, Muzammal Naseer, Hisham Cholakkal,
+Rao Muhammad Anwer, Salman Khan, and Fahad Shah-
+baz Khan. Rethinking transformers pre-training for multi-
+spectral satellite imagery. InProceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition,
+pages 27811–27819, 2024. 1, 2
+[32] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+Transactions on Machine Learning Research Journal, pages
+1–31, 2024. 3
+[33] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. InInternational conference on machine learning, pages
+8748–8763. PmLR, 2021. 3, 5
+[34] Maryam Rahnemoonfar, Tashnim Chowdhury, Argho
+Sarkar, Debvrat Varshney, Masoud Yari, and Robin Rober-
+son Murphy. Floodnet: A high resolution aerial imagery
+dataset for post flood scene understanding.IEEE Access,
+9:89644–89654, 2021. 6
+[35] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang
+Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman
+R¨adle, Chloe Rolland, Laura Gustafson, et al. Sam 2: Seg-
+ment anything in images and videos. InThe Thirteenth In-
+ternational Conference on Learning Representations, 2024.
+2, 8
+[36] Tianhe Ren, Yihao Chen, Qing Jiang, Zhaoyang Zeng, Yuda
+Xiong, Wenlong Liu, Zhengyu Ma, Junyi Shen, Yuan Gao,
+Xiaoke Jiang, et al. Dino-x: A unified vision model for open-
+world object detection and understanding.arXiv preprint
+arXiv:2411.14347, 2024. 3
+[37] Zhiyuan Ren, Yiyang Su, and Xiaoming Liu. Chatgpt-
+powered hierarchical comparisons for image classification.
+Advances in neural information processing systems, 36:
+69706–69718, 2023. 4
+[38] Dianmo Sheng, Dongdong Chen, Zhentao Tan, Qiankun Liu,
+Qi Chu, Tao Gong, Bin Liu, Jing Han, Wenbin Tu, Sheng-
+wei Xu, and Nenghai Yu. Unicl-sam: Uncertainty-driven
+in-context segmentation with part prototype discovery. In
+Proceedings of the Computer Vision and Pattern Recognition
+Conference (CVPR), pages 20201–20211, 2025. 3
+[39] Xian Sun, Peijin Wang, Wanxuan Lu, Zicong Zhu, Xiao-
+nan Lu, Qibin He, Junxi Li, Xuee Rong, Zhujun Yang, Hao
+Chang, et al. Ringmo: A remote sensing foundation model
+with masked image modeling.IEEE Transactions on Geo-
+science and Remote Sensing, 61:1–22, 2022. 1, 2
+[40] Yanpeng Sun, Jiahui Chen, Shan Zhang, Xinyu Zhang,
+Qiang Chen, Gang Zhang, Errui Ding, Jingdong Wang, and
+Zechao Li. Vrp-sam: Sam with visual reference prompt. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 23565–23574, 2024. 3
+[41] Yao Sun, Yi Wang, and Michael Eineder. Quickquakebuild-
+ings: Post-earthquake sar-optical dataset for quick damaged-
+building detection.IEEE Geoscience and Remote Sensing
+Letters, 21:1–5, 2024. 3, 5
+[42] Wei Suo, Lanqing Lai, Mengyang Sun, Hanwang Zhang,
+Peng Wang, and Yanning Zhang. Visual prompt selec-
+tion for in-context learning segmentation.arXiv preprint
+arXiv:2407.10233, 2024. 6
+[43] Benjamin Swan, Joe Pyle, Darrell Roddy, H Lexie Yang,
+Amy Rose, and Melanie Laverdiere. Orbital-net: A labeled
+training library for large-scale building feature extraction.
+Scientific Data, 12(1):1650, 2025. 2
+20562
+
+
+=== PAGE 11 ===
+[44] Xin-Yi Tong, Gui-Song Xia, and Xiao Xiang Zhu. Enabling
+country-scale land cover mapping with meter-resolution
+satellite imagery.ISPRS Journal of Photogrammetry and Re-
+mote Sensing, 196:178–196, 2023. 3, 5
+[45] Joshua Veitch-Michaelis, Andrew Cottam, Daniella
+Schweizer, Eben Broadbent, David Dao, Ce Zhang, Angel-
+ica Almeyda Zambrano, and Simeon Max. OAM-TCD: A
+globally diverse dataset of high-resolution tree cover maps.
+InThe Thirty-eight Conference on Neural Information
+Processing Systems Datasets and Benchmarks Track, 2024.
+5
+[46] Junjue Wang, Zhuo Zheng, Ailong Ma, Xiaoyan Lu, and
+Yanfei Zhong. Loveda: A remote sensing land-cover dataset
+for domain adaptive semantic segmentation, 2021. Preprint
+at Arxivhttps://arxiv.org/abs/2110.08733. 3,
+5
+[47] Junjue Wang, Weihao Xuan, Heli Qi, Zhihao Liu, Kunyi Liu,
+Yuhan Wu, Hongruixuan Chen, Jian Song, Junshi Xia, Zhuo
+Zheng, and Naoto Yokoya. Disasterm3: A remote sensing
+vision-language dataset for disaster damage assessment and
+response. InProceedings of the Neural Information Process-
+ing Systems, 2025. 1
+[48] Xinlong Wang, Wen Wang, Yue Cao, Chunhua Shen, and
+Tiejun Huang. Images speak in images: A generalist
+painter for in-context visual learning. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 6830–6839, 2023. 2, 5, 6
+[49] Xinlong Wang, Xiaosong Zhang, Yue Cao, Wen Wang,
+Chunhua Shen, and Tiejun Huang. Seggpt: Towards seg-
+menting everything in context. InProceedings of the
+IEEE/CVF International Conference on Computer Vision,
+pages 1130–1140, 2023. 2, 5, 6
+[50] Xinye Wanyan, Sachith Seneviratne, Shuchang Shen, and
+Michael Kirley. Dino-mc: Self-supervised contrastive learn-
+ing for remote sensing imagery with multi-sized local crops.
+arXiv e-prints, pages arXiv–2303, 2023. 1, 2
+[51] Syed Waqas Zamir, Aditya Arora, Akshita Gupta, Salman
+Khan, Guolei Sun, Fahad Shahbaz Khan, Fan Zhu, Ling
+Shao, Gui-Song Xia, and Xiang Bai. isaid: A large-scale
+dataset for instance segmentation in aerial images. InPro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition Workshops, pages 28–37. IEEE,
+2019. 3, 5
+[52] Kang Wu, Yingying Zhang, Lixiang Ru, Bo Dang, Jiangwei
+Lao, Lei Yu, Junwei Luo, Zifan Zhu, Yue Sun, Jiahao Zhang,
+Qi Zhu, Jian Wang, Ming Yang, Jingdong Chen, Yongjun
+Zhang, and Yansheng Li. A semantic-enhanced multi-modal
+remote sensing foundation model for earth observation.Na-
+ture Machine Intelligence, 7:1235–1249, 2025. 1, 2, 3, 5,
+6
+[53] Aoran Xiao, Weihao Xuan, Junjue Wang, Jiaxing Huang,
+Dacheng Tao, Shijian Lu, and Naoto Yokoya. Foundation
+models for remote sensing and earth observation: A survey.
+IEEE Geoscience and Remote Sensing Magazine, 2025. 1
+[54] Zhiyuan Yan, Peijin Wang, Feng Xu, Xian Sun, and Wenhui
+Diao. Air-pv: A benchmark dataset for photovoltaic panel
+extraction in optical remote sensing imagery.Science China.
+Information Sciences, 66(4):140307, 2023. 3, 5
+[55] An Yang, Anfeng Li, Baosong Yang, Beichen Zhang,
+Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen
+Huang, Chenxu Lv, et al. Qwen3 technical report.arXiv
+preprint arXiv:2505.09388, 2025. 4
+[56] Liang Yao, Fan Liu, Delong Chen, Chuanyi Zhang, Yijun
+Wang, Ziyun Chen, Wei Xu, Shimin Di, and Yuhui Zheng.
+Remotesam: Towards segment anything for earth observa-
+tion.arXiv preprint arXiv:2505.18022, 2025. 2
+[57] Renrui Zhang, Zhengkai Jiang, Ziyu Guo, Shilin Yan, Junt-
+ing Pan, Hao Dong, Yu Qiao, Peng Gao, and Hongsheng Li.
+Personalize segment anything model with one shot. InICLR,
+2024. 3, 5, 6
+[58] Xiaokang Zhang, Weikang Yu, Man-On Pun, and Wenzhong
+Shi. Cross-domain landslide mapping from large-scale re-
+mote sensing images using prototype-guided domain-aware
+progressive representation learning.ISPRS Journal of Pho-
+togrammetry and Remote Sensing, 197:1–17, 2023. 6
+[59] Qiqi Zhu, Yanan Zhang, Ziqi Li, Xiaorui Yan, Qingfeng
+Guan, Yanfei Zhong, Liangpei Zhang, and Deren Li. Oil
+spill contextual and boundary-supervised detection network
+based on marine sar images.IEEE Transactions on Geo-
+science and Remote Sensing, 60:1–10, 2021. 6
+[60] Qi Zhu, Jiangwei Lao, Deyi Ji, Junwei Luo, Kang Wu,
+Yingying Zhang, Lixiang Ru, Jian Wang, Jingdong Chen,
+Ming Yang, et al. Skysense-o: Towards open-world remote
+sensing interpretation with vision-centric visual-language
+modeling. InProceedings of the Computer Vision and Pat-
+tern Recognition Conference, pages 14733–14744, 2025. 2,
+3, 4, 5, 6
+20563

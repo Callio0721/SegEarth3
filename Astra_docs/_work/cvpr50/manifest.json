@@ -1,0 +1,452 @@
+[
+  {
+    "year": 2025,
+    "title": "Dual Semantic Guidance for Open Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Wang_Dual_Semantic_Guidance_for_Open_Vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C01",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Wang_Dual_Semantic_Guidance_for_Open_Vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C01.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Understanding Fine-tuning CLIP for Open-vocabulary Semantic Segmentation in Hyperbolic Space",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Peng_Understanding_Fine-tuning_CLIP_for_Open-vocabulary_Semantic_Segmentation_in_Hyperbolic_Space_CVPR_2025_paper.html",
+    "id": "C02",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Peng_Understanding_Fine-tuning_CLIP_for_Open-vocabulary_Semantic_Segmentation_in_Hyperbolic_Space_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C02.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "LPOSS: Label Propagation Over Patches and Pixels for Open-vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Stojnic_LPOSS_Label_Propagation_Over_Patches_and_Pixels_for_Open-vocabulary_Semantic_CVPR_2025_paper.html",
+    "id": "C03",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Stojnic_LPOSS_Label_Propagation_Over_Patches_and_Pixels_for_Open-vocabulary_Semantic_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C03.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Exploring Simple Open-Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Lai_Exploring_Simple_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C04",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Lai_Exploring_Simple_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C04.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Mask-Adapter: The Devil is in the Masks for Open-Vocabulary Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Li_Mask-Adapter_The_Devil_is_in_the_Masks_for_Open-Vocabulary_Segmentation_CVPR_2025_paper.html",
+    "id": "C05",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Li_Mask-Adapter_The_Devil_is_in_the_Masks_for_Open-Vocabulary_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C05.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Fine-Grained Image-Text Correspondence with Cost Aggregation for Open-Vocabulary Part Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Choi_Fine-Grained_Image-Text_Correspondence_with_Cost_Aggregation_for_Open-Vocabulary_Part_Segmentation_CVPR_2025_paper.html",
+    "id": "C06",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Choi_Fine-Grained_Image-Text_Correspondence_with_Cost_Aggregation_for_Open-Vocabulary_Part_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C06.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Parameter-efficient Fine-tuning in Hyperspherical Space for Open-vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Peng_Parameter-efficient_Fine-tuning_in_Hyperspherical_Space_for_Open-vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C07",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Peng_Parameter-efficient_Fine-tuning_in_Hyperspherical_Space_for_Open-vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C07.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "DPSeg: Dual-Prompt Cost Volume Learning for Open-Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Zhao_DPSeg_Dual-Prompt_Cost_Volume_Learning_for_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C08",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Zhao_DPSeg_Dual-Prompt_Cost_Volume_Learning_for_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C08.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Effective SAM Combination for Open-Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Lee_Effective_SAM_Combination_for_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C09",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Lee_Effective_SAM_Combination_for_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C09.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "SegEarth-OV: Towards Training-Free Open-Vocabulary Segmentation for Remote Sensing Images",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Li_SegEarth-OV_Towards_Training-Free_Open-Vocabulary_Segmentation_for_Remote_Sensing_Images_CVPR_2025_paper.html",
+    "id": "C10",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Li_SegEarth-OV_Towards_Training-Free_Open-Vocabulary_Segmentation_for_Remote_Sensing_Images_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C10.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Distilling Spectral Graph for Object-Context Aware Open-Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Kim_Distilling_Spectral_Graph_for_Object-Context_Aware_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C11",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Kim_Distilling_Spectral_Graph_for_Object-Context_Aware_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C11.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Semantic Library Adaptation: LoRA Retrieval and Fusion for Open-Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Qorbani_Semantic_Library_Adaptation_LoRA_Retrieval_and_Fusion_for_Open-Vocabulary_Semantic_CVPR_2025_paper.html",
+    "id": "C12",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Qorbani_Semantic_Library_Adaptation_LoRA_Retrieval_and_Fusion_for_Open-Vocabulary_Semantic_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C12.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "DeCLIP: Decoupled Learning for Open-Vocabulary Dense Perception",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Wang_DeCLIP_Decoupled_Learning_for_Open-Vocabulary_Dense_Perception_CVPR_2025_paper.html",
+    "id": "C13",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Wang_DeCLIP_Decoupled_Learning_for_Open-Vocabulary_Dense_Perception_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C13.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Hybrid Global-Local Representation with Augmented Spatial Guidance for Zero-Shot Referring Image Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Liu_Hybrid_Global-Local_Representation_with_Augmented_Spatial_Guidance_for_Zero-Shot_Referring_CVPR_2025_paper.html",
+    "id": "C14",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Liu_Hybrid_Global-Local_Representation_with_Augmented_Spatial_Guidance_for_Zero-Shot_Referring_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C14.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "SAM-REF: Introducing Image-Prompt Synergy during Interaction for Detail Enhancement in the Segment Anything Model",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Yu_SAM-REF_Introducing_Image-Prompt_Synergy_during_Interaction_for_Detail_Enhancement_in_CVPR_2025_paper.html",
+    "id": "C15",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Yu_SAM-REF_Introducing_Image-Prompt_Synergy_during_Interaction_for_Detail_Enhancement_in_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C15.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "SkySense-O: Towards Open-World Remote Sensing Interpretation with Vision-Centric Visual-Language Modeling",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Zhu_SkySense-O_Towards_Open-World_Remote_Sensing_Interpretation_with_Vision-Centric_Visual-Language_Modeling_CVPR_2025_paper.html",
+    "id": "C16",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Zhu_SkySense-O_Towards_Open-World_Remote_Sensing_Interpretation_with_Vision-Centric_Visual-Language_Modeling_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C16.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "SegMAN: Omni-scale Context Modeling with State Space Models and Local Attention for Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Fu_SegMAN_Omni-scale_Context_Modeling_with_State_Space_Models_and_Local_CVPR_2025_paper.html",
+    "id": "C17",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Fu_SegMAN_Omni-scale_Context_Modeling_with_State_Space_Models_and_Local_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C17.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Mamba as a Bridge: Where Vision Foundation Models Meet Vision Language Models for Domain-Generalized Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Zhang_Mamba_as_a_Bridge_Where_Vision_Foundation_Models_Meet_Vision_CVPR_2025_paper.html",
+    "id": "C18",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Zhang_Mamba_as_a_Bridge_Where_Vision_Foundation_Models_Meet_Vision_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C18.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "SemiDAViL: Semi-supervised Domain Adaptation with Vision-Language Guidance for Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Basak_SemiDAViL_Semi-supervised_Domain_Adaptation_with_Vision-Language_Guidance_for_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C19",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Basak_SemiDAViL_Semi-supervised_Domain_Adaptation_with_Vision-Language_Guidance_for_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C19.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Exploring CLIP's Dense Knowledge for Weakly Supervised Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Yang_Exploring_CLIPs_Dense_Knowledge_for_Weakly_Supervised_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C20",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Yang_Exploring_CLIPs_Dense_Knowledge_for_Weakly_Supervised_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C20.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "POT: Prototypical Optimal Transport for Weakly Supervised Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Wang_POT_Prototypical_Optimal_Transport_for_Weakly_Supervised_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C21",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Wang_POT_Prototypical_Optimal_Transport_for_Weakly_Supervised_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C21.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Convex Combination Star Shape Prior for Data-driven Image Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Zhao_Convex_Combination_Star_Shape_Prior_for_Data-driven_Image_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C22",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Zhao_Convex_Combination_Star_Shape_Prior_for_Data-driven_Image_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C22.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Weakly Supervised Semantic Segmentation via Progressive Confidence Region Expansion",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Xu_Weakly_Supervised_Semantic_Segmentation_via_Progressive_Confidence_Region_Expansion_CVPR_2025_paper.html",
+    "id": "C23",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Xu_Weakly_Supervised_Semantic_Segmentation_via_Progressive_Confidence_Region_Expansion_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C23.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "DFormerv2: Geometry Self-Attention for RGBD Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Yin_DFormerv2_Geometry_Self-Attention_for_RGBD_Semantic_Segmentation_CVPR_2025_paper.html",
+    "id": "C24",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Yin_DFormerv2_Geometry_Self-Attention_for_RGBD_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C24.pdf",
+    "verified": true
+  },
+  {
+    "year": 2025,
+    "title": "Scaling up Image Segmentation across Data and Tasks",
+    "url": "https://openaccess.thecvf.com/content/CVPR2025/html/Wang_Scaling_up_Image_Segmentation_across_Data_and_Tasks_CVPR_2025_paper.html",
+    "id": "C25",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2025/papers/Wang_Scaling_up_Image_Segmentation_across_Data_and_Tasks_CVPR_2025_paper.pdf",
+    "pdf": "_work/cvpr50/C25.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "SynCLIP: Synonym-Coherent Language-Image Pretraining for Robust Open-Vocabulary Dense Perception",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Xie_SynCLIP_Synonym-Coherent_Language-Image_Pretraining_for_Robust_Open-Vocabulary_Dense_Perception_CVPR_2026_paper.html",
+    "id": "C26",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Xie_SynCLIP_Synonym-Coherent_Language-Image_Pretraining_for_Robust_Open-Vocabulary_Dense_Perception_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C26.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "ReAttnCLIP: Training-Free Open-Vocabulary Remote Sensing Image Segmentation via Re-defined Attention in CLIP",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Niu_ReAttnCLIP_Training-Free_Open-Vocabulary_Remote_Sensing_Image_Segmentation_via_Re-defined_Attention_CVPR_2026_paper.html",
+    "id": "C27",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Niu_ReAttnCLIP_Training-Free_Open-Vocabulary_Remote_Sensing_Image_Segmentation_via_Re-defined_Attention_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C27.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Retrieve and Segment: Are a Few Examples Enough to Bridge the Supervision Gap in Open-Vocabulary Segmentation?",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Aravanis_Retrieve_and_Segment_Are_a_Few_Examples_Enough_to_Bridge_CVPR_2026_paper.html",
+    "id": "C28",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Aravanis_Retrieve_and_Segment_Are_a_Few_Examples_Enough_to_Bridge_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C28.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Direct Segmentation without Logits Optimization for Training-Free Open-Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Li_Direct_Segmentation_without_Logits_Optimization_for_Training-Free_Open-Vocabulary_Semantic_Segmentation_CVPR_2026_paper.html",
+    "id": "C29",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Li_Direct_Segmentation_without_Logits_Optimization_for_Training-Free_Open-Vocabulary_Semantic_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C29.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Mitigating Objectness Bias and Region-to-Text Misalignment for Open-Vocabulary Panoptic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Kormushev_Mitigating_Objectness_Bias_and_Region-to-Text_Misalignment_for_Open-Vocabulary_Panoptic_Segmentation_CVPR_2026_paper.html",
+    "id": "C30",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Kormushev_Mitigating_Objectness_Bias_and_Region-to-Text_Misalignment_for_Open-Vocabulary_Panoptic_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C30.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "HOPS: Hierarchical Open-vocabulary Part Segmentation with Attention-Aware Filtering and Affinity-Guided Enhancement",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Li_HOPS_Hierarchical_Open-vocabulary_Part_Segmentation_with_Attention-Aware_Filtering_and_Affinity-Guided_CVPR_2026_paper.html",
+    "id": "C31",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Li_HOPS_Hierarchical_Open-vocabulary_Part_Segmentation_with_Attention-Aware_Filtering_and_Affinity-Guided_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C31.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Reconstructing CLIP for Open-Vocabulary Dense Perception",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Liu_Reconstructing_CLIP_for_Open-Vocabulary_Dense_Perception_CVPR_2026_paper.html",
+    "id": "C32",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Liu_Reconstructing_CLIP_for_Open-Vocabulary_Dense_Perception_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C32.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "MM-OVSeg: Multimodal Optical-SAR Fusion for Open-Vocabulary Segmentation in Remote Sensing",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Wei_MM-OVSeg_Multimodal_Optical-SAR_Fusion_for_Open-Vocabulary_Segmentation_in_Remote_Sensing_CVPR_2026_paper.html",
+    "id": "C33",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Wei_MM-OVSeg_Multimodal_Optical-SAR_Fusion_for_Open-Vocabulary_Segmentation_in_Remote_Sensing_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C33.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "SegEarth-R2: Towards Comprehensive Language-guided Segmentation for Remote Sensing Images",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Xin_SegEarth-R2_Towards_Comprehensive_Language-guided_Segmentation_for_Remote_Sensing_Images_CVPR_2026_paper.html",
+    "id": "C34",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Xin_SegEarth-R2_Towards_Comprehensive_Language-guided_Segmentation_for_Remote_Sensing_Images_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C34.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "PCA-Seg: Revisiting Cost Aggregation for Open-Vocabulary Semantic and Part Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Yin_PCA-Seg_Revisiting_Cost_Aggregation_for_Open-Vocabulary_Semantic_and_Part_Segmentation_CVPR_2026_paper.html",
+    "id": "C35",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Yin_PCA-Seg_Revisiting_Cost_Aggregation_for_Open-Vocabulary_Semantic_and_Part_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C35.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Beyond Text: Visual Description Assembly by Probabilistic Model for CLIP-based Weakly Supervised Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Qiu_Beyond_Text_Visual_Description_Assembly_by_Probabilistic_Model_for_CLIP-based_CVPR_2026_paper.html",
+    "id": "C36",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Qiu_Beyond_Text_Visual_Description_Assembly_by_Probabilistic_Model_for_CLIP-based_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C36.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Training-Free Open-Vocabulary Camouflaged Object Segmentation via Fine-Grained Object Binding and Adaptive Hybrid Prompt",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Ren_Training-Free_Open-Vocabulary_Camouflaged_Object_Segmentation_via_Fine-Grained_Object_Binding_and_CVPR_2026_paper.html",
+    "id": "C37",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Ren_Training-Free_Open-Vocabulary_Camouflaged_Object_Segmentation_via_Fine-Grained_Object_Binding_and_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C37.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "SkySense-VITA: Towards Universal In-context Segmentation of Multi-modal Remote Sensing Imagery",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Wu_SkySense-VITA_Towards_Universal_In-context_Segmentation_of_Multi-modal_Remote_Sensing_Imagery_CVPR_2026_paper.html",
+    "id": "C38",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Wu_SkySense-VITA_Towards_Universal_In-context_Segmentation_of_Multi-modal_Remote_Sensing_Imagery_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C38.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "HySeg: Learning Generative Priors for Structure-Aware Remote Sensing Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Qiu_HySeg_Learning_Generative_Priors_for_Structure-Aware_Remote_Sensing_Segmentation_CVPR_2026_paper.html",
+    "id": "C39",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Qiu_HySeg_Learning_Generative_Priors_for_Structure-Aware_Remote_Sensing_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C39.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Open-Vocabulary Domain Generalization in Urban-Scene Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Zhao_Open-Vocabulary_Domain_Generalization_in_Urban-Scene_Segmentation_CVPR_2026_paper.html",
+    "id": "C40",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Zhao_Open-Vocabulary_Domain_Generalization_in_Urban-Scene_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C40.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "The Power of Prior: Training-Free Open-Vocabulary Semantic Segmentation with LLaVA",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Zhang_The_Power_of_Prior_Training-Free_Open-Vocabulary_Semantic_Segmentation_with_LLaVA_CVPR_2026_paper.html",
+    "id": "C41",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Zhang_The_Power_of_Prior_Training-Free_Open-Vocabulary_Semantic_Segmentation_with_LLaVA_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C41.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "SPAR: Single-Pass Any-Resolution ViT for Open-vocabulary Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Kombol_SPAR_Single-Pass_Any-Resolution_ViT_for_Open-vocabulary_Segmentation_CVPR_2026_paper.html",
+    "id": "C42",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Kombol_SPAR_Single-Pass_Any-Resolution_ViT_for_Open-vocabulary_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C42.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Looking Beyond the Window: Global-Local Aligned CLIP for Training-free Open-Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Lee_Looking_Beyond_the_Window_Global-Local_Aligned_CLIP_for_Training-free_Open-Vocabulary_CVPR_2026_paper.html",
+    "id": "C43",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Lee_Looking_Beyond_the_Window_Global-Local_Aligned_CLIP_for_Training-free_Open-Vocabulary_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C43.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Test-Time Multi-Prompt Adaptation for Open-Vocabulary Remote Sensing Image Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Yang_Test-Time_Multi-Prompt_Adaptation_for_Open-Vocabulary_Remote_Sensing_Image_Segmentation_CVPR_2026_paper.html",
+    "id": "C44",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Yang_Test-Time_Multi-Prompt_Adaptation_for_Open-Vocabulary_Remote_Sensing_Image_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C44.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "S2C2Seg: Semantic-Spatial Consistency and Category Optimization for Open-Vocabulary Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Qing_S2C2Seg_Semantic-Spatial_Consistency_and_Category_Optimization_for_Open-Vocabulary_Segmentation_CVPR_2026_paper.html",
+    "id": "C45",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Qing_S2C2Seg_Semantic-Spatial_Consistency_and_Category_Optimization_for_Open-Vocabulary_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C45.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "PEARL: Geometry Aligns Semantics for Training-Free Open-Vocabulary Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Pei_PEARL_Geometry_Aligns_Semantics_for_Training-Free_Open-Vocabulary_Semantic_Segmentation_CVPR_2026_paper.html",
+    "id": "C46",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Pei_PEARL_Geometry_Aligns_Semantics_for_Training-Free_Open-Vocabulary_Semantic_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C46.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Discriminative Perception via Anchored Description for Reasoning Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Yang_Discriminative_Perception_via_Anchored_Description_for_Reasoning_Segmentation_CVPR_2026_paper.html",
+    "id": "C47",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Yang_Discriminative_Perception_via_Anchored_Description_for_Reasoning_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C47.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Selective, Regularized, and Calibrated: Harnessing Vision Foundation Models for Cross-Domain Few-Shot Semantic Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Ma_Selective_Regularized_and_Calibrated_Harnessing_Vision_Foundation_Models_for_Cross-Domain_CVPR_2026_paper.html",
+    "id": "C48",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Ma_Selective_Regularized_and_Calibrated_Harnessing_Vision_Foundation_Models_for_Cross-Domain_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C48.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "F2Net: A Frequency-Fused Network for Ultra-High Resolution Remote Sensing Segmentation",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Chen_F2Net_A_Frequency-Fused_Network_for_Ultra-High_Resolution_Remote_Sensing_Segmentation_CVPR_2026_paper.html",
+    "id": "C49",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Chen_F2Net_A_Frequency-Fused_Network_for_Ultra-High_Resolution_Remote_Sensing_Segmentation_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C49.pdf",
+    "verified": true
+  },
+  {
+    "year": 2026,
+    "title": "Vocabulary Scaling Law: Tuning Open-vocabulary Predictors for Their Openness",
+    "url": "https://openaccess.thecvf.com/content/CVPR2026/html/Chen_Vocabulary_Scaling_Law_Tuning_Open-vocabulary_Predictors_for_Their_Openness_CVPR_2026_paper.html",
+    "id": "C50",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2026/papers/Chen_Vocabulary_Scaling_Law_Tuning_Open-vocabulary_Predictors_for_Their_Openness_CVPR_2026_paper.pdf",
+    "pdf": "_work/cvpr50/C50.pdf",
+    "verified": true
+  }
+]

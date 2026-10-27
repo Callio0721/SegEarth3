@@ -1,0 +1,1079 @@
+=== PAGE 1 ===
+Exploring CLIP’s Dense Knowledge for Weakly Supervised Semantic
+Segmentation
+Zhiwei Yang1,2 Yucong Meng2,3
+Kexue Fu4 Feilong Tang1 Shuo Wang2,3*
+Zhijian Song1,2,3*
+1Academy for Engineering and Technology, Fudan University, Shanghai 200433, China
+2Shanghai Key Laboratory of Medical Image Computing and Computer Assisted Intervention
+3Digital Medical Research Center, School of Basic Medical Sciences, Fudan University, China
+4Shandong Computer Science Center (National Supercomputer Center in Jinan)
+Abstract
+Weakly Supervised Semantic Segmentation (WSSS) with
+image-level labels aims to achieve pixel-level predictions
+using Class Activation Maps (CAMs). Recently, Con-
+trastive Language-Image Pre-training (CLIP) has been in-
+troduced in WSSS. However, recent methods primarily fo-
+cus on image-text alignment for CAM generation, while
+CLIP’s potential in patch-text alignment remains unex-
+plored. In this work, we propose ExCEL to explore CLIP’s
+dense knowledge via a novel patch-text alignment paradigm
+for WSSS. Specifically, we propose Text Semantic Enrich-
+ment (TSE) and Visual Calibration (VC) modules to im-
+prove the dense alignment across both text and vision
+modalities. To make text embeddings semantically infor-
+mative, our TSE module applies Large Language Models
+(LLMs) to build a dataset-wide knowledge base and en-
+riches the text representations with an implicit attribute-
+hunting process. To mine fine-grained knowledge from
+visual features, our VC module first proposes Static Vi-
+sual Calibration (SVC) to propagate fine-grained knowl-
+edge in a non-parametric manner. Then Learnable Visual
+Calibration (LVC) is further proposed to dynamically shift
+the frozen features towards distributions with diverse se-
+mantics. With these enhancements, ExCEL not only re-
+tains CLIP’s training-free advantages but also significantly
+outperforms other state-of-the-art methods with much less
+training cost on PASCAL VOC and MS COCO. Code is
+available at https://github.com/zwyang6/ExCEL.
+1. Introduction
+Weakly Supervised Semantic Segmentation (WSSS) in-
+tends to generate pixel-level predictions using weak annota-
+tions like points [2], scribbles [18, 32], bounding boxes [8,
+*Corresponding authors. Email:{shuowang, zjsong}@fudan.edu.cn.
+Text and vision tokenT V
+Image-Text 
+Alignment
+Global T
+CLIP
+(a) Previous methods
+Global Va photo of [aero.]
+Patch-Text 
+Alignment
+CLIP
+Texts of [aero.]
+(b) The proposed method ExCEL
+FrozenDense texts and patches
+Figure 1. Our motivation. (a) Previous methods leverage CLIP to
+generate CAMs with global image-text alignment, leaving CLIP’s
+dense knowledge unexplored. (b) The proposed ExCEL ex-
+plores CLIP’s dense knowledge via a novel patch-text alignment
+paradigm, which generates better CAMs with less training cost.
+16], or image-level labels [1, 23, 40]. It significantly re-
+duces the annotating cost of fully supervised methods and
+has attracted increasing attention in the community. Among
+all cheap annotation types, most WSSS approaches leverage
+image-level labels to provide dense localization cues, link-
+ing visual concepts to specific pixel regions [5, 33]. In this
+work, we focus on WSSS with image-level labels as well.
+Commonly, the WSSS pipeline involves three stages:
+generating Class Activation Maps (CAMs) [46] by train-
+ing a classification network, refining CAMs into pseudo
+labels [28], and using these labels to train a segmenta-
+tion model [7]. However, due to the minimal semantic in-
+formation from image-level labels, CAMs intend to high-
+light the most distinctive object parts, significantly limit-
+ing WSSS performance. Recently, Contrastive Language-
+Image Pre-training (CLIP) [24] has been introduced in
+WSSS. CLIMs [36] applies image-text pairs to regularize
+visual relations among different semantics. CLIP-ES [20]
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+20223
+
+
+=== PAGE 2 ===
+leverages image-text alignment for gradient and produces
+high-quality GradCAM [30]. WeCLIP [43] further stream-
+lines this process by using CLIP’s visual encoder for seg-
+mentation. Despite these advancements, current methods
+primarily focus on CLIP’s global image-text alignment, as
+shown in Fig. 1 (a). CLIP’s dense knowledge with patch-
+text alignment still remains under-explored in WSSS.
+In this work, we propose ExCEL to explore CLIP’s dense
+knowledge via a patch-text alignment paradigm for WSSS,
+i.e., generating CAMs by calculating patch-wise similar-
+ity between text and individual patch tokens, as shown in
+Fig. 1 (b). We identify two key challenges: (1) Semantic
+sparsity in textual prompts, where the template ’a photo of
+[CLASS]’ only indicates object presence but lacks knowl-
+edge for localization, and (2) Fine-grained insufficiency in
+visual features, as CLIP prioritizes global representation
+due to its image-text pairing nature. To address these, Ex-
+CEL enhances CLIP’s dense alignment with Text Seman-
+tic Enrichment (TSE) and Visual Calibration (VC) modules,
+unlocking its potential across text and vision modalities.
+To generate semantically rich text representations, we
+propose TSE through an implicit attribute feature space.
+Instead of relying on explicit text templates, TSE module
+implicitly constructs text embeddings using universal at-
+tributes across the dataset. We first employ Large Language
+Models (LLMs) to generate detailed descriptions for each
+class, which are then processed by CLIP’s text encoder to
+build a dataset-wide knowledge base. Rather than directly
+fusing these class-specific descriptions for text prompting,
+we focus on clustering the descriptive embeddings into gen-
+eralized attributes. which effectively capture complemen-
+tary knowledge from other classes and supplement missing
+information for the target class. With this implicit feature
+space, we enhance the text embeddings by hunting for its
+most relevant attribute features and aggregate them into the
+final class-specific text representation. This approach en-
+ables TSE to generate more informative text embeddings,
+providing a strong foundation for visual recognition.
+To mine fine-grained knowledge from visual features,
+we propose VC to calibrate CLIP in both non-trainable and
+efficient-learnable ways. Our findings suggest that CLIP’s
+q-k attention loses fine-grained details. Therefore, we first
+propose a Static Visual Calibration (SVC) module to re-
+place the suboptimal q-k attention with a straightforward
+Intra-correlation operation. It focuses on extracting fine-
+grained details from intermediate layers, which progres-
+sively propagates fine-grained visual knowledge. With-
+out any retraining, SVC generates CAMs comparable to
+training-required WSSS methods. Building on this, we fur-
+ther propose a Learnable Visual Calibration (LVC) module
+to dynamically calibrate CLIP’s frozen features. LVC ex-
+tracts spatial correlations from SVC’s static CAMs. These
+correlations further supervise a lightweight adapter to learn
+the dynamic shift, pushing frozen features towards spatial-
+aware distributions. LVC and SVC complement each other,
+enabling precise patch-text alignment for CAM generation.
+The main contributions of our work are listed as follows:
+• We explore CLIP’s dense knowledge via a novel patch-
+text alignment paradigm for WSSS. The proposed ExCEL
+generates better pseudo labels in both training-free and ef-
+ficient learning manners, revealing the dense capabilities
+of CLIP for efficient CAM generation.
+• To enhance patch-text alignment, we propose the Text Se-
+mantic Enrichment (TSE) and Visual Calibration (VC)
+modules. TSE applies LLMs to build a dataset-wide
+knowledge base and treats text prompting as an im-
+plicit attribute-hunting process, making text embeddings
+more informative. VC propagates the fine-grained visual
+knowledge in a non-parametric manner and further dy-
+namically calibrates the frozen features with a lightweight
+adapter. TSE and VC work across two modalities, gener-
+ating better dense alignment and pseudo labels.
+• Extensive experiments on PASCAL VOC and MS COCO
+demonstrate that ExCEL significantly outperforms re-
+cent state-of-the-art methods, while reducing training cost
+with only 3.2 GB of GPU memory and 6% of the training
+time required by recent methods.
+2. Related Works
+2.1. Weakly Supervised Semantic Segmentation
+Weakly supervised semantic segmentation with image-level
+labels typically relies on CAMs to provide dense super-
+vision for segmentation [42, 44]. However, CAMs usu-
+ally highlight the most discriminative parts of objects [34].
+To address this issue, considerable efforts have been made
+from many intriguing insights. MCTformer [37] incor-
+porates multiple class tokens in Vision Transformer and
+proposes generating CAMs from class-patch attention.
+ToCo [29] proposes token contrast learning and generates
+more precise CAMs. SeCo [39] designs a separate and
+conquer scheme and succeeds in tackling co-occurrence.
+Despite these advancements, prior methods commonly re-
+quire retraining the entire classification network for CAM
+generation. In this work, our ExCEL directly generates
+CAMs from frozen CLIP, and further boosts its quality via a
+lightweight adapter, significantly reducing the training cost.
+2.2. Vision-Language Pre-training
+Contrastive Language Image Pre-training (CLIP) [24],
+known for pretraining on billion-scale image-text pairs,
+has demonstrated remarkable transferability in many down-
+stream tasks. CoOP [48] and CLIP-Adapter [12] in-
+corporate lightweight trainable parameters into CLIP and
+succeed in few-shot classification. DenseCLIP [25] and
+20224
+
+
+=== PAGE 3 ===
+Template of [Aero.] 
+What does a [CLASS] 
+should look like  ?
+1. Have striking eyes.
+2. Retractable claws.
+ Text
+Encoder
+ Text
+Encoder
+Attribute 
+Hunting
+Knowledge Base Clustering Implicit Attribute Space
+(a) TSE
+…
+Adding Shifting Term
+CAMs�����
+�
+Q
+v
+Q
+k
+q
+q
+ Image
+Encoder
+∑
+× N
+Adapter
+ Image
+Encoder
+…
+Pixel Affinity
+(c) LVC 
+�풅� 
+(b) SVC 
+��/��
+Inner Product
+∑
+1
+Frozen Trainable
+1 - N Attention Layers
+N-12 Attention Layers
+Sum
+Cascade Features
+Attribute Embeds
+… 12
+��
+��
+�1- �12
+1…2
+��
+� �/� �
+Descriptions of [CLASS]  from LLMs
+• Cat has round and striking eyes.
+• Cat’ fur is soft and varies in color.
+• Cat equipped with retractable claws.
+…• Boat has deck made of wood, metal.
+• Boat has a propeller to move.
+Intra Correlation
+12
+Distribution Shift
+��
+Dynamic Relation �
+…
+Eq. (1)
+Figure 2. ExCEL Architecture. We explore CLIP’s dense knowledge with Text Semantic Enrichment (TSE) and Visual Calibration (VC).
+(a) TSE uses LLMs to build a knowledge base and clusters it into an implicit attribute space. The final text representationTc is enhanced by
+hunting for relevant attributes. For vision modality, (b) we introduce Static Visual Calibration (SVC) to calibrate visual features using the
+Inter-correlation operation across N intermediate layers. It generates static CAMs with Tc and calibrated features Ps. (c) Learnable Visual
+Calibration (LVC) designs a learnable adapter to add a dynamic shift R to SVC. It generates optimized features Pd based on static CAMs
+guidance, creating dynamic CAMs from Pd and Tc. Dynamic CAMs are refined for segmentation supervision. Details are in Sec. 3.1.
+MaskCLIP [47] leverage the alignment between text and
+vision modalities for the dense segmentation task. Re-
+cently, some studies have introduced CLIP into WSSS.
+CLIMS [36] treats image-text pairing of CLIP as regular-
+ization and leverages it to regularize the visual concepts.
+CLIP-ES [20] finds that the image-text alignment of CLIP
+generates class gradient and leverages it for GradCAM
+generation. WeCLIP [43] further streamlines this process
+and directly leverages CLIP’s visual encoder for segmen-
+tation. However, these methods mainly focus on a global
+image-text alignment while ignoring the dense capabilities
+of CLIP. In contrast, our ExCEL explores CLIP’s dense
+knowledge via a patch-text alignment paradigm for WSSS.
+3. Methodology
+3.1. Preliminaries
+Patch-text CAM Generation. CLIP uses image and text
+encoders to project image and text into the same feature
+space, enabling robust vision-language alignment. In this
+work, we utilize this property to generate CAM in a patch-
+text alignment paradigm. Given the encoded text embed-
+dings T ∈ RD×C and visual features P ∈ Rh×w×D, where
+D is the feature channel, h and w are the spatial sizes, C is
+the number of classes, we generate CAM by calculating the
+patch-wise similarities between text and visual features:
+CAM = Norm (cos (P, T) , (1)
+where Norm(·) is the min-max normalization and cos(·)
+is the cosine similarity calculation. However, due to
+the image-level pairing nature, CLIP suffers from tex-
+tual semantic sparsity and visual fine-grained insufficiency.
+Therefore, our ExCEL incorporates TSE and VC (SVC and
+LVC) into CLIP to further explore its dense potential.
+Framework Overview. Our ExCEL generates CAMs in
+both training-free and efficient learning manners, as shown
+in Fig. 2. Its training pipeline is generalized as follows:
+(1) Enriching textual semantics via TSE. We first use
+GPT-4 to generate descriptions for each class, which are
+encoded into a dataset-wide knowledge base with CLIP’s
+text encoder. We cluster this knowledge into class-agnostic
+attributes and use the global text prompt to hunt for its most
+relevant ones. They are then aggregated into the final text
+representation. (2) Static CAM generation via SVC. We
+replace CLIP’s q-k self-attention with our Intra-correlation
+operation from intermediate layers. Then the calibrated vi-
+sual features and enhanced text embeddings are used for
+static CAMs via Eq. (1). (3) Dynamic CAM generation via
+LVC. A lightweight adapter is designed to learn dynamic to-
+ken relations from static CAMs. The relations are added to
+SVC and serve as a distribution shift to make the visual fea-
+tures more diverse. The dynamic CAMs are generated with
+the enhanced text embeddings and LVC features via Eq. (1).
+(4) Segmentation training. Dynamic CAMs are refined to
+pseudo labels for segmentation supervision.
+3.2. Text Semantic Enrichment
+Knowledge Base Construction. The global text template
+‘a clean origami of [CLASS]’ only indicates the presence
+of objects while limited providing dense knowledge for
+20225
+
+
+=== PAGE 4 ===
+patch-wise visual recognition. To enrich the text represen-
+tation, we first adapt LLMs, such as GPT-4 to generate de-
+tailed class descriptions, as shown in Fig. 2 (a). Specifi-
+cally, given the global template Ec from class label space
+Y ∈ { 1, 2, ..., C}, where c is the class index and C is the
+number of categories, we carefully construct instructions
+for GPT: ”List n descriptions with key properties to de-
+scribe the [CLASS] in terms of appearance, color, shape,
+size, or material, etc. These descriptions will help visually
+distinguish the [CLASS] from other classes in the dataset.
+Each description should follow the format: ’a clean origami
+[CLASS]. it + descriptive contexts. ’”With this instruction,
+we ask GPT to generate n detailed descriptions for each
+class, which are subsequently encoded into a dataset-wide
+knowledge base with CLIP’s text encoder. The knowledge
+base is denoted as T = {Φ (ei)}n×C
+i=1 . ei is the descrip-
+tion from GPT, Φ(·) is CLIP’s text encoder and n × C is
+the number of all descriptions. This knowledge base gath-
+ers descriptive properties for the whole dataset, building a
+strong foundation for the textual category representation.
+Implicit Attribute Hunting. Instead of explicitly merg-
+ing class-related knowledge into a single text embedding,
+we cluster this knowledge into generalized attributes and
+treat text prompting as an implicit attribute-hunting process.
+This has two main benefits: (1) n explicit descriptions may
+still be limited in covering all characteristics of the class.
+The clustered attributes efficiently capture shared contex-
+tual knowledge from other categories, supplementing miss-
+ing information for target class recognition. (2) The gener-
+ated descriptions inevitably contain redundant or noisy con-
+tent. The use of attributes makes the knowledge more com-
+pact and representative, leading to precise text prompting.
+To this end, we leverage a clustering algorithm to gener-
+ate multiple centroids based on the knowledge base. Each
+cluster centroid is viewed as the implicit attribute that rep-
+resents a group of descriptions sharing similar properties:
+A = Kmeans(T , B) = {ai}B
+i=1 , (2)
+where B is the number of centroids and kmeans algo-
+rithm [21] is used for clustering for simplicity. ai ∈ RD×1
+represents the cluster centroid, i.e., the implicit attribute.
+With the attribute feature space A, we first send the
+global template Ec into the text encoder of CLIP to gen-
+erate global text embedding tc ∈ RD×1. D is the channel
+dimension. Then tc is leveraged to search for its most rel-
+evant attributes in the implicit attribute space. To exclude
+irrelevant attributes, we further propose to select TOPK at-
+tribute neighbors based on the similarity scores with tc:
+Ac = {aj : j ∈ argmaxTOPK
+
+tT
+c aj
+	B
+j=1}. (3)
+Finally, we gently aggregate the implicit attribute neigh-
+bors according to the corresponding similarity weights to
+tc and take the aggregated features as the complementary
+knowledge for textual semantic enrichment. The final text
+representation Tc ∈ RD×1 is denoted as:
+Tc = tc + λ
+KX
+j=1
+softmax
+ 
+tT
+c Ac
+
+aj, (4)
+where λ is the factor to balance the attribute information.
+3.3. Visual Calibrations
+Static Visual Calibration. Due to the image-text pairing
+nature of CLIP, the visual features lack fine-grained in-
+formation, leading to unreasonable localization maps via
+patch-text alignment. To delve into this, let us review the
+self-attention mechanism of the original CLIP first. As
+shown in Fig. 2 (b), given the input image X ∈ R3×H×W,
+we send it to the image encoder of CLIP, which includes
+12 Attention layers in this work. H × W is the image size.
+For the feature Fl ∈ RDs×hw from l-th layer of CLIP, it
+is first projected into three different spaces{q, k, v}, named
+query, key, and value, respectively.q, k and v have the same
+shape of Ds × hw, where Ds and hw represents the chan-
+nel dimension and sequence length. Then the attention map
+between q and k is calculated by measuring the similarity:
+SA(q, k) = sofmax
+
+qT k/
+p
+Ds
+
+, (5)
+where SA(·) is the calculation of attention. Then the output
+features Fl+1 are generated by aggregating the tokens of v
+according to similarity weights in the attention map.
+However, due to the inherent image-text alignment of
+CLIP, the original q-k attention produces overly uniform at-
+tention maps, homogenizing diverse tokens from v to cap-
+ture broad semantics for global image representation (see
+discussions in Sec. 4.4). It leads to inaccurate object recog-
+nition. MaskCLIP [47] holds a similar observation, support-
+ing this claim by removing the final q-k attention layer and
+using v from the last layer as the visual output to preserve
+diversity. In our work, we choose to replace the suboptimal
+q-k attention with a straightforward Intra-correlation opera-
+tion and focus on extracting fine-grained details from inter-
+mediate layers. This non-parametric approach effectively
+mines spatial semantics in intermediate{q, k, v} and avoids
+the smoothing effect of q-k attention, resulting in more con-
+sistent attention maps and improved object localization.
+Specifically, instead of generating q-k correlation, Intra-
+correlation calculates the attention within each space of
+{q, k, v} across intermediate layers. The attention map
+Sl
+attn ∈ Rhw×hw from l-th SVC layer is generated by:
+Sl
+attn =
+X
+wi SA
+ 
+Ol
+i, Ol
+i
+
+, Ol
+i ∈
+
+ql, kl, vl	
+, (6)
+where wi is the contribution weight for different correlation
+maps. l ∈ {12−N, ..., 12} and N is the number of interme-
+diate layers for this operation. ThenSl
+attn and vl are used to
+20226
+
+
+=== PAGE 5 ===
+generate the output features. Finally, the calibrated features
+Ps ∈ RD×h×w from the last layer is used to generate static
+CAM CAM s with text embedding Tc via Eq. (1).
+Learnable Visual Calibration. Although ExCEL gen-
+erates comparable CAMs without training, its performance
+is still limited by the fixed features in CLIP. To further un-
+leash the dense potential of CLIP, we design a lightweight
+adapter to dynamically calibrate the visual features with di-
+verse details. This adapter only incorporates a distribution
+shift to calibrate the fixed features without changing CLIP’s
+pre-trained weights, thereby retaining CLIP’s transferabil-
+ity and enhancing its dense performance for WSSS.
+Specifically, as shown in Fig. 2 (c), frozen features Fl
+from 1-12th layer of CLIP are extracted to learn a dynamic
+feature Fd via the adapter. The process is expressed as:
+Fd = Conv(Concate [δl (Fl)]12
+l=1), (7)
+where Fd ∈ RDd×hw, Dd is the channel dimension.
+Conv(·) is the convolution layer,Concate[·] is the concate-
+nate operation that connects all features along channel di-
+mension, and δl(·) is the individual MLP layer for each Fl.
+Then Fd is used to generate dynamic token relations by:
+r = α(cos (Fd, Fd) − βcos (Fd, Fd)), (8)
+where r ∈ Rhw×hw, α and β are the scaling and shift-
+ing factors to adjust the relations, respectively. cos(Fd, Fd)
+means the mean value of similarity scores of Fd. It is de-
+signed to remove the irrelevant relations in low values by:
+Rij =
+(
+rij, if rij ≥ 0
+−inf, else . (9)
+With the dynamic relation R ∈ Rhw×hw, we add it as a
+distribution bias to the static attention map Sl
+attn, dynam-
+ically grouping the frozen tokens within related semantics
+and shifting the features towards denser distribution. The
+optimized attention map Ll
+attn ∈ Rhw×hw is denoted as:
+Ll
+attn = Sl
+attn + softmax(R). (10)
+Subsequently, we extract the dynamically calibrated fea-
+tures Pd ∈ RD×h×w from the last layer of LVC and gener-
+ate dynamic CAMs with Eq. (1), which are then refined to
+final pseudo labels Md for the segmentation.
+3.4. Training Objectives
+We formulate a diversity loss to supervise the learning
+of Fd in our LVC module. We first measure token cor-
+relations of Fd by calculating the self similarity: ˆR =
+sigmoid(cos(Fd, Fd)), where sigmoid(·) is the activation
+function and ˆR ∈ Rhw×hw. Then we refine CAM s from
+SVC into static pseudo labels Ms and leverage its pixel-
+wise affinity to guide the diversifying of ˆR. Specifically, if
+the pixel with coordinate (i, j) shows the same pixel value
+as the pixel in (ε, η), the token pair with the same coor-
+dinates on Fd is semantically related and its corresponding
+correlation logit on ˆR should be maximized, and vice versa.
+The diversity loss can be formulated as:
+Ldiv = 1
+N +
+X
+u+∈ ˆR+
+(1 − u+) + 1
+N −
+X
+u−∈ ˆR−
+u−, (11)
+where N +/N− are the number of positive and negative
+pairs, u+/u− are the positive and negative relation logits,
+and ˆR+/ ˆR− are the positive and negative sets of logit onˆR,
+respectively. The diversity loss groups tokens with similar
+semantics and suppresses irrelevant ones, enhancing fine-
+grained details of visual features for precise text response.
+In addition, ExCEL is streamlined as a single-stage
+method. We adopt a lightweight Transformer-based seg-
+mentation head [43] and directly take the frozen visual en-
+coder of CLIP for segmentation. The dynamic pseudo la-
+bels are used as supervision with a cross-entropy loss Lseg.
+The loss objectives of our ExCEL are formulated as:
+LExCEL = Lseg + γLdiv, (12)
+where γ is the weight factor. By efficiently training the
+adapter and a segmentation head, ExCEL achieves strong
+WSSS performance and significantly reduces training cost.
+4. Experiments and Results
+4.1. Experimental Settings
+Datasets and Metrics. The proposed ExCEL is evaluated
+on PASCAL VOC 2012 [11] and MS COCO 2014 [19].
+VOC contains 21 categories (1 for background). Follow-
+ing prior methods [10, 17, 39], the augmented dataset with
+10, 582, 1, 449, and 1, 456 images are used for training,
+validating, and testing, respectively. COCO includes 81
+classes, in which 82, 081 images are used for training and
+40, 137 images are for validating. Mean Intersection-Over-
+Union (mIoU) is used as the main evaluation metric.
+Implementation Details. CLIP model with ViT-B [9] is
+used as ExCEL’s encoder, which is frozen during the train-
+ing. For TSE module, we generate n = 20 descriptions
+from GPT-4 for each category. The number of attribute em-
+beddings B is set to 112 and 224 for PASCAL VOC and
+MS COCO, respectively. The SVC module is conducted in
+the last N = 5 Transformer layers. Our decoder adopts
+a simple Transformer-based head [43]. Features Fl from
+each layer of CLIP are sent to it for the segmentation pre-
+dictions. The scaling and shifting factors in Eq. (8) are set
+as 3.0 and 1.0, respectively. The loss weight γ is set as 0.1.
+Following [29, 35, 39], the AdamW optimizer is used for
+training the adapter and decoder. The learning rate is 1e-4
+with a weight decay of 1e-2. The training iteration is set
+20227
+
+
+=== PAGE 6 ===
+SeCo
+WeCLIP
+Ours
+PASCAL VOC
+ MS COCO
+GT
+Figure 3. Segmentation visualizations of SeCo [39], WeCLIP [43] and ours on VOC and COCO. ExCEL segments objects more precisely.
+Table 1. Segmentation comparisons on VOC and COCO. Net. is
+the backbone for segmentation. Sup. is the supervision type. I:
+image-level labels. SA: saliency maps. L: language.
+VOC COCOMethod Sup. Net. Val Test Val
+Multi-stage WSSS methods.
+L2G [14] CVPR’2022 I + SA RN101 72.1 71.7 44.2
+RCA [49] CVPR’2023 I + SA RN38 72.2 72.8 36.8
+OCR [7] CVPR’2023 I RN38 72.7 72.0 42.5
+BECO [26] CVPR’2023 I RN101 73.7 73.5 45.1
+MCTformer+ [38] TPAMI’2024 I RN38 74.0 73.6 45.2
+CTI [41] CVPR’2024 I RN101 74.1 73.2 45.4
+CLIMS [36] CVPR’2022 I + L RN101 70.4 70.0 -
+CLIP-ES [20] CVPR’2023 I + L RN101 72.2 72.8 45.4
+PSDPM [45] CVPR’2024 I + L RN101 74.1 74.9 47.2
+CPAL [31] CVPR’2024 I + L RN101 74.5 74.7 46.8
+Single-stage WSSS methods.
+AFA [28] CVPR’2022 I MiT-B1 66.0 66.3 38.9
+ViT-PCM [27] ECCV’2022 I ViT-B 70.3 70.9 -
+ToCo [29] CVPR’2023 I ViT-B 71.1 72.2 42.3
+DuPL [35] CVPR’2024 I ViT-B 73.3 72.8 44.6
+SeCo [39] CVPR’2024 I ViT-B 74.0 73.8 46.7
+DIAL [13] ECCV’2024 I + L ViT-B 74.5 74.9 44.4
+WeCLIP [43] CVPR’2024 I + L ViT-B 76.4 77.2 47.1
+ExCEL(w/o CRF) I + L ViT-B 77.2 77.3 49.3
+ExCEL (Ours) I + L ViT-B 78.4 78.5 50.3
+as 30, 000 for VOC and 100, 000 for COCO. Please refer to
+Supplementary Materials for more details.
+4.2. Comparisons with State-of-the-art Methods
+Performance of Semantic Segmentation. Tab. 1 shows
+segmentation comparisons between our ExCEL and recent
+methods on VOC and COCO. The single-stage ExCEL
+achieves 78.4% and 78.5% mIoU on VOC val set and test
+set, which even significantly outperforms the sophisticated
+multi-stage methods by at least 3.9% and 3.6% mIoU, re-
+spectively. For more complicated benchmark COCO, Ex-
+CEL achieves 50.3% mIoU on val set, which brings a no-
+ticeable 3.2% increase over the CLIP-based state-of-the-
+art (SOTA) WeCLIP. In addition, without time-consuming
+post-processing techniques, such as CRF [15], ExCEL still
+Table 2. CAM seed comparisons on VOC train set. M: multi-
+stage methods. S: single-stage methods. †: our reproduction fol-
+lowing official codes. ExCEL*: ExCEL in a training-free manner.
+VOCMethod Type Sup. Net. Train
+Training-free WSSS methods.
+CLIP-ES [20] CVPR’2023 M I + L ViT-B 70.8
+ExCEL* (Ours) S I + L ViT-B 74.6
+Training-required WSSS methods.
+ReCAM [6] CVPR’2022 M I RN101 54.8
+FPR [3] CVPR’2023 M I RN101 63.8
+LPCAM [5] CVPR’2023 M I RN50 65.3
+MCTformer+ [38] TPAMI’2024 M I RN38 68.8
+SFC [44] AAAI’2024 M I RN101 64.7
+CTI [41] CVPR’2024 M I RN101 69.5
+AFA [28] CVPR’2022 S I MiT-B1 65.0
+ViT-PCM [27] ECCV’2022 S I ViT-B 67.7
+†ToCo [29] CVPR’2023 S I ViT-B 71.6
+†DuPL [35] CVPR’2024 S I ViT-B 75.0
+SeCo [39] CVPR’2024 S I ViT-B 74.8
+CLIMS [36] CVPR’2022 M I + L RN101 56.6
+POLE [22] W ACV’2023 M I + L RN50 59.0
+CPAL [31] CVPR’2024 M I + L RN101 71.9
+DIAL [13] ECCV’2024 S I + L ViT-B 75.2
+†WeCLIP [43] CVPR’2024 S I + L ViT-B 75.4
+ExCEL (Ours) S I + L ViT-B 78.0
+maintains consistent superiority over SOTAs with CRF.
+The qualitative comparisons on VOC and COCO are
+shown in Fig. 3. By densely matching the patches and texts,
+ExCEL consistently demonstrates more precise object seg-
+mentation than recent methods in an image-text paradigm.
+Evaluation of CAM Seeds. Tab. 2 reports the quality of
+raw CAM seeds on VOC train set. Compared with recent
+methods, ExCEL achieves 74.6% mIoU in a training-free
+setup, outperforming CLIP-ES by 3.8% and performing
+comparably to most training-required methods. With the
+optimized LVC module, ExCEL further boosts CAM qual-
+ity to 78.0%, surpassing SOTAs in the image-text paradigm
+by at least 2.6%. In addition, visual comparisons in Fig. 4
+(e-h) also plainly illustrates that ExCEL generates better
+CAMs with the designed patch-text alignment paradigm.
+20228
+
+
+=== PAGE 7 ===
+Image CLIP +SVC +SVC+TSE ExCEL WeCLIP CLIP-ES MaskCLIP GT
+(a) (b) (c) (d) (e) (f) (g) (h) (i)
+Figure 4. CAM visualizations on VOC train set. (a) Image. (b-e) Ablative visualizations of proposed modules. (e-h) Qualitative compar-
+isons of (e) ExCEL and recent CLIP-based methods, i.e., (f) WeCLIP [43], (g) CLIP-ES [20] and (h) MaskCLIP [47]. (i) Ground truth.
+Table 3. Ablation study of ExCEL on VOC val set.
+Conditions SVC TSE LVC Precision Recall mIoU
+Baseline (CLIP) 18.8 21.3 12.1
+w/ SVC ✓✓✓ 81.2 86.2 72.5
+w/o LVC ✓✓✓ ✓ ✓✓ 80.7 89.8 74.7
+w/o TSE ✓✓✓ ✓ ✓✓ 83.7 86.3 75.1
+ExCEL ✓✓✓ ✓✓✓ ✓✓✓ 85.0 88.4 77.2
+Table 4. Ablation study of attribute number B on VOC val set.
+Number of Attr None 32 64 112 144 196
+mIoU 75.1 75.8 76.2 77.2 77.0 76.5
+Table 5. Ablation study of VC module on VOC train set.
+Conditions q-k v I.C. M.C. LVC Precision Recall mIoU
+Baseline (CLIP) ✓✓✓ 18.0 21.8 11.2
+MaskCLIP ✓✓✓ 77.1 80.9 65.8
+w/ I.C. ✓✓✓ 79.1 84.7 69.7
+SVC ✓✓✓ ✓ ✓✓ 82.2 88.2 74.6
+ExCEL ✓✓✓ ✓✓✓ ✓✓✓ 86.6 87.9 78.0
+4.3. Ablation Studies
+Efficacy of Key Components. Quantitative ablative ex-
+periments of ExCEL are reported in Tab. 3. The baseline
+is the vanilla CLIP using our training settings, which only
+achieves 12.1% mIoU for segmentation. Our SVC module
+replaces the q-k attention with Intra-correlation from the
+intermediate layers. The performance increases to 72.5%.
+TSE module enriches the semantics of text representation
+for robust visual recognition. Introducing TSE brings a
+3.6% recall increase compared to the original text tem-
+plates. LVC module provides a dynamic shift to diversify
+the features. It further benefits SVC’s segmentation perfor-
+mance to 75.1% mIoU. With all these enhancements, Ex-
+CEL generates 77.2% mIoU for segmentation.
+Qualitative ablation results are further illustrated in
+Fig. 4 (b-e) to evaluate the efficacy of our modules. In Fig. 4
+(b), the CLIP baseline produces inaccurate CAMs with mis-
+localized activation. SVC corrects token relations and pre-
+serves fine-grained details, effectively suppressing false ac-
+tivations, as seen in Fig. 4 (c). TSE incorporates compre-
+hensive textual attributes into the text representation, en-
+hancing patch-text matching and producing more complete
+CAMs, shown in Fig. 4 (d). LVC dynamically optimizes
+attention maps, further improving CAM accuracy and com-
+pleteness, as illustrated in Fig. 4 (e). Both quantitative and
+qualitative results confirm the effectiveness of our modules.
+Effectiveness of Implicit Attributes. Tab. 4 analyzes
+the effect of varying the number of clustering attributes.
+’None’ means no clustering and we explicitly fuse the n
+description embeddings for each class. It shows that the
+performance drops from 77.2% to 75.1%, which validates
+the efficacy of implicit attributes and its superiority over ex-
+plicit descriptions. With this operation, we can expand the
+representation of 20 classes up to 196 attributes or more,
+greatly enhancing text semantics. It reports that ExCEL
+achieves more favorable performance when B is set to 112.
+Effectiveness of Visual Calibrations. Tab. 5 compares
+different strategies in VC module for CAM generation. I.C.
+refers to Intra-correlation in the last layer, and M.C. (Inter-
+mediate Calibration) applies I.C. across intermediate layers.
+Vanilla q-k attention in CLIP loses diversity and cannot gen-
+erate reasonable CAMs. v contains fine-grained knowledge
+and MaskCLIP improves CAMs to 65.8% by using v from
+the last layer. In contrast, our I.C. and M.C. focus on min-
+ing diverse knowledge from intermediate layers and boost
+the performance to 69.7% and 74.6%. In addition, intro-
+ducing LVC module raises the final performance to 78.0%.
+Results in Tab. 5 and corresponding visualizations in Fig. 4
+clearly highlight the efficacy of our components.
+4.4. Further Analysis
+Hyper-parameter Analysis. Hyper-parameters, such as
+TOP-K, scaling factors α and β, and the number of SVC
+layers N, etc., are discussed in Supplementary Materials.
+20229
+
+
+=== PAGE 8 ===
+Table 6. Comparisons with the fully-supervised counterparts on
+VOC val set. F:fully-supervised. ViT-B*: pretrained from CLIP.
+Methods Type Sup. Net. Val Ratio
+DeepLabV2 [4] TPAMI’2017 - F RN101 77.7 -
+DeepLabV2 [4] TPAMI’2017 - F ViT-B 82.3 -
+WeCLIP-Full [43] CVPR’2024 - F ViT-B* 81.6 -
+CLIMS [36] CVPR’2022 M I + L RN101 70.4 90.6%
+CLIP-ES [20] CVPR’2023 M I + L RN101 72.2 92.9%
+CPAL [31] CVPR’2024 M I + L RN101 74.5 95.9%
+ToCo [29] CVPR’2024 S I ViT-B 71.1 86.4%
+DuPL [35] CVPR’2024 S I ViT-B 73.3 89.1%
+SeCo [43] CVPR’2024 S I ViT-B 74.0 89.9%
+DIAL [13] ECCV’2024 S I + L ViT-B 74.5 90.5%
+WeCLIP [43] CVPR’2024 S I + L ViT-B* 76.4 93.6%
+ExCEL (Ours) S I + L ViT-B* 78.4 96.1%
+Table 7. Training efficiency comparisons on VOC train (CAM)
+and val set (Seg). All experiments are conducted on RTX 3090.
+Method Type Training Time GPU CAM Seg
+CLIMS [36] CVPR’2022 M 1068 mins 18.0 G 56.6 70.4
+CLIP-ES [20] CVPR’2023 M 420 mins 12.0 G 70.8 72.2
+MCTformer+ [38] TPAMI’2024 M 1496 mins 18.0 G 68.8 74.0
+ToCo [29] CVPR’2023 S 506 mins 17.9 G 71.6 71.1
+DuPL [35] CVPR’2024 S 508 mins 14.9 G 75.0 73.3
+SeCo [39] CVPR’2024 S 407 mins 17.6 G 74.8 74.0
+WeCLIP [43] CVPR’2024 S 270 mins 6.2 G 75.4 76.4
+ExCEL* (Training-free) S - 2.9 G 74.6 -
+ExCEL (Ours) S 90 mins 3.2 G 78.0 78.4
+Fully-supervised Counterparts. Tab. 6 presents a fair-
+ness comparison between WSSS methods and their fully-
+supervised counterparts using the same segmentation back-
+bone. With CLIP’s visual encoder as the backbone, Ex-
+CEL achieves 78.4% mIoU, reaching 96.1% of the fully-
+supervised performance. It significantly outperforms CLIP-
+based WeCLIP by 2.5% and demonstrates ExCEL’s advan-
+tage over other multi-stage CLIP-based methods as well.
+Training Efficiency Analysis. Our method only trains
+the adapter and decoder in a single-stage paradigm. Tab. 7
+compares the training efficiency between ExCEL and recent
+methods. Without training, ExCEL requires just 2.9 GB
+of GPU memory and generates comparable CAMs to re-
+cent SOTAs. When training is included, the entire pipeline
+only takes 90 minutes and 3.2 GB of memory for SOTA
+performance. ExCEL just requires 6.0% training time of
+multi-stage MCTformer+ and 33.3% of single-stage We-
+CLIP, highlighting ExCEL’s remarkable training efficiency.
+Attribute Response Analysis. We treat text prompt-
+ing as an implicit attribute-hunting process to comprehen-
+sively enrich text representation semantics. To evaluate if
+the clustered attributes capture distinct object characteris-
+tics, we visualize 5 implicit attributes based on similarity
+scores. As shown in Fig. 5, given instances of{aeroplane}
+and {train}, our attributes highlight different object parts,
+which clearly validates that our TSE module enhances inte-
+Image ExCEL Attr 1 Attr 3 Attr 4Attr 2 Attr 5
+Figure 5. Implicit attribute responses. Based on the TOPK simi-
+larity scores, 5 attributes are sampled for visualizations.
+Image CLIP MaskCLIP SVC ExCEL
+1.0
+0.0
+1.0
+0.8
+0.6
+0.4
+0.0
+0.2
+(b)
+(a)
+Figure 6. Comparisons of attention maps from the last visual en-
+coder layer. (a) Attention features from the query patches (marked
+by red stars). (b) Token relations measured by cosine similarity.
+gral visual responses by gathering relevant semantics.
+Feature Representation Analysis. CLIP lacks fine-
+grained details, leading to inaccurate patch-text responses.
+To explore further, we visualize the self-attention features
+in Fig. 6 (a). Given the query patch (red star), CLIP’s q-k
+attention falls short in generating diverse features, support-
+ing our claim in Sec. 3.3. MaskCLIP observes that v keeps
+diversity and takes it from the last layer for visual response.
+We visualize it by calculating v-v attention. Although ef-
+fective, MaskCLIP still misses fine granularity. Instead,
+SVC calculates attention within each space and implements
+it from intermediate layers. LVC further diversifies the fea-
+tures with a dynamic adapter, both of which effectively gen-
+erate features with clear boundaries and spatial details.
+Additionally, we explore the pairwise token relations in
+Fig. 6 (b). Unlike the smoother attention maps of CLIP
+or MaskCLIP, our approach distinctly groups tokens with
+similar semantics, aligning pairwise similarities with cor-
+responding semantics. This validates that ExCEL success-
+fully enhances the frozen features of CLIP by calibrating it
+towards distributions with more diverse spatial information.
+5. Conclusion
+In this paper, we propose ExCEL, a novel patch-text
+alignment method to explore CLIP’s dense knowledge for
+WSSS, which provides a different insight to generate bet-
+ter pseudo labels based on CLIP. To this end, Text Semantic
+Enrichment (TSE) and Visual Calibration (VC) modules are
+designed to improve the dense alignment across text and vi-
+sion modalities. In addition, ExCEL generates CAMs in
+both training-free and efficient training modes, calibrating
+CLIP without altering its pre-trained weights. It retains
+CLIP’s transferability while significantly reducing training
+cost. We believe ExCEL can inspire more future research
+to unlock CLIP’s dense capabilities in the WSSS field.
+20230
+
+
+=== PAGE 9 ===
+6. Acknowledgments
+This work was supported by the National Natural Science
+Foundation of China under Grant No.82372097, Shang-
+hai Sailing Program under Grant 22YF1409300, Interna-
+tional Science and Technology Cooperation Program un-
+der the 2023 Shanghai Action Plan for Science under
+Grant 23410710400, Taishan Scholars Program under Grant
+NO.tsqn202408245.
+References
+[1] Jiwoon Ahn and Suha Kwak. Learning pixel-level semantic
+affinity with image-level supervision for weakly supervised
+semantic segmentation. In CVPR, pages 4981–4990, 2018.
+1
+[2] Amy Bearman, Olga Russakovsky, Vittorio Ferrari, and Li
+Fei-Fei. What’s the point: Semantic segmentation with
+point supervision. In Computer Vision–ECCV 2016: 14th
+European Conference, Amsterdam, The Netherlands, Octo-
+ber 11–14, 2016, Proceedings, Part VII 14 , pages 549–565.
+Springer, 2016. 1
+[3] Liyi Chen, Chenyang Lei, Ruihuang Li, Shuai Li, Zhaoxiang
+Zhang, and Lei Zhang. Fpr: False positive rectification for
+weakly supervised semantic segmentation. In ICCV, pages
+1108–1118, 2023. 6
+[4] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L Yuille. Deeplab: Semantic image
+segmentation with deep convolutional nets, atrous convolu-
+tion, and fully connected crfs. IEEE transactions on pattern
+analysis and machine intelligence, 40(4):834–848, 2017. 8
+[5] Zhaozheng Chen and Qianru Sun. Extracting class activation
+maps from non-discriminative features as well. In CVPR,
+pages 3135–3144, 2023. 1, 6
+[6] Zhaozheng Chen, Tan Wang, Xiongwei Wu, Xian-Sheng
+Hua, Hanwang Zhang, and Qianru Sun. Class re-activation
+maps for weakly-supervised semantic segmentation. In
+CVPR, pages 969–978, 2022. 6
+[7] Zesen Cheng, Pengchong Qiao, Kehan Li, Siheng Li, Pengxu
+Wei, Xiangyang Ji, Li Yuan, Chang Liu, and Jie Chen. Out-
+of-candidate rectification for weakly supervised semantic
+segmentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 23673–
+23684, 2023. 1, 6
+[8] Jifeng Dai, Kaiming He, and Jian Sun. Boxsup: Exploit-
+ing bounding boxes to supervise convolutional networks for
+semantic segmentation. In ICCV, pages 1635–1643, 2015. 1
+[9] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, et al. An image is worth 16x16 words: Trans-
+formers for image recognition at scale. arXiv preprint
+arXiv:2010.11929, 2020. 5
+[10] Ye Du, Zehua Fu, Qingjie Liu, and Yunhong Wang. Weakly
+supervised semantic segmentation by pixel-to-prototype
+contrast. In CVPR, pages 4320–4329, 2022. 5
+[11] Mark Everingham, SM Ali Eslami, Luc Van Gool, Christo-
+pher KI Williams, John Winn, and Andrew Zisserman. The
+pascal visual object classes challenge: A retrospective.IJCV,
+111:98–136, 2015. 5
+[12] Peng Gao, Shijie Geng, Renrui Zhang, Teli Ma, Rongyao
+Fang, Yongfeng Zhang, Hongsheng Li, and Yu Qiao.
+Clip-adapter: Better vision-language models with feature
+adapters. International Journal of Computer Vision, 132(2):
+581–595, 2024. 2
+[13] Soojin Jang, Jungmin Yun, Junehyoung Kwon, Eunju Lee,
+and Youngbin Kim. Dial: Dense image-text alignment for
+weakly supervised semantic segmentation. arXiv preprint
+arXiv:2409.15801, 2024. 6, 8
+[14] Peng-Tao Jiang, Yuqi Yang, Qibin Hou, and Yunchao Wei.
+L2g: A simple local-to-global knowledge transfer frame-
+work for weakly supervised semantic segmentation. In Pro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 16886–16896, 2022. 6
+[15] Philipp Kr ¨ahenb¨uhl and Vladlen Koltun. Efficient infer-
+ence in fully connected crfs with gaussian edge potentials.
+NeurIPS, 24, 2011. 6
+[16] Jungbeom Lee, Jihun Yi, Chaehun Shin, and Sungroh Yoon.
+Bbam: Bounding box attribution map for weakly super-
+vised semantic and instance segmentation. In Proceedings
+of the IEEE/CVF conference on computer vision and pattern
+recognition, pages 2643–2652, 2021. 1
+[17] Xueyi Li, Tianfei Zhou, Jianwu Li, Yi Zhou, and Zhaoxiang
+Zhang. Group-wise semantic mining for weakly supervised
+semantic segmentation. In AAAI, pages 1984–1992, 2021. 5
+[18] Di Lin, Jifeng Dai, Jiaya Jia, Kaiming He, and Jian Sun.
+Scribblesup: Scribble-supervised convolutional networks for
+semantic segmentation. In CVPR, pages 3159–3167, 2016.
+1
+[19] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+Pietro Perona, Deva Ramanan, Piotr Doll´ar, and C Lawrence
+Zitnick. Microsoft coco: Common objects in context. In
+Computer Vision–ECCV 2014: 13th European Conference,
+Zurich, Switzerland, September 6-12, 2014, Proceedings,
+Part V 13, pages 740–755. Springer, 2014. 5
+[20] Yuqi Lin, Minghao Chen, Wenxiao Wang, Boxi Wu, Ke
+Li, Binbin Lin, Haifeng Liu, and Xiaofei He. Clip is
+also an efficient segmenter: A text-driven approach for
+weakly supervised semantic segmentation. arXiv preprint
+arXiv:2212.09506, 2022. 1, 3, 6, 7, 8
+[21] Stuart Lloyd. Least squares quantization in pcm. IEEE trans-
+actions on information theory, 28(2):129–137, 1982. 4
+[22] Balamurali Murugesan, Rukhshanda Hussain, Rajarshi
+Bhattacharya, Ismail Ben Ayed, and Jose Dolz. Prompt-
+ing classes: exploring the power of prompt class learning
+in weakly supervised semantic segmentation. In Proceed-
+ings of the IEEE/CVF Winter Conference on Applications of
+Computer Vision, pages 291–302, 2024. 6
+[23] Pedro O Pinheiro and Ronan Collobert. From image-level to
+pixel-level labeling with convolutional networks. In CVPR,
+pages 1713–1721, 2015. 1
+[24] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+20231
+
+
+=== PAGE 10 ===
+sion. In International conference on machine learning, pages
+8748–8763. PMLR, 2021. 1, 2
+[25] Yongming Rao, Wenliang Zhao, Guangyi Chen, Yansong
+Tang, Zheng Zhu, Guan Huang, Jie Zhou, and Jiwen Lu.
+Denseclip: Language-guided dense prediction with context-
+aware prompting. In Proceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition , pages
+18082–18091, 2022. 2
+[26] Shenghai Rong, Bohai Tu, Zilei Wang, and Junjie Li.
+Boundary-enhanced co-training for weakly supervised se-
+mantic segmentation. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+19574–19584, 2023. 6
+[27] Simone Rossetti, Damiano Zappia, Marta Sanzari, Marco
+Schaerf, and Fiora Pirri. Max pooling with vision transform-
+ers reconciles class and shape in weakly supervised semantic
+segmentation. In ECCV, pages 446–463. Springer, 2022. 6
+[28] Lixiang Ru, Yibing Zhan, Baosheng Yu, and Bo Du. Learn-
+ing affinity from attention: end-to-end weakly-supervised se-
+mantic segmentation with transformers. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 16846–16855, 2022. 1, 6
+[29] Lixiang Ru, Heliang Zheng, Yibing Zhan, and Bo Du. To-
+ken contrast for weakly-supervised semantic segmentation.
+arXiv preprint arXiv:2303.01267, 2023. 2, 5, 6, 8
+[30] Ramprasaath R Selvaraju, Michael Cogswell, Abhishek Das,
+Ramakrishna Vedantam, Devi Parikh, and Dhruv Batra.
+Grad-cam: Visual explanations from deep networks via
+gradient-based localization. In Proceedings of the IEEE in-
+ternational conference on computer vision , pages 618–626,
+2017. 2
+[31] Feilong Tang, Zhongxing Xu, Zhaojun Qu, Wei Feng,
+Xingjian Jiang, and Zongyuan Ge. Hunting attributes: Con-
+text prototype-aware learning for weakly supervised seman-
+tic segmentation. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+3324–3334, 2024. 6, 8
+[32] Paul Vernaza and Manmohan Chandraker. Learning random-
+walk label propagation for weakly-supervised semantic seg-
+mentation. In CVPR, pages 7158–7166, 2017. 1
+[33] Xiang Wang, Shaodi You, Xi Li, and Huimin Ma. Weakly-
+supervised semantic segmentation by iteratively mining
+common object features. In CVPR, pages 1354–1362, 2018.
+1
+[34] Yuanchen Wu, Xiaoqiang Li, Jide Li, Pinpin Zhu, Shaohua
+Zhang, et al. Dino is also a semantic guider: Exploiting
+class-aware affinity for weakly supervised semantic segmen-
+tation. In ACM Multimedia 2024. 2
+[35] Yuanchen Wu, Xichen Ye, Kequan Yang, Jide Li, and Xiao-
+qiang Li. Dupl: Dual student with trustworthy progressive
+learning for robust weakly supervised semantic segmenta-
+tion. In CVPR, pages 3534–3543, 2024. 5, 6, 8
+[36] Jinheng Xie, Xianxu Hou, Kai Ye, and Linlin Shen. Clims:
+cross language image matching for weakly supervised se-
+mantic segmentation. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+4483–4492, 2022. 1, 3, 6, 8
+[37] Lian Xu, Wanli Ouyang, Mohammed Bennamoun, Farid
+Boussaid, and Dan Xu. Multi-class token transformer for
+weakly supervised semantic segmentation. In Proceedings
+of the IEEE/CVF Conference on Computer Vision and Pat-
+tern Recognition, pages 4310–4319, 2022. 2
+[38] Lian Xu, Mohammed Bennamoun, Farid Boussaid, Hamid
+Laga, Wanli Ouyang, and Dan Xu. Mctformer+: Multi-class
+token transformer for weakly supervised semantic segmen-
+tation. IEEE transactions on pattern analysis and machine
+intelligence, 2024. 6, 8
+[39] Zhiwei Yang, Kexue Fu, Minghong Duan, Linhao Qu, Shuo
+Wang, and Zhijian Song. Separate and conquer: Decou-
+pling co-occurrence via decomposition and representation
+for weakly supervised semantic segmentation. In CVPR,
+pages 3606–3615, 2024. 2, 5, 6, 8
+[40] Zhiwei Yang, Yucong Meng, Kexue Fu, Shuo Wang,
+and Zhijian Song. Tackling ambiguity from perspec-
+tive of uncertainty inference and affinity diversification for
+weakly supervised semantic segmentation. arXiv preprint
+arXiv:2404.08195, 2024. 1
+[41] Sung-Hoon Yoon, Hoyong Kwon, Hyeonseong Kim, and
+Kuk-Jin Yoon. Class tokens infusion for weakly supervised
+semantic segmentation. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition ,
+pages 3595–3605, 2024. 6
+[42] Bingfeng Zhang, Xuru Gao, Siyue Yu, and Weifeng Liu. En-
+hanced online cam: Single-stage weakly supervised seman-
+tic segmentation via collaborative guidance. Pattern Recog-
+nition, 156:110787, 2024. 2
+[43] Bingfeng Zhang, Siyue Yu, Yunchao Wei, Yao Zhao, and
+Jimin Xiao. Frozen clip: A strong backbone for weakly
+supervised semantic segmentation. In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 3796–3806, 2024. 2, 3, 5, 6, 7, 8
+[44] Xinqiao Zhao, Feilong Tang, Xiaoyang Wang, and Jimin
+Xiao. Sfc: Shared feature calibration in weakly supervised
+semantic segmentation. In Proceedings of the AAAI Confer-
+ence on Artificial Intelligence , pages 7525–7533, 2024. 2,
+6
+[45] Xinqiao Zhao, Ziqian Yang, Tianhong Dai, Bingfeng Zhang,
+and Jimin Xiao. Psdpm: Prototype-based secondary discrim-
+inative pixels mining for weakly supervised semantic seg-
+mentation. In CVPR, pages 3437–3446, 2024. 6
+[46] Bolei Zhou, Aditya Khosla, Agata Lapedriza, Aude Oliva,
+and Antonio Torralba. Learning deep features for discrimi-
+native localization. In CVPR, pages 2921–2929, 2016. 1
+[47] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. In European Conference on Com-
+puter Vision, pages 696–712. Springer, 2022. 3, 4, 7
+[48] Kaiyang Zhou, Jingkang Yang, Chen Change Loy, and Ziwei
+Liu. Learning to prompt for vision-language models. In-
+ternational Journal of Computer Vision, 130(9):2337–2348,
+2022. 2
+[49] Tianfei Zhou, Meijie Zhang, Fang Zhao, and Jianwu Li. Re-
+gional semantic contrast and aggregation for weakly super-
+vised semantic segmentation. In CVPR, pages 4299–4309,
+2022. 6
+20232

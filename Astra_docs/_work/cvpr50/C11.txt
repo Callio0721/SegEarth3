@@ -1,0 +1,1112 @@
+=== PAGE 1 ===
+Distilling Spectral Graph for Object-Context Aware
+Open-V ocabulary Semantic Segmentation
+Chanyoung Kim1 Dayun Ju1 Woojung Han1 Ming-Hsuan Yang1,2 Seong Jae Hwang1
+1Yonsei University 2University of California, Merced
+{chanyoung, juda0707, dnwjddl, seongjae }@yonsei.ac.kr, mhyang@ucmerced.edu
+Abstract
+Open-Vocabulary Semantic Segmentation (OVSS) has ad-
+vanced with recent vision-language models (VLMs), en-
+abling segmentation beyond predefined categories through
+various learning schemes. Notably, training-free methods
+offer scalable, easily deployable solutions for handling un-
+seen data, a key goal of OVSS. Yet, a critical issue per-
+sists: lack of object-level context consideration when seg-
+menting complex objects in the challenging environment
+of OVSS based on arbitrary query prompts. This over-
+sight limits models’ ability to group semantically consis-
+tent elements within object and map them precisely to user-
+defined arbitrary classes. In this work, we introduce a novel
+approach that overcomes this limitation by incorporating
+object-level contextual knowledge within images. Specifi-
+cally, our model enhances intra-object consistency by dis-
+tilling spectral-driven features from vision foundation mod-
+els into the attention mechanism of the visual encoder, en-
+abling semantically coherent components to form a single
+object mask. Additionally, we refine the text embeddings
+with zero-shot object presence likelihood to ensure accurate
+alignment with the specific objects represented in the im-
+ages. By leveraging object-level contextual knowledge, our
+proposed approach achieves state-of-the-art performance
+with strong generalizability across diverse datasets.
+1. Introduction
+Open-vocabulary semantic segmentation (OVSS) [9, 32,
+54, 55, 58] aims to predict pixel-level labels for arbitrary
+prompts defined by user input (e.g., the proper nounSpace
+Needle in Fig. 1(a)), advancing beyond previous mod-
+els scoped to predefined static classes [10, 18, 19, 40]. To
+achieve this, fully supervised OVSS models [11, 53, 56] en-
+hance generalization to seen classes using labeled training
+data. Yet, their reliance on seen classes during training may
+Project Page: https://micv-yonsei.github.io/cass/
+Truck(b) Visualization CowHorse Sheep
+Ground TruthProxyCLIP Ours (CASS)NACLIPInput Image
+Input Image
+VFM Visual 
+Encoder
+CLIP Visual 
+Encoder
+Graph Matching
+Visual 
+Embedding
+Text Embeddings Adjusted Text Embeddings
+Result
+CLIP Text 
+Encoder
+Low-rank
+Approx.
+Dynamic 
+Eigen
+scaling
+⊕
+⊙
+𝐴𝐴𝜓𝜓
+𝐴𝐴CLIP
+𝐴𝐴VFM
+𝑡𝑡CLIP
+𝑣𝑣CLIP
+(a) Overview
+⊕⊙
+𝐹𝐹CLIP
+̈𝐴𝐴VFM
+̃𝑡𝑡CLIP
+sky
+space needle
+building
+{space 
+needle}
+Figure 1. We present CASS, object-level Context-Aware
+training-free open-vocabulary Semantic Segmentation model. (a)
+Overview: Our method distills the vision foundation model’s
+(VFM) object-level contextual spectral graph into CLIP’s attention
+and refines query text embeddings towards object-specific seman-
+tics. (b) Object-Level Context: This result illustrates how incor-
+porating object-level context improves segmentation accuracy by
+unifying object-wise components into a user-defined object class;
+for example, (top row) our approach precisely segments the truck’s
+body, wheels, and cargo area and (bottom row) accurately groups
+elements into a single object, such as the sheep, whereas base-
+lines [16, 29] often fail to achieve this unified segmentation.
+risk overfitting and limit scalability, as labeled data is re-
+quired for retraining to adapt to new domains [43].
+To better address this, recent studies [16, 28, 29, 48, 58]
+propose training-free OVSS methods that leverage pre-
+trained vision-language models (VLMs) (e.g., CLIP [39]) to
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+15033
+
+
+=== PAGE 2 ===
+integrate aligned visual and textual representations. These
+works focus on improving semantic association between
+visual patches in CLIP image encoder to produce more
+precise segmentation maps, achieving highly promising re-
+sults. This training-free scheme offers key advantages: it (1)
+generalizes well to unseen classes without requiring addi-
+tional labeled data, making it more scalable, thus (2) allows
+direct adaptation to dynamic real-world applications. Cap-
+italizing on these benefits, training-free OVSS aligns with
+OVSS’s core goal of adaptability across diverse domains,
+enabling it to reach its full potential.
+We tackle OVSS in a training-free manner, presenting
+a challenging and practical approach aligned with OVSS’s
+true objectives. Although existing training-free meth-
+ods [21, 29, 47, 48] perform well on numerous tasks, they
+all share a common limitation: the lack of “object-level
+context. ”To understand “object-level context” , consider a
+truck and sheep in Fig. 1(b). Components compris-
+ing a truck, such as its wheels and cargo area, should
+be grouped as a single entity. Similarly, components of
+a sheep should be accurately unified under the correct
+user-given object class. However, existing training-free
+OVSS methods, which use CLIP as the image backbone
+for segmentation, often struggle to capture object-level con-
+text, failing to group object components into a single, user-
+defined object. These challenges stem from CLIP’s focus on
+learning global image semantics, which may be insufficient
+for capturing dense object-level semantics [16, 48, 58].
+Thus, to achieve accurate training-free OVSS, a proper
+object-level context must be considered in CLIP.
+We address the challenges of training-free OVSS by in-
+troducing the object-level context and propose the Context-
+Aware Semantic Segmentation (CASS) model. Vision foun-
+dation models (VFMs), such as DINO [8, 38], capture fine-
+grained, patch-level semantics but lack object-level context,
+making them unsuitable for direct use in tasks requiring
+such context. Recent studies [24, 36] have shown that ap-
+plying graph spectral techniques to VFM attention graphs
+can transform patch-level representations into object-level
+representations. Accordingly, we apply spectral techniques
+to extract essential object-level context from the VFM atten-
+tion graph. The extracted spectral features can be used di-
+rectly for segmentation (e.g., clustering eigenvectors); how-
+ever, this approach may not be suitable for OVSS, where
+textual alignment is essential. Thus, we propose distill-
+ing low-rank components of VFM into CLIP to enhance
+its object-level context understanding, while maintaining
+alignment with textual information. Specifically, we de-
+compose the VFM’s attention graph to extract low-rank
+components, filtering irrelevant information while empha-
+sizing essential object-level context. These low-rank com-
+ponents are then distilled into CLIP’s attention to embed the
+fundamental object structure of the VFM graph.
+Our model also leverages CLIP’s highly effective zero-
+shot object classification capability (i.e., object presence
+prior), widely validated in prior work [20, 34, 39], to cap-
+ture detailed object-level context within scenes. As such,
+we adjust the text embeddings based on the object pres-
+ence prior encoded by CLIP. This process involves refin-
+ing the embeddings to better align with object-specific se-
+mantics. Then, we refine patch-text similarities using the
+object presence prior, ensuring that the final segmentation
+map reflects an object-specific perspective. OurCASS, care-
+fully designed to enhance object-level contextual knowl-
+edge, captures richer intra-object coherence and enables co-
+hesive groupings of semantically related elements.
+The main contributions of this work are:
+• We enhance object-level context by distilling rich se-
+mantic understanding from VFM into the CLIP atten-
+tion mechanism, facilitating a more consistent grouping
+of each object into a unified semantic entity.
+• We present object presence prior-driven text embeddings
+and patch-text similarity refinement, promoting the model
+to precisely classify objects.
+• We demonstrate the performance of our model in various
+semantic segmentation datasets and achieve state-of-the-
+art performance in training-free OVSS.
+2. Related Works
+Open-V ocabulary Semantic Segmentation. Open-
+vocabulary semantic segmentation (OVSS) aims to
+segment images corresponding to arbitrary user-given
+prompts, using vision-language aligned representa-
+tions (e.g., CLIP [39]). Meanwhile, training-free ap-
+proaches [3, 4, 23, 29, 58] have risen for their ability
+to adapt directly to new tasks without extra training.
+Among these, methods [16, 29, 48, 58] that do not rely on
+additional datasets have gained attention, as they require
+no extra adaptation effort, aligning better with the objective
+of OVSS. Earlier approaches investigated leveraging CLIP
+features for better localization [30, 58] or for grounding
+proposed masks [21, 47]. SCLIP [48] uses correlative
+self-attention to improve inter-patch correlations. NA-
+CLIP [16] applies a Gaussian kernel to attention maps for
+better spatial consistency, and ProxyCLIP [29] integrates
+patch-wise consistent features from DINO [8]. Although
+these methods demonstrated strong results, they often
+struggle to group different parts of the same object due to
+a lack of explicit dense label knowledge. To this end, we
+attribute the underlying challenges of training-free OVSS
+by enriching the object-level contextual understanding.
+Vision Foundation Models. Vision Foundation Models
+(VFMs), especially vision transformer (ViT)-based [14]
+self-supervised models (e.g., DINO [8, 38]), have sig-
+nificantly advanced computer vision through their ability
+to capture patch-wise semantic understanding at both the
+15034
+
+
+=== PAGE 3 ===
+ViT Block (× L-1)
+Linear
+(a)Complementary Spectral Graph Matching
+VFM Visual Encoder
+Input Image
+𝜆!"#$𝜆!"#%𝜆!"#&
+Cost Matrix 𝐶
+…Attention Graph eigeigeig
+𝜆'()*$𝜆'()*%𝜆'()*&
+ViT Block (× L-1)
+Linear
+Attention Features (×ℎ)  
+…
+eigeigeig
+Eigenvalues
+Attention Graph 
+Cost Matrix Construction
+…
+eig𝑈Σ𝑈+
+⊕
+Energy-based Low-rank Approx.
+…
+…
+…
+Attention Features (×ℎ)  
+CLIP Visual EncoderGraph Matching
+: Eigendecompositioneig
+𝑈,𝜙(Σ,)𝑈,+
+Dynamic Eigenscaling
+(b) Distilling VFM Spectral Graph to CLIP
+𝐾!"#$
+𝐾%&'($
+𝐴%&'($𝐴%&'()
+𝐴!"#$𝐴!"#)
+𝐴%&'()
+𝐴!"#$
+𝐴*)
+Eigenvalues
+L: Total number of layers in ViTℎ: Total number of heads in Multi-Head Self-Attention
+𝑘𝑘𝑘
+̈𝐴!"#$
+Figure 2. Detailed illustration of our proposed training-free spectral object-level context distillation mechanism in Sec. 3.2. By matching
+the attention graphs of VFM and CLIP head-by-head to establish complementary relationships, and distilling the fundamental object-level
+context of the VFM graph to CLIP, we enhance CLIP’s ability to capture intra-object contextual coherence.
+feature and attention levels. Among various downstream
+tasks [17, 35, 42, 46, 49] leveraging VFM’s capability, one
+line of research focuses on leveraging the attention com-
+ponents in VFM [24, 36, 46], which exhibit a detailed un-
+derstanding of patch-wise semantic interaction between dif-
+ferent image regions. Thus, while ProxyCLIP [29] utilizes
+VFM features, our method takes a different effort by treat-
+ing the attention mechanism in VFM as a graph. We then
+extract core structural patterns of the VFM graph to empha-
+size object-level context, providing an effective solution for
+producing precise object masks in training-free OVSS.
+Object-Level Semantic Segmentation. Semantic segmen-
+tation groups object components that have similar seman-
+tics into a single mask, traditionally achieved through mod-
+els trained on extensive human-labeled, pixel-wise anno-
+tations [10, 19, 25, 40]. However, despite recent ad-
+vancements in unsupervised semantic segmentation [17, 42]
+(USS) that do not rely on dense labels, a core challenge
+persists: individual object components are not consistently
+grouped into a single entity. To address this issue, recent
+USS studies [24, 41, 50] have incorporated object-level rep-
+resentation learning to improve the model’s ability to merge
+single objects into unified entities. However, these efforts
+have not been considered in the training-free OVSS task,
+which faces similar challenges in an unsupervised context.
+Therefore, we focus on enriching object-level context in
+training-free OVSS to achieve a more effective grouping of
+components within each object, enabling clearer and more
+consistent segmentation across diverse visual domains.
+3. Method
+We detail our proposed model, CASS, implemented in
+a training-free manner, as outlined in Fig 1(a). Our
+model jointly enhances object-level contextual understand-
+ing with two primary aspects: (1) Spectral Object-Level
+Context Distillation (Sec. 3.2) and (2) Object Presence-
+Driven Object-Level Context (Sec. 3.3). We first outline
+the basic pipeline of training-free OVSS in Sec. 3.1.
+3.1. Preliminaries
+CLIP Visual Encoder . Training-free OVSS models [16,
+29, 48] leverage CLIP [39] for its rich alignment of visual
+and linguistic information. However, the CLIP ViT visual
+encoder F v
+CLIP focuses on aligning the [CLS] token with
+text embeddings during training, often neglecting the patch-
+wise spatial interactions among visual tokens that are cru-
+cial for dense prediction [16, 44, 48]. To produce CLIP
+feature representations more suitable for semantic segmen-
+tation tasks, we remove residual connection, feed-forward
+network, and self-attention layer in the final layer of F v
+CLIP,
+following recent works [16, 48]. Specifically, when the
+set of visual tokens Z = Concat [z1, . . . , zN] ∈ RN ×DZ ,
+where N is the total number of patches except [CLS] to-
+ken and DZ denotes patch dimension space, is input into
+the final block of the ViT, the following operations are as
+Z ∗ = SA(LN(Z)), (1)
+where SA and LN represent Self-Attention and Layer Nor-
+malization, respectively. The modified SA layer is
+M i
+CLIP = softmax
+
+Ai
+CLIP/
+p
+Dh
+
+, (2)
+Z ∗ = Concat
+
+M 1
+CLIPV 1
+CLIP, . . . , Mh
+CLIPV h
+CLIP
+
+W O, (3)
+where Dh denotes the head dimension, h is the num-
+ber of heads, and W O ∈ RDZ ×DZ is the output projec-
+tion matrix. We define CLIP attention map for i-th head
+as Ai
+CLIP = K i
+CLIPK i⊤
+CLIP ∈ RN ×N , where attention key
+KCLIP ∈ RN ×Dh×h and value VCLIP ∈ RN ×Dh×h result
+from the linear transformation of LN(Z).
+Inference Pipeline. We use a sliding window inference to
+ensure that ViT can capture detailed parts of the image by
+15035
+
+
+=== PAGE 4 ===
+Input Image 𝐴𝐴CLIP 𝐴𝐴𝜓𝜓𝐴𝐴𝜓𝜓 w/o LR
+Figure 3. Attention score visualization for various query points.
+Left: Vanilla CLIP ( ACLIP) shows noisy, unfocused attention.
+Center: VFM-to-CLIP distillation without low-rank eigenscaling
+shows partial object grouping with limited detail. Right: Incor-
+porating our low-rank eigenscaling (Eq. (7)) captures object-level
+context, improving grouping within a single object.
+dividing the entire image I into smaller windows ˆI. The
+visual tokens Z ∗ ∈ RN ×DZ are then computed from each
+ˆI through F v
+CLIP as in Eq. (1). To perform OVSS with
+given texts, we project the visual tokens Z ∗ into the vision-
+language latent space as FCLIP = PCLIP(Z ∗) ∈ RN ×d,
+where PCLIP is a projection matrix into CLIP latent space
+and d is the CLIP latent dimension. We compute patch-text
+similarity ˆS ∈ RN ×C for each image window ˆI as
+ˆS = FCLIP
+h
+ti
+CLIP
+	C
+i=1
+i⊤
+, (4)
+where {ti
+CLIP}C
+i=1 := Concat
+
+t1
+CLIP, . . . , tC
+CLIP
+
+∈ RC×d de-
+notes the encoded text embeddings, and C is the number of
+classes. Finally, the results of all windows are combined to
+create a segmentation map for the entire image.
+3.2. Spectral Object-Level Context Distillation
+Our model CASS aims to capture such object-level contex-
+tual interaction within the image features to associate dif-
+ferent parts of the same object. However, the limited ability
+of CLIP to capture semantic relationships between patches
+often neglects the object-level context, as illustrated in the
+left column of Fig. 3 (ACLIP). To address this limitation, we
+leverage VFM (e.g., DINO [8]), enabling a deeper object-
+level contextual understanding. Among VFM features, we
+utilize VFM attention key component KVFM ∈ Rh×N ×Dh.
+Specifically, we treat the VFM attention adjacencyAVFM =
+KVFMK ⊤
+VFM ∈ Rh×N ×N as a graph, where h represents the
+number of heads, and transfer crucial graph patterns from
+AVFM to ACLIP. However, a key question remains: “How do
+we account for themulti-head attention mechanisms in both
+VFM and CLIP?” In other words, “how do we match i-th
+VFM attention head Ai
+VFM with j-th CLIP attention head
+Aj
+CLIP?” A straightforward approach is to distill the atten-
+tion heads sequentially (i.e., i = j). Nevertheless, recent
+studies [22, 31, 59] indicate that different attention heads
+focus on separate parts of the image. Thus, matching the
+optimal heads between VFM and CLIP is essential for pre-
+cise attention distillation.
+3.2.1. Complementary Spectral Graph Matching
+We match graphs with contrasting structures, as shown in
+Fig 4, enabling VFM to supplement the object-level con-
+textual knowledge that CLIP alone struggles to capture. To
+match an optimal head-wise attention graph, we exploit the
+spectral field of both AVFM and ACLIP. Our graph-matching
+mechanism has two main steps as illustrated in Fig. 2(a): (I)
+examining the eigenvalues of each graph and (II) matching
+optimal graph pairs using the spectral distribution.
+(I) Eigenvalue Examination. For each graph from VFM
+and CLIP, denoted as Ai
+VFM and Ai
+CLIP for (i = 1 , . . . , h),
+we perform eigendecomposition. This yields the eigenval-
+ues for each head h, λi
+VFM and λi
+CLIP, from which the top m
+fixed eigenvalues are selected. These eigenvalues contain
+each graph’s unique structural features, key properties es-
+sential for distinguishing different attention graph patterns.
+(II) Graph Matching via Spectral Distribution. After ob-
+taining eigenvalues for each head, we compute spectral dis-
+tances to quantify structural differences, creating a cost ma-
+trix C ∈ Rh×h for each graph pair from VFM and CLIP:
+Cij = 1 − DW (¯λi
+VFM, ¯λj
+CLIP), ∀ i, j ∈ {1, . . . , h} (5)
+where ¯λi
+VFM and ¯λj
+CLIP represent the normalized eigenval-
+ues of the i-th head of VFM and the j-th head of CLIP,
+respectively, and DW denotes the Wasserstein distance.
+Here, the Wasserstein distance is computed as DW (u, v) =Ph
+i=1 |sort(u)i − sort(v)i|, where u and v are the two in-
+put distributions, and the sort function orders the values of
+u and v in ascending order. After computing C, we apply
+the Hungarian matching algorithm [27] to the cost matrix to
+find the optimal pairing of graph heads. This approach pairs
+graphs with contrasting characteristics, enabling comple-
+mentary distillation of object-level context knowledge from
+AVFM to ACLIP, as described in the following section.
+3.2.2. Distilling VFM Spectral Graph to CLIP
+Once we match optimal graph pairs, we distill the VFM
+graph to CLIP (see Fig. 2(b)). For the sake of explana-
+tion, we assume that the i-th VFM attention head Ai
+VFM
+is matched with the j-th CLIP attention head Aj
+CLIP. An
+intuitive approach would be simply aggregating Ai
+VFM and
+Aj
+CLIP without any transformation. However, as shown in
+Fig. 3 (Aψ w/o LR), this approach may transfer noise or irrel-
+evant information, highlighting the need to extract features
+15036
+
+
+=== PAGE 5 ===
+Input Image
+ ̈𝐴𝐴VFM
+𝑖𝑖 𝐴𝐴CLIP
+𝑗𝑗 𝐴𝐴𝜓𝜓
+𝑗𝑗
+Figure 4. Visualization of the matched complementary graph
+pairs. The red dotted line indicates the focus areas of VFM, while
+the yellow dotted line highlights those for CLIP. By aggregat-
+ing graphs with contrasting structural properties, we enhance the
+object-level context in ACLIP supported by ¨AVFM, resulting Aψ.
+that emphasize object-level context. From this realization,
+we leverage the low-rank components of VFM, which con-
+tain distinct object patterns within the graph structure [12].
+Specifically, we (I) extract the critical object-level contex-
+tual structure of Ai
+VFM via low-rank approximation and en-
+hance the graph structure by dynamically scaling eigenval-
+ues. Then, we (II) distill the approximated VFM graph into
+CLIP by aggregating graphs based on spectral distance.
+(I) Low-Rank Dynamic Eigenscaling. Our goal is to trans-
+fer the essential object-level contextual structure of VFM
+graph AVFM to CLIP. To achieve this, we extract low-rank
+components of the VFM graph using standard eigende-
+composition, as Ai
+VFM = UΣU ⊤, where U and Σ repre-
+sent the eigenvector and the diagonal eigenvalue matrix, re-
+spectively. In the decomposed eigenbasis, we identify key
+object-level features of each graph by searching an optimal
+number of eigenvaluesk through an energy-based approach.
+This ensures that the chosen k eigenvalues capture a signifi-
+cant portion of the graph’s energy, retaining essential struc-
+tural information while discarding noise and less relevant
+details. More details on searching k can be found in the
+supplementary material. This process yields a low-rank ap-
+proximated VFM graph, expressed as ˜Ai
+VFM = UkΣkU ⊤
+k .
+We refine the low-rank components with a scaling func-
+tion ϕ, which dynamically amplifies larger eigenvalues and
+reduces smaller ones. Compared to the conventional shrink-
+age function [2, 5], which only focuses on noise cutoff,
+our approach emphasizes essential structural information,
+particularly object-level context features, while suppressing
+noise and irrelevant details. More details on dynamic eigen-
+scaling can be found in the supplementary material. The
+graph after applying dynamic eigenscaling is as
+¨Ai
+VFM = Ukϕ(Σk)U ⊤
+k . (6)
+(II) VFM Graph Distillation. We distill the essential
+object-level contextual knowledge from the tailored VFM
+graph ¨Ai
+VFM into the Aj
+CLIP by aggregating their structures:
+Object PresencePrior
+CLIP VisualEncoder
+A photo of a {dog}
+Visual EmbeddingObject-specificSemantic Vectors
+truckbuscarskydogcat
+𝑡!"#$%&'()
+𝑡!"#$*'+
+𝑡!"#$(,&
+⊙
+CLIPEmbeddingSpace
+𝑡!"#$-./
+truckbuscarskydogcat
+SemanticDistance𝒯/
+𝑣!"#$
+𝑡!"#$0
+: TextEmbedding          : RefinedEmbedding          : Object-specific Vector          : Top-𝑛 Object-specificVector
+𝑡!"#$+)2
+𝑡!"#$(,%VFM VisualEncoder
+CLIP TextEncoder
+𝐹!"#$⨁
+Figure 5. Detailed illustration of our object presence prior-guided
+text embedding adjustment module. The CLIP text encoder gener-
+ates text embeddings for each object class, and the object presence
+prior is derived from both visual and text embeddings. Within
+hierarchically defined class groups, text embeddings are selected
+based on object presence prior, then refined in an object-specific
+direction to align with components likely present in the image.
+Aj
+ψ = (wij ¨Ai
+VFM + Aj
+CLIP)/(wij + 1), (7)
+where wij is defined as the Wasserstein distance between
+eigenvalues from both graphs as DW(¯λi
+VFM, ¯λj
+CLIP). This
+adaptively assigns higher weights to graphs with comple-
+mentary structures, while reducing influence on those with
+similar structures. Our distillation strategy effectively trans-
+fers the critical object-level context from VFM to CLIP, en-
+suring multiple components of the same object are grouped
+into a unified semantic as illustrated in Fig. 3 (Aψ). There-
+fore, we use Aψ as our attention matrix instead of ACLIP in
+Eq. (2) to compute the final visual feature FCLIP.
+3.3. Object Presence-Driven Object-Level Context
+The spectral object-level context distillation in Sec. 3.2 en-
+ables precise object mask generation. However, due to the
+nature of OVSS, where users can provide arbitrary query
+prompts, different parts of the same object may still be as-
+signed to closely related categories. Meanwhile, numerous
+studies [20, 34, 39] have demonstrated that CLIP excels in
+zero-shot object classification capability. Accordingly, we
+utilize the zero-shot object classification score encoded by
+CLIP (i.e., the object presence prior) to refine text embed-
+dings and patch-text similarity, enhancing object-centered
+perspective. To compute the object presence prior P , we
+take an entire input image I and compute likelihood for
+each class i as P (i) = {ti
+CLIP}C
+i=1vCLIP, where the visual
+embedding vector vCLIP = F v
+CLIP(I) ∈ Rd is derived from
+the ViT [CLS] token. The object presence prior is used in
+the following sections to enhance object-level context.
+Object-Guided Text Embedding Adjustment. We ad-
+just text embeddings {ti
+CLIP}C
+i=1 to embed object-specific
+contextual semantics, as shown in Fig. 5. To prevent ob-
+ject parts from being assigned to ambiguous classes, we
+15037
+
+
+=== PAGE 6 ===
+Table 1. Quantitative results with state-of-the-art unsupervised open-vocabulary semantic segmentation models on eight datasets.
+Model Supporting Dataset Extra-Training Fair V21 PC60 C-Obj V20 PC59 C-Stf City ADE Avg.
+GroupViT [54] CVPR’22 CC12M+RedCaps ✓ ✗ 50.4 18.7 27.5 79.7 23.4 15.3 11.1 9.2 29.4
+TCL [9] CVPR’23 CC3M+CC12M ✓ ✗ 55.0 30.4 31.6 83.2 33.9 22.4 24.0 17.1 37.2
+CoDe [51] CVPR’24 CC3M+RedCaps ✓ ✗ 57.5 30.5 32.3 - - 23.9 28.9 17.7 -
+CLIP-DINOiser [52]ECCV’24 ImageNet1k ✓ ✗ 62.1 32.4 34.8 80.9 35.9 24.6 31.7 20.0 40.3
+ReCo [45] NeurIPS’22 ImageNet1k ✗ ✗ 25.1 19.9 15.7 57.7 22.3 14.8 21.6 11.2 23.5
+FOSSIL [3] W ACV’24 COCO Captions ✗ ✗ - - - - 35.8 24.8 23.2 18.8 -
+FreeDa [4] CVPR’24 COCO Captions ✗ ✗ - - - 85.6 43.1 27.8 36.7 22.4 -
+CLIP [39] ICML’21 ✗ ✗ ✓ 18.6 7.8 6.5 49.1 11.2 7.2 6.7 3.2 13.8
+MaskCLIP [58] ECCV’22 ✗ ✗ ✓ 38.3 23.6 20.6 74.9 26.4 16.4 12.6 9.8 27.9
+GEM [6] CVPR’24 ✗ ✗ ✓ 46.2 - - - 32.6 - - 15.7 -
+CaR [47] CVPR’24 ✗ ✗ ✓ 48.6 13.6 15.4 73.7 18.4 - - 5.4 -
+PnP-OVSS [33] CVPR’24 ✗ ✗ ✓ - - 36.2 51.3 28.0 17.9 - 14.2 -
+CLIPtrase [44] ECCV’24 ✗ ✗ ✓ 50.9 29.9 43.6 81.0 33.8 22.8 21.3 16.4 32.7
+ClearCLIP [28] ECCV’24 ✗ ✗ ✓ 51.8 32.6 33.0 80.9 35.9 23.9 30.0 16.7 38.1
+SCLIP [48] ECCV’24 ✗ ✗ ✓ 59.1 30.4 30.5 80.4 34.1 22.4 32.2 16.1 38.2
+LaVG [21] ECCV’24 ✗ ✗ ✓ 62.1 31.6 34.2 82.5 34.7 23.2 26.2 15.8 38.8
+ProxyCLIP [29] ECCV’24 ✗ ✗ ✓ 59.1 35.2 36.2 78.2 38.8 26.2 38.1 19.6 41.4
+NACLIP [16] W ACV’25 ✗ ✗ ✓ 58.9 32.2 33.2 79.7 35.2 23.3 35.5 17.4 39.4
+CASS ✗ ✗ ✓ 65.8 36.7 37.8 87.8 40.2 26.7 39.4 20.4 44.4
+hierarchically cluster text embeddings based on CLIP se-
+mantic distance, forming groups of similar embeddings
+Tg = {ti
+CLIP | i ∈ Ig}, where Tg is a subset of entire
+text embeddings {ti
+CLIP}C
+i=1 with index set Ig. Further de-
+tails about this clustering process are provided in the supple-
+mentary materials. Within Tg, we identify the object most
+likely to appear in the image using object presence prior
+P , formulated as i∗ = arg maxi∈Ig P (i). This facilitates
+refining the text embedding vector ti∗
+CLIP to better represent
+object-contextual semantics. We note that patch-wise vi-
+sual feature FCLIP ∈ RN ×d contains object-specific seman-
+tic vectors that can guide ti∗
+CLIP accordingly. Thus, we com-
+pute cosine similarity between FCLIP and ti∗
+CLIP and select
+top-n object-specific image vector denoted as {fi}n
+i=1 :=
+Concat [f1, . . . , fn] ∈ Rn×d. To define a targeted direction,
+we compute the average of {fi}n
+i=1 as µn ∈ Rd, and guide
+selected text embedding ti∗
+CLIP towards µn as
+˜ti∗
+CLIP = (1 − α) · ti∗
+CLIP + α · µn, (8)
+where α controls the degree of alignment with µn. The ad-
+justed text embedding ˜ti∗
+CLIP replaces the original text em-
+bedding ti
+CLIP in the set {ti
+CLIP}
+C
+i=1, which is then used to
+compute the patch-text similarity logit ˆS in Eq. (4).
+Object Perspective Patch-Text Similarity. We integrate
+the object presence prior with patch-text similarity ˆS from
+Eq. (4) to produce a segmentation map from an object-
+perspective view. Unlike Barsellotti et al. [4], which com-
+putes likelihood from an image window ˆI, our approach
+derives similarity from the full image I, enabling richer
+object-contextual understanding at the broader level. Thus,
+we refine the patch-text similarity ˆS from Eq. (4) to obtain
+the final patch-text similarity ˆS ∗, computed as
+ˆS ∗ = (1 − γ) · ˆS + γ ·
+
+ti
+CLIP
+	C
+i=1 vCLIP, (9)
+where γ controls the balance between ˆS and object presence
+prior. This allows the final segmentation map to capture
+object-level details for precise, class-aware segmentation.
+4. Experiments
+We first describe the experimental settings, including
+implementation details, datasets, and evaluation metrics
+(Sec. 4.1). We then present quantitative and qualitative eval-
+uation results (Sec. 4.2) and demonstrate ablation studies to
+assess each proposed component (Sec. 4.3). Additional ex-
+periment results are provided in the supplementary material.
+4.1. Experimental Settings
+Implementation Details. Similar to existing training-free
+approaches [16, 21, 29, 44, 48], we employ CLIP ViT-
+B/16 [39] as our VLM and DINO ViT-B/8 [8] as our VFM,
+keeping both frozen. Input images are matched with the
+shorter side set to 336 pixels (or 560 pixels for the higher-
+resolution Cityscapes dataset), and sliding window infer-
+ence is applied with a 224 × 224 window and a stride of
+112 to achieve efficient evaluation coverage. All experi-
+ments are conducted using NVIDIA RTX A6000 Ada∗.
+Datasets. Our primary datasets include PASCAL VOC
+2012 [15], PASCAL Context [37], and COCO [7], each
+evaluated with and without a background class. We refer
+to the versions with a background class as V21, PC60, and
+C-Obj, and those without as V20, PC59, and C-Stf. We also
+report results on the ADE20K (ADE) [57] and Cityscapes
+(City) [13] datasets. These datasets contain 21, 60, 81, 20,
+59, 171, 150, and 19 classes, respectively.
+* Advanced Database System Infrastructure (NFEC-2024-11-300458)
+15038
+
+
+=== PAGE 7 ===
+GT ImageProxyCLIPCASS
+Pascal VOC
+NACLIP
+Pascal Context COCO ADE20K
+Figure 6. Qualitative comparison across the Pascal VOC [15], Pascal Context [37], COCO [7], and ADE20K [57] datasets using CLIP
+ViT-B/16 [39], evaluating previous state-of-the-art training-free OVSS methods, including NACLIP [16], ProxyCLIP [29], and ours.
+4.2. Evaluation Results
+We evaluate our model against training-free OVSS methods
+both quantitatively and qualitatively. For fair comparison,
+we refrain from using the mask refinement (e.g., PAMR [1]
+or DenseCRF [26]) and reproduce results from [29] using a
+224 × 224 window to match the baselines. Performance is
+measured primarily with mean IoU (mIoU), complemented
+by pixel accuracy (pAcc) for a broader assessment.
+Quantitative Evaluation: mIoU. Table 1 presents the main
+results in mIoU, where all results are obtained using CLIP
+ViT-B/16 as the backbone model for fair comparisons. To
+demonstrate the strengths of our model, we also include
+methods that use supporting datasets (i.e., retrieving ad-
+ditional datasets during inference) or additional training
+(models evaluated under the same setting as ours are indi-
+cated with ✓ in the “Fair” column). Our model, CASS, per-
+forms favorably against the state-of-the-art methods, with
+an average gain of 3.0 mIoU point across eight datasets. No-
+tably, for the V20,CASS achieves a performance gain of 5.3
+mIoU point over the second-best model. Further,CASS out-
+performs CLIP-DINOiser [52] (which also leverages DINO
+with extra data and training) by 4.1 mIoU point.
+Quantitative Evaluation: pAcc. Table 2 shows the re-
+sults of pAcc on recent state-of-the-art models evaluated
+under the same settings. Our CASS outperforms the second-
+highest model by 2.2 pAcc point and exceeds one of the
+most recent papers, CLIPtrase [44], by 9.8 pAcc point. Our
+model consistently performs better than existing methods
+on mIoU and pAcc by effectively capturing object-level
+context, resulting in more accurate object masking.
+Qualitative Analysis. Fig. 6 provides a qualitative compar-
+ison with recent state-of-the-art models [16, 29]. Existing
+methods often produce noisy segmentation maps and do not
+group object components correctly, such as wheels within a
+car or a person’s head or arm. Additionally, they often mis-
+Table 2. Quantitative results using average pixel accuracy.
+Model V21 PC60 C-Obj V20 PC59 C-Stf City ADE Avg.
+CLIPtrase [44] 78.6 52.1 50.1 89.7 58.9 38.9 63.4 38.6 59.1
+LaVG [21] 89.3 48.7 74.8 91.1 58.9 39.1 68.5 37.0 63.4
+SCLIP [48] 87.6 49.2 74.3 91.0 58.3 38.4 72.7 38.7 63.8
+ProxyCLIP [29] 86.6 52.0 75.9 88.4 63.4 43.4 74.9 49.1 66.7
+NACLIP [16] 87.1 51.2 75.3 89.2 59.8 39.3 71.7 45.2 64.9
+CASS 90.1 55.6 76.0 93.9 65.0 43.6 78.2 48.6 68.9
+classify object parts into ambiguous classes (e.g., a motor-
+cycle as a bicycle or an airplane as a car). In contrast, based
+on a deep understanding of object-level context, our CASS
+generates clean segmentation maps that accurately group all
+object components, including slender parts such as human
+arms or animal legs, into their respective object classes.
+4.3. Ablation Study
+We perform ablation studies to analyze the proposed
+method. We use the datasets representative of segmentation
+tasks for all experiments: V21, PC59, C-Stf, following [48].
+Please refer to the supplementary material for the additional
+ablation studies including VFM backbones and feature type.
+Effect of Spectral VFM Distillation. Table 3 shows the
+results of incorporating VFM (Exp.#3) with the vanilla set-
+ting (Exp.#1), which directly uses the output from Eq. (4).
+In Exp.#3, AVFM and ACLIP are aggregated in a straight-
+forward head-wise manner, without any additional process-
+ing to AVFM. Simply leveraging AVFM leads to a perfor-
+mance gain compared to the vanilla setting. Exp.#4 to
+Exp.#6 validate the effectiveness of the proposed compo-
+nents (see Sec. 3.2). Exp.#4 demonstrates the aggregation
+of AVFM and ACLIP using a complementary spectral graph
+matching (GM) procedure. Exp.#5, denoted as LR, presents
+the results with only the low-rank approximation applied to
+AVFM, while Exp.#6 shows the results with both the low-
+rank approximation and Dynamic Eigenscaling (DE) ap-
+plied, as defined in Eq. (6). Notably, Exp.#6 shows signifi-
+15039
+
+
+=== PAGE 8 ===
+Table 3. Ablation results showing the impact of our components
+on the performance across V21 [15], PC59 [37], and C-Stf [7].
+The abbreviations in the table are noted in Sec. 4.3.
+Exp. AVFM GM LR DE OPS OTA Dataset
+# V21 PC59 C-Stf
+1 58.9 35.3 23.4
+2 ✓ ✓ 59.2 36.5 24.0
+3 ✓ 62.9 37.7 25.2
+4 ✓ ✓ 63.2 38.0 25.4
+5 ✓ ✓ ✓ 64.5 38.4 25.8
+6 ✓ ✓ ✓ ✓ 64.8 38.6 25.9
+7 ✓ ✓ ✓ ✓ ✓ 65.0 39.4 26.6
+8 ✓ ✓ ✓ ✓ ✓ ✓ 65.8 40.2 26.7
+Input Image Exp.#1 Exp.#6 Exp.#8 (Ours) Ground Truth
+Train MotorbikeBus Bicycle
+Figure 7. Qualitative ablation of our method. Exp.# refers to the
+experiment in Table 3. As additional components of our proposed
+method are incorporated, the segmentation map exhibits greater
+refinement and more effectively captures object-level context.
+cant performance gain over simply integrating VFM knowl-
+edge (Exp.#3), demonstrating the effectiveness of graph
+matching and low-rank approximation in capturing object-
+level context. Fig. 3 qualitatively visualizes the attention
+map, with the left, middle, and right columns corresponding
+to Exp.#3, Exp.#4, and Exp.#6, respectively. We observe
+that integrating proposed low-rank dynamic eigenscaling
+effectively reduces noise and emphasizes objects by high-
+lighting objects with strong inter-object associations.
+Effect of Object Presence Prior . We validate the ef-
+fectiveness of the object presence prior-driven methods in
+Exp.#7 and Exp.#8 by examining each component: Object-
+Perspective Patch-Text Similarity (OPS) and Object-Guided
+Text Embedding Adjustment (OTA) (see Sec. 3.3). These
+results show that each component effectively improves per-
+formance, emphasizing object-level context. Additionally,
+incorporating the object presence prior-driven methods on
+top of the vanilla setting, as shown in Exp.#2, clarifies the
+effectiveness of the proposed method.
+Qualitative Ablations. Fig. 7 shows the segmentation
+maps for the vanilla setting (Exp.#1), after applying spec-
+tral VFM distillation (Exp.#6), and with all proposed com-
+ponents applied (Exp.#8). While Exp.#6 improves object
+masking compared to Exp.#1, it often misses parts of ob-
+jects (highlighted by the red dotted line). In contrast, in-
+corporating all proposed components (Exp.#8) consolidates
+objects into single entities, effectively capturing object-
+level context in the segmentation mask.
+Different CLIP Backbones. Table 4 shows results on dif-
+Table 4. Ablation results on different CLIP backbones.
+Model V21 PC59 C-Stf Avg. mIoUAvg.pAccmIoU pAcc mIoU pAcc mIoU pAcc
+ViT-B/32
+SCLIP [48] 50.6 81.0 28.7 49.6 20.0 33.4 33.1 54.7LaVG [21] 54.8 84.4 29.0 50.1 20.5 33.7 34.8 56.1ProxyCLIP [29] 57.9 85.6 35.2 59.7 23.6 40.2 38.9 61.8NACLIP [16] 51.1 82.8 32.4 56.8 21.2 37.1 34.9 58.9CASS 58.2 86.2 36.5 61.0 24.4 40.8 39.7 62.7
+ViT-L/14
+SCLIP [48] 44.4 78.1 25.2 46.6 17.6 29.6 29.1 51.4LaVG [21] 51.5 84.1 27.5 50.3 19.4 32.3 32.8 55.6ProxyCLIP [29] 59.8 85.7 38.3 61.0 26.2 43.5 41.4 63.4NACLIP [16] 52.2 83.1 32.1 52.8 21.4 35.7 35.2 57.2CASS 62.1 88.0 39.1 62.1 26.3 43.4 42.5 64.5
+65.8
+40.2
+26.7
+64.6
+39.7
+26.3
+63.4
+38.9
+25.9
+63.4
+39.5
+26.1
+10
+30
+50
+70
+V21 PC59 C-Stf
+Wasserstein Distance Cosine Distance
+KL Divergence Euclidean Distance
+mIoU
+Figure 8. Performance evaluation of different distance metrics
+used in graph matching and graph distillation.
+ferent CLIP backbones, ViT-B/32 and ViT-L/14. OurCASS
+performs favorably across various backbones, consistently
+outperforming existing methods in mIoU and pAcc. These
+results demonstrate the effectiveness and robustness of our
+method across different backbone architectures.
+Distance Metric for Graph Matching. We evaluate dif-
+ferent distance metrics DW used in Sec. 3.2.1, including
+Wasserstein Distance, Cosine Distance, KL Divergence,
+and Euclidean Distance. As shown in Fig. 8, the Wasser-
+stein Distance shows the best results as it provides an intu-
+itive measure of the overall shape of sorted eigenvalue dis-
+tributions. While we use Wasserstein Distance due to its
+performance, the other well-known metrics exhibited com-
+parable results, demonstrating the robustness of our method
+in terms of the choice of a distance metric and further sup-
+porting the effectiveness of our proposed approach.
+5. Conclusion
+In this work, we present CASS, a training-free approach for
+OVSS that integrates object-level context into CLIP. By dis-
+tilling object-aware structural information from VFM into
+CLIP’s attention, CASS effectively enhances intra-object
+coherence, ensuring that each object is consistently repre-
+sented as a unified semantic entity. Additionally, we lever-
+age object-presence prior knowledge to adjust text embed-
+dings and refine object class assignments, aligning them
+with object-specific semantic targets in the image. Con-
+sequently, CASS effectively groups object components and
+assigns semantic labels without extra training or additional
+labeled data, making it a robust solution across diverse
+datasets and visual contexts.
+Acknowledgement. This work was supported in part by IITP RS-2024-
+00457882 (National AI Research Hub Project), IITP 2020-0-01361, NRF RS-2024-
+00345806, NRF RS-2023-00219019, and RS-2024-00403860 (Korea Basic Science
+Institute, National Research Facilities and Equipment Center).
+15040
+
+
+=== PAGE 9 ===
+References
+[1] Nikita Araslanov and Stefan Roth. Single-stage semantic
+segmentation from image labels. In CVPR, 2020. 7
+[2] Danny Barash and Matan Gavish. Optimal shrinkage of sin-
+gular values under random data contamination. NeurIPS,
+2017. 5
+[3] Luca Barsellotti, Roberto Amoroso, Lorenzo Baraldi, and
+Rita Cucchiara. Fossil: Free open-vocabulary semantic seg-
+mentation through synthetic references retrieval. In WACV,
+2024. 2, 6
+[4] Luca Barsellotti, Roberto Amoroso, Marcella Cornia,
+Lorenzo Baraldi, and Rita Cucchiara. Training-free open-
+vocabulary segmentation with offline diffusion-augmented
+prototype generation. In CVPR, 2024. 2, 6
+[5] Toby Boas, Aritra Dutta, Xin Li, Kathryn P Mercier, and Eric
+Niderman. Shrinkage function and its applications in matrix
+approximation. arXiv preprint arXiv:1601.07600, 2016. 5
+[6] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and
+Hilde Kuehne. Grounding everything: Emerging localiza-
+tion properties in vision-language transformers. In CVPR,
+2024. 6
+[7] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. COCO-
+Stuff: Thing and Stuff Classes in Context. In CVPR, 2018.
+6, 7, 8
+[8] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing Properties in Self-Supervised Vision Transformers. In
+ICCV, 2021. 2, 4, 6
+[9] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learning
+To Generate Text-Grounded Mask for Open-World Semantic
+Segmentation From Only Image-Text Pairs. In CVPR, 2023.
+1, 6
+[10] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian
+Schroff, and Hartwig Adam. Encoder-decoder with atrous
+separable convolution for semantic image segmentation. In
+ECCV, 2018. 1, 3
+[11] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. In CVPR, 2024. 1
+[12] Fan RK Chung. Spectral graph theory . American Mathe-
+matical Soc., 1997. 5
+[13] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The Cityscapes
+Dataset for Semantic Urban Scene Understanding. In CVPR,
+2016. 6
+[14] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An Image is
+Worth 16x16 Words: Transformers for Image Recognition at
+Scale. In ICLR, 2021. 2
+[15] M. Everingham, L. Van Gool, C. K. I. Williams, J. Winn, and
+A. Zisserman. The PASCAL Visual Object Classes Chal-
+lenge 2012 (VOC2012) Results, 2012. 6, 7, 8
+[16] Sina Hajimiri, Ismail Ben Ayed, and Jose Dolz. Pay attention
+to your neighbours: Training-free open-vocabulary semantic
+segmentation. In WACV, 2025. 1, 2, 3, 6, 7, 8
+[17] Mark Hamilton, Zhoutong Zhang, Bharath Hariharan, Noah
+Snavely, and William T Freeman. Unsupervised semantic
+segmentation by distilling feature correspondences. arXiv
+preprint arXiv:2203.08414, 2022. 3
+[18] Woojung Han, Seil Kang, Kyobin Choo, and Seong Jae
+Hwang. Complementary branch fusing class and semantic
+knowledge for robust weakly supervised semantic segmen-
+tation. Pattern Recognition, 2025. 1
+[19] Ali Hatamizadeh, Yucheng Tang, Vishwesh Nath, Dong
+Yang, Andriy Myronenko, Bennett Landman, Holger R
+Roth, and Daguang Xu. Unetr: Transformers for 3d med-
+ical image segmentation. In CVPR, 2022. 1, 3
+[20] Ruixiang Jiang, Lingbo Liu, and Changwen Chen. Clip-
+count: Towards text-guided zero-shot object counting. In
+ACM Multimedia, 2023. 2, 5
+[21] Dahyun Kang and Minsu Cho. In defense of lazy visual
+grounding for open-vocabulary semantic segmentation. In
+ECCV, 2024. 2, 6, 7, 8
+[22] Seil Kang, Jinyeong Kim, Junhyeok Kim, and Seong Jae
+Hwang. See what you are told: Visual attention sink in large
+multimodal models. In ICLR, 2025. 4
+[23] Seil Kang, Jinyeong Kim, Junhyeok Kim, and Seong Jae
+Hwang. Your large vision-language model only needs a few
+attention heads for visual grounding. In CVPR, 2025. 2
+[24] Chanyoung Kim, Woojung Han, Dayun Ju, and Seong Jae
+Hwang. Eagle: Eigen aggregation learning for object-centric
+unsupervised semantic segmentation. In CVPR, 2024. 2, 3
+[25] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. In ICCV, 2023. 3
+[26] Philipp Kr ¨ahenb¨uhl and Vladlen Koltun. Efficient Inference
+in Fully Connected CRFs with Gaussian Edge Potentials. In
+NeurIPS, 2011. 7
+[27] Harold W Kuhn. The hungarian method for the assignment
+problem. Naval research logistics quarterly, 1955. 4
+[28] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+ence. In ECCV, 2024. 1, 6
+[29] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Proxyclip: Proxy at-
+tention improves clip for open-vocabulary segmentation. In
+ECCV, 2024. 1, 2, 3, 6, 7, 8
+[30] Yi Li, Hualiang Wang, Yiqun Duan, and Xiaomeng Li. Clip
+surgery for better explainability with enhancement in open-
+vocabulary tasks. arXiv preprint arXiv:2304.05653 , 2023.
+2
+[31] Yiran Li, Junpeng Wang, Xin Dai, Liang Wang, Chin-
+Chia Michael Yeh, Yan Zheng, Wei Zhang, and Kwan-Liu
+Ma. How does attention work in vision transformers? a vi-
+sual analytics attempt. IEEE Transactions on Visualization
+and Computer Graphics, 2023. 4
+15041
+
+
+=== PAGE 10 ===
+[32] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. In CVPR, 2023. 1
+[33] Jiayun Luo, Siddhesh Khandelwal, Leonid Sigal, and
+Boyang Li. Emergent open-vocabulary semantic segmen-
+tation from off-the-shelf vision-language models. In CVPR,
+2024. 6
+[34] Yunyao Mao, Jiajun Deng, Wengang Zhou, Li Li, Yao Fang,
+and Houqiang Li. Clip4hoi: towards adapting clip for prac-
+tical zero-shot hoi detection. NeurIPS, 2023. 2, 5
+[35] Octave Mariotti, Oisin Mac Aodha, and Hakan Bilen. Im-
+proving semantic correspondence with viewpoint-guided
+spherical maps. In CVPR, 2024. 3
+[36] Luke Melas-Kyriazi, Christian Rupprecht, Iro Laina, and
+Andrea Vedaldi. Deep spectral methods: A surprisingly
+strong baseline for unsupervised semantic segmentation and
+localization. In CVPR, 2022. 2, 3
+[37] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The Role of Context for Object Detection and
+Semantic Segmentation in the Wild. In CVPR, 2014. 6, 7, 8
+[38] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 2
+[39] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+Transferable Visual Models From Natural Language Super-
+vision. In ICML, 2021. 1, 2, 3, 5, 6, 7
+[40] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net:
+Convolutional networks for biomedical image segmentation.
+In MICCAI, 2015. 1, 3
+[41] Maximilian Seitzer, Max Horn, Andrii Zadaianchuk, Do-
+minik Zietlow, Tianjun Xiao, Carl-Johann Simon-Gabriel,
+Tong He, Zheng Zhang, Bernhard Sch¨olkopf, Thomas Brox,
+and Francesco Locatello. Bridging the gap to real-world
+object-centric learning. In ICLR, 2023. 3
+[42] Hyun Seok Seong, WonJun Moon, SuBeen Lee, and Jae-Pil
+Heo. Leveraging hidden positives for unsupervised semantic
+segmentation. In CVPR, 2023. 3
+[43] Xiangheng Shan, Dongyue Wu, Guilin Zhu, Yuanjie Shao,
+Nong Sang, and Changxin Gao. Open-vocabulary semantic
+segmentation with image embedding balancing. In CVPR,
+2024. 1
+[44] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. In ECCV, 2024. 3, 6, 7
+[45] Gyungin Shin, Weidi Xie, and Samuel Albanie. ReCo: Re-
+trieve and Co-segment for Zero-shot Transfer. In NeurIPS,
+2022. 6
+[46] Oriane Sim ´eoni, Gilles Puy, Huy V V o, Simon Roburin,
+Spyros Gidaris, Andrei Bursuc, Patrick P ´erez, Renaud Mar-
+let, and Jean Ponce. Localizing objects with self-supervised
+transformers and no labels. In BMVC, 2021. 3
+[47] Shuyang Sun, Runjia Li, Philip Torr, Xiuye Gu, and Siyang
+Li. Clip as rnn: Segment countless visual concepts without
+training endeavor. In CVPR, 2024. 2, 6
+[48] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethinking
+self-attention for dense vision-language inference. In ECCV,
+2024. 1, 2, 3, 6, 7, 8
+[49] Xudong Wang, Rohit Girdhar, Stella X Yu, and Ishan Misra.
+Cut and Learn for Unsupervised Object Detection and In-
+stance Segmentation. In CVPR, 2023. 3
+[50] Xin Wen, Bingchen Zhao, Anlin Zheng, Xiangyu Zhang, and
+Xiaojuan Qi. Self-supervised visual representation learning
+with semantic grouping. NeurIPS, 2022. 3
+[51] Ji-Jia Wu, Andy Chia-Hao Chang, Chieh-Yu Chuang,
+Chun-Pei Chen, Yu-Lun Liu, Min-Hung Chen, Hou-Ning
+Hu, Yung-Yu Chuang, and Yen-Yu Lin. Image-text co-
+decomposition for text-supervised semantic segmentation. In
+CVPR, 2024. 6
+[52] Monika Wysocza ´nska, Oriane Sim´eoni, Micha¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzci ´nski, and Patrick P ´erez.
+Clip-dinoiser: Teaching clip a few dino tricks.arXiv preprint
+arXiv:2312.12359, 2023. 6, 7
+[53] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. Sed: A simple encoder-decoder for open-
+vocabulary semantic segmentation. In CVPR, 2024. 1
+[54] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas Breuel, Jan Kautz, and Xiaolong Wang. GroupViT:
+Semantic Segmentation Emerges From Text Supervision. In
+CVPR, 2022. 1, 6
+[55] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+CVPR, 2023. 1
+[56] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. In CVPR, 2023. 1
+[57] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic Un-
+derstanding of Scenes Through the ADE20K Dataset. IJCV,
+2019. 6, 7
+[58] Chong Zhou, Chen Change Loy, and Bo Dai. Extract Free
+Dense Labels from CLIP. In ECCV, 2022. 1, 2, 6
+[59] Lianghui Zhu, Yingyue Li, Jiemin Fang, Yan Liu, Hao Xin,
+Wenyu Liu, and Xinggang Wang. Weaktr: Exploring plain
+vision transformer for weakly-supervised semantic segmen-
+tation. arXiv preprint arXiv:2304.01184, 2023. 4
+15042

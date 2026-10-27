@@ -1,0 +1,1095 @@
+=== PAGE 1 ===
+PCA-Seg: Revisiting Cost Aggregation for Open-Vocabulary Semantic and Part
+Segmentation
+Jianjian Yin1,5 Tao Chen1,5* Yi Chen2 Gensheng Pei3 Xiangbo Shu1 Yazhou Yao1,5∗ Fumin Shen4
+1Nanjing University of Science and Technology 2Nanjing Normal University
+3Department of Electrical and Computer Engineering, Sungkyunkwan University
+4University of Electronic Science and Technology of China
+5State Key Laboratory of Intelligent Manufacturing of Advanced Construction Machinery
+https://github.com/NUST-Machine-Intelligence-Laboratory/PCA-Seg
+Abstract
+Recent advances in vision-language models (VLMs) have
+garnered substantial attention in open-vocabulary seman-
+tic and part segmentation (OSPS). However, existing meth-
+ods extract image-text alignment cues from cost volumes
+through a serial structure of spatial and class aggregations,
+leading to knowledge interference between class-level se-
+mantics and spatial context. Therefore, this paper pro-
+poses a simple yet effective parallel cost aggregation (PCA-
+Seg) paradigm to alleviate the above challenge, enabling
+the model to capture richer vision-language alignment in-
+formation from cost volumes. Specifically, we design an
+expert-driven perceptual learning (EPL) module that effi-
+ciently integrates semantic and contextual streams. It in-
+corporates a multi-expert parser to extract complementary
+features from multiple perspectives. In addition, a coeffi-
+cient mapper is designed to adaptively learn pixel-specific
+weights for each feature, enabling the integration of com-
+plementary knowledge into a unified and robust feature
+embedding. Furthermore, we propose a feature orthog-
+onalization decoupling (FOD) strategy to mitigate redun-
+dancy between the semantic and contextual streams, which
+allows the EPL module to learn diverse knowledge from
+orthogonalized features. Extensive experiments on eight
+benchmarks show that each parallel block in PCA-Seg adds
+merely 0.35M parameters while achieving state-of-the-art
+OSPS performance.
+1. Introduction
+Conventional segmentation [4, 5, 33, 59] is limited to a pre-
+defined set of categories, which restricts the model’s abil-
+ity to perceive the open-world visual environment. In re-
+*Corresponding author.
+CLIP 
+Encoder 
+Decoder 
+(b) Existing Methods Orthogonality :Diversity :
+CLIP 
+Encoder 
+Spatial Agg.
+Class Agg.
+Spatial Agg.
+EPLDecoupling via FOD
+ Decoder 
+Orthogonality :Diversity :
+ (c) Ours
+Image and TextCost Volume
+Class Agg.
+Serial block ×2 
+Parallel block ×2 
+Input Image Serial Cost Aggregation Parallel Cost Aggregation
+(a) Aggregated Cost Comparison 
+Figure 1. Motivation of PCA-Seg. (a) Cost aggregation compari-
+son among different methods for class runway. (b) The prevail-
+ing serial architecture. (c) Our proposed parallel cost aggregation
+paradigm. The FOD strategy decouples class-level semantics and
+spatial context, enabling the EPL module to parse diverse knowl-
+edge from the resulting orthogonalized features.
+cent years, vision-language foundation models (e.g., CLIP
+[41] and ALIGN [23]), trained on large image-text paired
+datasets, have demonstrated remarkable open-vocabulary
+recognition capabilities. Numerous studies [27, 55, 61, 64]
+have adapted vision foundation models, initially designed
+for image-level recognition, to enable dense prediction
+tasks [2, 40]. This adaptation has driven significant progress
+in open-vocabulary semantic and part segmentation (OSPS)
+[17, 18, 47, 53] for arbitrary-class classification.
+Early OSPS methods [15, 28, 57] freeze the parameters
+of CLIP within a two-stage framework to preserve its strong
+vision-language alignment. However, their significant com-
+putational overhead limits scalability and hinders further re-
+search. In contrast, current mainstream approaches [11, 13,
+50, 52] adopt an end-to-end learning paradigm [3, 39, 60],
+enabling dense prediction through fine-tuning CLIP’s atten-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+27633
+
+
+=== PAGE 2 ===
+tion layers. Representative open-vocabulary semantic seg-
+mentation (OVSS) methods, such as DeCLIP [50] and H-
+CLIP [36], along with open-vocabulary part segmentation
+(OVPS) approaches like PartCATSeg [13], follow a simi-
+lar processing paradigm. These methods perform two con-
+secutive operations of spatial and class aggregation on the
+similarity matrix (cost volume) derived from visual and tex-
+tual encoder features, as shown in Figure 1(b). Although
+the above design achieves excellent performance, its serial
+architecture induces knowledge interference between class-
+level semantics and spatial structural information , thereby
+hindering the refinement of the cost volume and impairing
+image-text alignment. As illustrated in Figures 1(a) and (b),
+applying spatial aggregation before class aggregation cap-
+tures contextual structures but distorts the semantics of the
+truck category. The subsequent class aggregation further
+amplifies this semantic bias, causing the truck region to
+be misclassified as runway.
+The aforementioned knowledge interference primarily
+arises from the cascading behavior of the serial structure,
+where the aggregation of one information source triggers
+a chain reaction in the subsequent aggregation of another.
+This observation motivates the design of a parallel archi-
+tecture that enables the two aggregation types to operate
+independently, thereby mitigating knowledge interference.
+However, compared to the serial architecture, the baseline
+model, which captures both class semantics and spatial con-
+text through a single convolution, shows a slight decrease
+of 0.2% mIoU on PAS-20b (81.3%→81.1%). This raises
+a key challenge: How to efficiently integrate the two knowl-
+edge flows to facilitate diverse information learning?
+Therefore, this paper proposes a simple yet effective par-
+allel cost aggregation ( PCA-Seg) paradigm that alleviates
+the knowledge interference between class-level semantics
+and spatial structural information, facilitating the extraction
+of richer image-text alignment cues from the cost volume,
+as shown in Figure 1(c). Specifically, we design an expert-
+driven perceptual learning (EPL) module to efficiently in-
+tegrate the two knowledge streams derived from class and
+spatial aggregation. The module comprises two key compo-
+nents: a multi-expert parser and a coefficient mapper. The
+multi-expert parser synthesizes both aggregation types to
+reveal complementary knowledge from multiple perspec-
+tives. The coefficient mapper performs dimensionality re-
+duction learning on semantic and spatial features, generat-
+ing pixel-specific weight coefficients in a lightweight and
+adaptive manner. These coefficients are then used to em-
+phasize the regions of the features generated by the multi-
+expert parser, ultimately producing more robust and unified
+embeddings. In contrast to the existing serial architecture,
+the EPL module fully exploits featurediversity, thereby ac-
+tivating more fine-grained information (see Figure 5).
+Class-level semantics and spatial structural information
+PC-459
+A-847
+PAS-20bPAS-20
+PC-59
+A-150
+Ppart-O-U
+Ppart-P-H
+Ppart-P-U
+Apart-O-H
+Apart-O-U
+Apart-P-H
+Apart-P-U
+Ppart-O-H
+H-CLIP (CVPR’25) DeCLIP(CVPR’25) PartCLIPSeg (NIPS’24) PartCATSeg(CVPR’25) PCA-Seg (Ours)
+(a) OVSS (b) OVPS
+Figure 2. Comparison with other state-of-the-art methods on dif-
+ferent benchmarks. “Ppart” and “Apart” are abbreviations for the
+Pascal-Part-116 [51] and ADE20K-Part-234 [51] datasets, respec-
+tively. ‘P’ and ‘O’ denote two different settings, namely Pred-All
+and Oracle-Obj. ‘H’ represents the harmonic IoU over both seen
+and unseen classes, while ‘U’ denotes the mIoU of unseen classes.
+are typically regarded as knowledge representations along
+two distinct dimensions. These two knowledge flows
+should remain largely uncorrelated, encouraging the model
+to explore a broader feature space. Motivated by this obser-
+vation, we propose a feature orthogonalization decoupling
+(FOD) strategy that separates the representations generated
+by class and spatial aggregation through orthogonalization.
+This strategy ensures, from the knowledge source perspec-
+tive, that the EPL module extracts more diverse and comple-
+mentary knowledge, as depicted in Figure 1(c). Concretely,
+since class-level semantic and spatial structural features re-
+main correlated in the non-orthogonal state, an orthogonal-
+ization decoupling loss is designed to reduce their cosine
+similarity to zero, enforcingorthogonality between the two
+knowledge flows, as shown in Figure 6(b). Ablation studies
+(see Table 5a) demonstrate that the FOD strategy enhances
+fine-grained feature learning within the EPL module, lead-
+ing to a 0.9% mIoU improvement on A-150.
+Compared with existing serial blocks, each parallel
+block in PCA-Seg adds only 0.35M additional parameters
+and requires 0.96G more GPU memory, while effectively
+mitigating knowledge interference and achieving state-of-
+the-art performance on eight benchmarks, which is illus-
+trated in Figure 2. To summarize, our contributions are as
+follows: (1) We revisit cost aggregation and propose PCA-
+Seg with a parallel architecture to mitigate knowledge inter-
+ference between class-level semantics and spatial structural
+information, enabling robust image-text alignment learning
+from the cost volume. (2) Expert-driven perceptual learning
+is designed to perform multi-perspective, fine-grained anal-
+ysis of knowledge obtained through class and spatial aggre-
+gation. (3) We further propose a feature orthogonalization
+decoupling strategy that constrains class-level semantic and
+spatial structural features, allowing EPL to exploit richer
+knowledge. (4) We conduct extensive experiments on eight
+benchmarks, and the results demonstrate that the proposed
+method achieves state-of-the-art performance.
+27634
+
+
+=== PAGE 3 ===
+2. Related Work
+Open-Vocabulary Semantic and Part Segmentation.Re-
+cently, the emergence of vision-language models (VLMs)
+[23, 25, 41, 44] has substantially advanced the development
+of open-vocabulary segmentation [38, 46], enabling recog-
+nition across arbitrary categories. For open-vocabulary se-
+mantic segmentation (OVSS), early studies [15, 17, 18,
+28, 56] commonly employ a two-stage training framework,
+where a robust class-agnostic mask generator [8] is first
+trained to delineate object regions, and the resulting masks
+are then fed into CLIP [41] for classification. The per-
+formance of two-stage methods is highly dependent on
+the quality of the generated masks. To address this lim-
+itation, numerous end-to-end approaches [43, 50, 54, 58]
+have been proposed to fine-tune specific CLIP parameters,
+such as attention layers, thereby enabling dense predic-
+tion and precise localization. Notably, H-CLIP [36] and
+HyperCLIP [37] focus on designing novel mechanisms to
+fine-tune CLIP parameters within hyperbolic space. To
+achieve a more fine-grained understanding of object com-
+ponents, early part segmentation methods [14, 20, 49] em-
+ploy contrastive and self-supervised learning techniques to
+accurately delineate target part regions. Recent advances
+in open-vocabulary part segmentation (OVPS), including
+VLPart [47], OV-PARTS [51], PartGLEE [26], and Part-
+CLIPSeg [12], build upon the OVSS framework and achieve
+superior performance by integrating prior knowledge, de-
+signing effective prompt strategies, and leveraging object-
+level contextual information.
+Open-Vocabulary Cost Aggregation. Reducing match-
+ing errors and improving generalization in dense visual
+correspondence [22, 29, 34] has been effectively achieved
+through cost aggregation [6, 11, 13, 21, 48], as evidenced by
+the work of CATs [9] and CATs++ [10] within Transformer-
+based architectures. Building on this, prominent methods
+such as CAT-Seg [11], H-CLIP [36], and DeCLIP [50] in-
+corporate cost aggregation into OVSS. They process the
+cost volume through two consecutive blocks of spatial and
+class aggregation, achieving impressive performance. Sim-
+ilarly, PartCATSeg [13] incorporates cost aggregation into
+OVPS, laying a solid foundation for further research in this
+area. In contrast to the aforementioned serial aggregation
+methods, PCA-Seg employs parallel cost aggregation to de-
+couple knowledge, allowing the model to learn richer im-
+age–text alignment information from the cost volume.
+3. Method
+OVSS and OVPS primarily differ in terms of class granular-
+ity. For clarity, this section provides a detailed description
+of the proposed PCA-Seg method, illustrating its frame-
+work using OVSS, as shown in Figure 3. We begin with an
+overview of the preliminary work ( §3.1), followed by the
+design of expert-driven perceptual learning ( §3.2) and fea-
+ture orthogonalization decoupling (§3.3). Finally, the over-
+all training objective (§3.4) is formulated.
+3.1. Preliminary
+Models for open-vocabulary semantic and part segmenta-
+tion are trained on the seen category set Ct and evaluated
+on a validation set Cv, which may include both seen cat-
+egories from Ct and unseen categories. By leveraging the
+strong image-text alignment of CLIP [41], the training pro-
+cess facilitates generalization to unseen categories without
+additional supervision and enables the assessment of knowl-
+edge transfer from seen to unseen concepts. The following
+section describes the cost volume generation and serial ar-
+chitecture within the methods CAT-Seg [11], DeCLIP [50],
+and PartCATSeg [13].
+Cost Volume Generation. Given an input image I and its
+corresponding text description T , CLIP generates the visual
+embedding F v ∈ RH×W ×C and the textual embedding
+F t ∈ RN ×C through its visual and text encoders. Here, H
+and W denote the height and width, respectively, N repre-
+sents the total number of categories, andC indicates the fea-
+ture dimension. Following CAT-Seg [11], the final attention
+layer of the visual encoder is replaced with two1×1 convo-
+lutional layers to improve object localization accuracy. The
+cost volume S ∈ RH×W ×N is then generated according to
+the following formulation:
+S(i, j) = F v(i) · F t(j)
+||F v(i)|| · ||F t(j)|| . (1)
+|| · || denotes the L2 norm of the feature. S(i, j) represents
+the cosine similarity between thei-th pixel of the visual em-
+bedding and the j-th category of the text embedding. S is
+then convolved with a1 × 1 convolution to produce the cost
+volume embedding V1 ∈ RH×W ×N ×C.
+Serial Architecture. The cost volume embedding is re-
+fined through two consecutive serial blocks of spatial and
+class aggregation, enhancing image-text alignment. Specif-
+ically, the embedding V1 is first processed by spatial aggre-
+gation Φn(·) to capture structural context across spatial di-
+mensions. It is then refined through class aggregationΓn(·)
+to exploit category-level semantic features, formulated as
+follows:
+Vn+1 = Γn(Φn(Vn)). (2)
+Here, n is the index, taking values in {1, 2}. Both Vn and
+Vn+1 maintain the same size throughout. Notably, spatial
+aggregation utilizes the Swin Transformer [30], while class
+aggregation employs a linear variant [24].
+Key Motivation. Although the serial architecture achieves
+notable performance, its inherent cascading effect entan-
+gles class and spatial aggregation. This causes biases from
+the preceding step to propagate into subsequent information
+learning, resulting in knowledge interference, as shown in
+27635
+
+
+=== PAGE 4 ===
+Class
+SpatialSpatial
+Push
+L𝑜𝑜𝑜𝑜
+A photo of a 
+{horse|···|grass}
+Text Encoder
+Visual Encoder
+Cost Volume
+Image
+Text
+SpatialClass
+Agg.
+Agg.
+Expert 1
+ExpertZ
+…
+ME-Parser
+Co-Mapper
+Expert 2…
+Prediction
+Decoder
+1
+Softmax
+Expert Block
+GeLU
+Co-Mapper
+Decoupling
+Parallel Aggregation Block ×2
+FOD
+EPL
+Conv2d
+ReLU
+Conv2d
+Conv2d
+BatchNorm
+Conv2d
+Alignment
+Hadamard Product
+MatrixConcatenation
+Adaptive Integration
+C
+Orthogonalization
+…
+2
+Z
+C
+Figure 3. The framework of PCA-Seg on OVSS. Image and text features from CLIP’s visual and text encoders are combined via the
+Hadamard product to construct the cost volume S. This volume is then processed simultaneously through spatial and class aggregation
+to produce the spatial context feature Bn and the class-level semantic representation En. The multi-expert (ME-) parser extracts diverse
+and complementary knowledge from these two streams across multiple perspectives, while the coefficient (Co-) mapper adaptively learns
+weights to integrate the features parsed by the experts. Bn and En are decoupled using the feature orthogonalization decoupling (FOD)
+strategy to reduce redundancy, thereby providing enriched representations for expert-driven perceptual learning (EPL).
+Figure 1 (a). This motivates the design of a parallel aggre-
+gation architecture to decouple the learning of class-level
+semantics and spatial contextual information, thereby alle-
+viating the aforementioned issue. The key challenge lies
+in effectively aggregating these two types of knowledge for
+more robust and fine-grained image-text alignment, which
+is detailed in the following sections.
+3.2. Expert-driven Perceptual Learning
+The two knowledge streams in the parallel architecture
+are designed to complement each other, thereby enhanc-
+ing the image-text alignment capability of the model. To
+this end, we propose the expert-driven perceptual learning
+(EPL) module, which efficiently integrates the two streams.
+In EPL, a multi-expert parser disentangles and refines class-
+level semantics and spatial contextual knowledge, extract-
+ing diverse and complementary information. These features
+are then adaptively fused using coefficients learned by a co-
+efficient mapper, resulting in unified and robust feature em-
+beddings.
+Parallel Architecture. Unlike the sequential aggregation
+in a serial manner, the cost volume embedding V1 is pro-
+cessed simultaneously by spatial and class-level aggrega-
+tion to produce the corresponding spatial context featureBn
+and class-level semantic representation En:
+Bn = Φn(Vn), En = Γn(Vn). (3)
+The above equation enables the decoupled learning of the
+two knowledge streams, with n defined consistently as in
+Equation 2. Each pair {Φn(·), Γn(·)} represents the n-th
+parallel block.
+Multi-Expert Parser. We first concatenate Bn and En
+along the channel dimension to obtain the feature A,
+which is subsequently processed by multiple expert blocks
+{Υz(·)}Z
+z=1 to extract diverse and complementary knowl-
+edge representations {Dz}Z
+z=1 from different perspectives,
+as shown below:
+Dz = Υz(A). (4)
+Each expert block adopts the same structure, consisting of
+two convolution operations with a BatchNorm layer in be-
+tween, followed by a GeLU activation for the output, intro-
+ducing only the additional parameters of 8.5×10-2 M. Ab-
+lation results indicate that the model achieves the best per-
+formance when the number of expert blocks Z is set to 4.
+The feature redundancy quantified by CCA [42] (canonical
+correlation analysis), shown in Figure 5 of the experiment
+section, highlights that each expert learns complementary
+and diverse knowledge.
+Coefficient Mapper. The next step is to fuse the outputs
+{Dz}Z
+z=1 from the multi-expert parser to obtain fine-grained
+and robust feature embeddings. The simplest approach in-
+volves using a single convolution for fusion, but the experi-
+mental results show only a marginal improvement in perfor-
+mance, as shown in Table 5e. This outcome is attributed to
+the convolution disrupting complementary knowledge from
+multiple perspectives, thereby hindering the efficient inte-
+gration of diverse information. Another aggregation strat-
+egy is weighted aggregation. Unlike previous approaches
+(e.g., average) that apply fixed weights for feature aggrega-
+tion, the proposed coefficient mapper assigns pixel-specific
+weights. It allows the model to autonomously learn and
+assign pixel-level weights to the features parsed by each ex-
+pert in a lightweight and adaptive manner, ensuring efficient
+integration of diverse knowledge while preserving comple-
+mentary information.
+Feeding the feature A into the coefficient mapper Θ(·)
+produces the coefficients {Pz}Z
+z=1:
+P1, P2, · · ·, PZ = Θ(A). (5)
+The coefficient mapper consists of two convolutional layers
+with a ReLU activation in between, followed by a softmax
+function to ensure the coefficients sum to 1. It is lightweight
+27636
+
+
+=== PAGE 5 ===
+and capable of dynamic weight learning, containing only
+8×10-3 M parameters.
+Efficient Integration. Each coefficient in {Pz}Z
+z=1 is
+paired with an element in {Dz}Z
+z=1 through indexing,
+and their element-wise products are used to aggregate the
+knowledge features parsed by each expert, generating high-
+quality and robust feature embeddings R:
+R =
+ZX
+z=1
+Pz · Dz. (6)
+The proposed expert-driven perceptual learning introduces
+only 0.35M parameters, yet achieves a 0.9% mIoU gain on
+the PAS-20b dataset (Table 5a), with consistent improve-
+ments observed in part segmentation. These results high-
+light its efficiency and effectiveness.
+3.3. Feature Orthogonalization Decoupling
+Class-level semantics and spatial context knowledge rep-
+resent information across two distinct dimensions. Ide-
+ally, the relationship between these two knowledge streams
+should remain independent, which is a key factor in the suc-
+cess of the expert-driven perceptual learning module. More
+specifically, the two unrelated feature representations en-
+sure that EPL can learn the diversity and complementary
+information essential for segmentation from a broad feature
+space. Therefore, we further propose a feature orthogonal-
+ization decoupling strategy to constrain the relationship be-
+tween class-level semantics and spatial context knowledge,
+thereby promoting orthogonality.
+The correlation between the two-stream feature knowl-
+edge, Bn and En, is measured using cosine similarity:
+Mi = Bn(i) · En(i)
+||Bn(i)|| · ||En(i)|| . (7)
+Here, Mi represents the similarity between the features of
+the i-th pixel at the same position in both representations.
+Minimizing this similarity reduces the correlation between
+the two streams of knowledge. However, the presence of
+negative values in cosine similarity causes gradient back-
+propagation to become imprecise, steering the optimization
+in the wrong direction. To address this issue, we propose
+the following feature orthogonalization decoupling loss:
+Lod = 1
+H × W
+H×WX
+i=1
+M 2
+i . (8)
+Squaring is employed to ensure the loss remains positive
+and converges to zero, thus facilitating the orthogonaliza-
+tion of both streams.
+3.4. Overall Training Objective
+The robust unified feature embeddings R are passed
+through the decoder G(·) to generate the predicted results,
+which incur the following supervised loss relative to the
+ground truth Y:
+Lsup = 1
+H × W
+H×WX
+i=1
+ℓce(G(R), Y). (9)
+Total loss L for network parameter optimization is as fol-
+lows:
+L = Lsup + λLod. (10)
+Here, λ represents the weight of the feature orthogonaliza-
+tion decoupling loss Lod. Extensive ablation studies show
+that the optimal value for λ is 0.01. Consistent with prior
+research [11, 13, 50], we update only the query and value
+within the CLIP encoder, while optimizing the parameters
+outside the encoder to minimize computational overhead.
+4. Experiments
+4.1. Experimental Setup
+Datasets. For OVSS, our model is trained on the COCO-
+Stuff [1] dataset, which contains 118k high-quality anno-
+tations across 171 categories, and directly evaluated on
+multiple standard benchmarks including ADE20K [63],
+PASCAL-Context [35], and PASCAL VOC [16] to compre-
+hensively assess performance. These datasets are organized
+by class into A-847, A-150, PC-459, PC-59, PAS-20,
+and PAS-20b. For OVPS, we evaluate PCA-Seg on Pascal-
+Part-116 [7, 51] and ADE20K-Part-234 [51, 62].
+Evaluation Metrics. We evaluate the model on OVSS us-
+ing the mean Intersection-over-Union (mIoU) metric. For
+OVPS, following prior works [13, 26], we adopt two evalu-
+ation protocols to assess zero-shot generalization. The first
+protocol, Pred-All, introduced in PartCLIPSeg [12], relies
+solely on the model’s predictions. The second protocol,
+Oracle-Obj, follows the OV-PARTS [51] setting and pro-
+vides ground-truth masks and labels to guide segmentation.
+In addition to mIoU, we evaluate generalization using the
+harmonic mean (h-IoU) between seen and unseen classes.
+Implementation Details. The PCA-Seg model is imple-
+mented in PyTorch using the Detectron2 framework, and all
+experiments are conducted on eight NVIDIA A6000 GPUs.
+For OVSS, both ViT-B/16 and ViT-L/14 backbones are em-
+ployed, with a learning rate of 3 × 10−4 and 80k training
+iterations on the COCO-Stuff dataset. For OVPS, ViT-B/16
+is used as the backbone. The learning rates for Pascal-Part-
+116 and ADE20K-Part-234 are set to2×10−4 and 4×10−4,
+with 30k and 20k training iterations, respectively. The batch
+size is set to 8, and AdamW [31] is adopted for optimiza-
+tion. Image resolutions follow prior works [13, 50].
+4.2. Comparison with State-of-the-Art Methods
+Open-Vocabulary Semantic Segmentation. Table 1
+presents a performance comparison between PCA-Seg and
+other state-of-the-art methods across six standard OVSS
+27637
+
+
+=== PAGE 6 ===
+Table 1. Comparison of performance with other state-of-the-art methods on multiple standard benchmarks in open-vocabulary semantic
+segmentation. See §4.2 for details.
+Method Publication Backbone Training Dataset A-847 PC-459 A-150 PC-59 PAS-20 PAS-20 b
+LSeg+ [17] ECCV’22 ALIGN COCO-Stuff 2.5 5.2 13.0 36.0 - 59.0
+ZegFormer [15] CVPR’22 ViT-B/16 COCO-Stuff-156 4.9 9.1 16.9 42.8 86.2 62.7
+ZSseg [57] ECCV’22 ViT-B/16 COCO-Stuff 7.0 - 20.5 47.7 88.4 -
+OVSeg [28] CVPR’23 ViT-B/16 COCO-Stuff + Caption 7.1 11.0 24.8 53.3 92.6 -
+GKC [19] ICCV’23 ViT-B/16 COCO Panoptic 3.5 7.1 18.8 45.2 83.2 -
+EBSeg [43] CVPR’24 ViT-B/16 COCO-Stuff 11.1 17.3 30.0 56.7 94.6 -
+CAT-Seg [11] CVPR’24 ViT-B/16 COCO-Stuff 12.0 19.0 31.8 57.5 94.6 77.3
+SED [54] CVPR’24 ConvNeXt-B COCO-Stuff 11.4 18.6 31.6 57.3 94.4 -
+Mask-Adapter [27] CVPR’25 ConvNeXt-B COCO-Stuff 14.2 17.9 35.6 58.4 95.1 -
+DeCLIP [50] CVPR’25 ViT-B/16 COCO-Stuff 15.3 21.4 36.3 60.6 96.6 81.3
+H-CLIP [36] CVPR’25 ViT-B/16 COCO-Stuff 12.5 19.4 32.4 57.9 95.2 78.2
+PCA-Seg (Ours) - ViT-B/16 COCO-Stuff 16.1 22.3 38.1 62.2 97.3 82.7
+OVSeg [28] CVPR’23 ViT-L/14 COCO-Stuff + Caption 9.0 12.4 29.6 55.7 94.5 -
+ODISE [56] CVPR’23 ViT-L/14 COCO-Panoptic 11.1 14.5 29.9 57.3 - 84.6
+EBSeg [43] CVPR’24 ViT-L/14 COCO-Stuff 13.7 21.0 32.8 60.2 96.4 -
+CAT-Seg [11] CVPR’24 ViT-L/14 COCO-Stuff 16.0 23.8 37.9 63.3 97.0 82.5
+SED [54] CVPR’24 ConvNeXt-L COCO-Stuff 13.9 22.6 35.2 60.6 96.1 -
+Mask-Adapter [27] CVPR’25 ConvNeXt-L COCO-Stuff 16.2 22.7 38.2 60.4 95.8 -
+DeCLIP [50] CVPR’25 ViT-L/14 COCO-Stuff 17.6 25.9 40.7 63.9 97.7 83.9
+H-CLIP [36] CVPR’25 ViT-L/14 COCO-Stuff 16.5 24.2 38.4 64.1 97.7 83.2
+LLMFormer [45] IJCV’25 ViT-L/14 COCO-Stuff 16.5 25.4 38.5 64.2 96.8 -
+PCA-Seg (Ours) - ViT-L/14 COCO-Stuff 18.3 26.7 41.5 64.7 98.4 84.4
+Table 2. Comparison of zero-shot performance with other state-of-the-art methods on the Pascal-Part-116 and ADE20K-Part-234 datasets
+in open-vocabulary part segmentation. See §4.2 for details.
+Pascal-Part-116 ADE20K-Part-234
+Pred-All Oracle-Obj Pred-All Oracle-ObjMethod Publication Backbone
+Seen Unseen h-IoU Seen Unseen h-IoU Seen Unseen h-IoU Seen Unseen h-IoU
+ZSSeg+ [57] ECCV’22 ResNet-50 38.1 3.4 6.2 54.4 19.0 28.2 32.3 0.9 1.7 43.2 27.8 33.9
+CLIPSeg [32, 51] CVPR’22 ViT-B/16 27.8 13.3 18.0 48.9 27.5 35.2 3.1 0.6 0.9 38.2 30.9 34.2
+VLPart [47] ICCV’23 ResNet-50 35.2 9.0 14.4 42.6 18.7 26.0 - - - - - -
+CAT-Seg [11, 51] CVPR’24 ViT-B/16 36.8 23.4 28.6 43.8 27.7 33.9 7.0 2.4 3.5 33.8 25.9 29.3
+PartGLEE [26] ECCV’24 ResNet-50 - - - 57.4 27.4 37.1 - - - 51.3 35.3 41.8
+PartCLIPSeg [12]NeurIPS’24 ViT-B/16 43.9 23.6 30.7 50.0 31.7 38.8 14.2 9.5 11.4 38.4 38.8 38.6
+PartCATSeg [13] CVPR’25 ViT-B/16 52.6 40.5 45.8 57.5 44.9 50.4 38.9 17.6 24.2 53.1 47.2 50.0
+PCA-Seg (Ours) - ViT-B/16 57.2 43.5 49.3 60.5 47.1 52.9 40.8 19.2 26.1 56.3 48.2 51.8
+benchmarks. The experimental results demonstrate that
+our method consistently outperforms others, regardless
+of whether the ViT-B/16 or ViT-L/14 backbone is used.
+Specifically, with ViT-B/16 as the backbone, PCA-Seg sur-
+passes H-CLIP [36] by 3.6%, 2.9%, 5.7%, 4.3%, 2.1%,
+and 4.5% mIoU on the A-847, PC-459, A-150, PC-59,
+PAS-20, and PAS-20b datasets, respectively. When com-
+pared to DeCLIP [50], which uses a serial aggregation
+architecture, our method achieves mIoU improvements of
+0.8%, 0.9%, 1.8%, 1.6%, 0.7%, and 1.4%. A similar per-
+formance advantage is consistently observed with the ViT-
+L/14 backbone. These experimental results highlight the
+remarkable effectiveness of PCA-Seg, achieving new state-
+of-the-art performance on OVSS.
+Open-Vocabulary Part Segmentation. Table 2 summa-
+rizes the performance of our method in comparison with
+other state-of-the-art approaches on two OVPS benchmarks.
+Across both the Pascal-Part-116 and ADE20K-Part-234
+datasets, the proposed method demonstrates superior per-
+formance. For instance, on Pascal-Part-116, our approach
+surpasses PartCATSeg [13], which employs a serial aggre-
+gation architecture, by 3.5% and 2.5% in h-IoU under the
+Pred-All and Oracle-Obj settings, respectively. Similarly,
+on ADE20K-Part-234, it outperforms PartCATSeg [13] by
+1.9% and 1.8%, respectively. It is evident that PCA-Seg
+continues to achieve SOTA performance on OVPS.
+Qualitative Comparison. We present a comparative vi-
+sualization of the proposed PCA-Seg and state-of-the-
+art methods based on serial cost aggregation for open-
+vocabulary semantic and part segmentation, as shown in
+Figure 4. The visualizations clearly demonstrate that our
+approach consistently outperforms existing methods across
+a variety of challenging scenes in both semantic and part
+segmentation. For instance, in the semantic segmentation
+example, DeCLIP [50] incorrectly classifies most of the
+bedclothes region in the first row as bed, while in the
+second row, the water region is misclassified as sky. For
+part segmentation, PartCATSeg [13] incorrectly identifies
+the dog’s torso as the neck and misses the nose (first row),
+and mislabels most of the train’s coach area (third row).
+In contrast, our method avoids these errors and achieves ac-
+curate and robust segmentation. This improvement is at-
+27638
+
+
+=== PAGE 7 ===
+(a) Image (b) DeCLIP (c) Ours (d) Ground-Truth (e) Image (f) PartCATSeg (g) Ours (h) Ground-Truth
+Figure 4. Comparison of qualitative results with serial cost aggregation-based state-of-the-art methods at different granularities. (a)–(d)
+illustrate open-vocabulary semantic segmentation on the PC-59 dataset, while (e)–(h) present open-vocabulary part segmentation on the
+Pascal-Part-116 benchmark. See §4.2 for details.
+Table 3. Comparative analysis of serial aggregation and the pro-
+posed parallel aggregation. See §4.3 for details.
+Setting A-847 PC-459 A-150 PC-59 PAS-20b
+W/o Agg. 14.1 20.7 34.4 59.3 79.1
+Serial Agg. 15.3 21.4 36.3 60.6 81.3
+Parallel Agg. 16.1 22.3 38.1 62.2 82.7
+tributed to the parallel cost aggregation architecture, which
+decouples class-level semantics from spatial contextual in-
+formation, and to the orthogonal regularization that facili-
+tates learning more detailed image-text alignment cues from
+both knowledge streams.
+4.3. Ablation Studies
+Serial vs. Parallel Analysis. Table 3 presents the quan-
+titative results of the two aggregation architectures across
+multiple benchmarks. Without aggregation, predictions
+are made directly from the cost volume without refine-
+ment. The results show that the parallel aggregation archi-
+tecture consistently outperforms its serial counterpart, sur-
+passing it by 0.9%, 1.8%, 1.6%, and 1.4% mIoU on the
+PC-459, A-150, PC-59, and PAS-20b datasets, respec-
+tively. These improvements are attributed to the parallel
+aggregation design, which decouples class-level semantic
+learning from spatial context modeling, effectively address-
+ing the issue of knowledge interference.
+We further conduct a complexity analysis for individual
+serial and parallel blocks, with results in Table 4. Each
+parallel block, which incorporates the EPL module and the
+FOD constraint, introduces only a minor overhead of 0.35
+M parameters, 34.4 G FLOPs, an additional 0.96 G of GPU
+memory, and 0.08 s per-image latency. This modest cost
+is compensated by significant performance gains; for in-
+stance, PCA-Seg achieves a 3.5% improvement in hIoU on
+Table 4. Complexity analysis of each serial and parallel block un-
+der the same experimental setup. See §4.3 for details.
+Setting Param(M) FLOPs(G) Memory(G)Time(s)
+Entire Network 70.3 2121.32 26.4 0.89
+Serial Block 0.68 53.67 0.60 0.11
+Parallel Block 1.03 88.07 1.56 0.19
+the Pred-All setting of Pascal-Part-116 and a 1.8% increase
+in mIoU on A-150. The complexity results, along with
+extensive experiments on OSPS, demonstrate that while
+PCA-Seg introduces acceptable computational overhead, it
+achieves substantial performance improvements.
+Component & Comparison Analysis. Table 5a shows the
+effectiveness analysis of each component in the proposed
+method. The class and spatial aggregations in DeCLIP [50]
+are arranged in parallel and combined with feature concate-
+nation and a single convolution to establish the baseline. In-
+tegrating the expert-driven perceptual learning (EPL) mod-
+ule alone into the baseline results in a 0.9% mIoU improve-
+ment on PAS-20b, whereas incorporating the feature or-
+thogonalization decoupling (FOD) strategy alone yields a
+1.0% gain. The collaborative combination of EPL and FOD
+achieves the highest performance improvement of 1.6%
+mIoU. These results demonstrate that the EPL module and
+FOD strategy enable the efficient integration of the two
+knowledge flows, thereby enhancing the extraction of rich
+image-text alignment cues from the cost volume. Further-
+more, we integrate our components into a serial architec-
+ture to highlight the importance of our parallel design, as
+shown in Table 5b. Integrating either EPL or FOD individ-
+ually results in a slight improvement in model performance.
+When both components are integrated simultaneously, our
+proposed parallel learning paradigm outperforms the serial
+approach by 1.4% mIoU, demonstrating that the proposed
+27639
+
+
+=== PAGE 8 ===
+Table 5. A set of ablative studies on three datasets. (a) and (b) provide analyses of integrating the proposed components into the parallel
+and existing serial architectures, respectively. (c) and (d) show the impact of the number of expert blocks in the multi-expert parser and the
+weight λ of the FOD loss on model performance, while (e) presents the performance analysis of the integration strategy for the multiple
+knowledge parsed by the multi-expert (ME) parser. See §4.3 for details.
+BaselineEPLFOD A-150PAS-20b
+✓ 36.4 81.1
+✓ ✓ 37.2 82.0
+✓ ✓ 36.9 82.1
+✓ ✓ ✓ 38.1 82.7
+(a) Component Analysis
+Setting A-150
+Serial 36.3
++ EPL 36.6
++ FOD 36.6
++ All 36.7
+(b) Comparison Analysis
+Z A-150
+1 36.8
+2 36.9
+3 37.0
+4 37.2
+5 36.9
+(c) Expert Block
+λ A-150PC-59
+0.001 37.4 61.7
+0.005 37.9 62.1
+0.010 38.1 62.2
+0.015 38.0 61.9
+0.020 37.8 61.6
+(d) FOD Loss Weight λ
+Integration StrategyPC-59
+- 60.5
+Convolution 60.7
+Average 60.8
+Addition 60.9
+Coefficient Mapper61.2
+(e) ME-Parser Integration
+Expert 1
+Expert 2
+Expert 3
+Expert 4
+Prefix  
+Image
+Network  
+Figure 5. Redundancy analysis of feature knowledge among dif-
+ferent expert blocks. See §4.3 for details.
+PCA-Seg effectively mitigates knowledge interference and
+captures diverse and complementary information.
+Parameter Analysis. Tables 5c and 5d summarize the ef-
+fects of varying the number of expert blocks Z and the or-
+thogonalization decoupling loss weight λ, on model per-
+formance. Regarding the former, as the number of expert
+blocks increases from 1 to 4, the model’s performance im-
+proves consistently across all datasets, with the best results
+achieved when the Z is set to 4. Similarly, for the latter,
+as the λ increases from 0.001 to 0.010, the model exhibits
+a steady performance gain, reaching optimal results at λ =
+0.010. Consequently, Z and λ are set to 4 and 0.010 by
+default in the other experiments.
+Intergation Analysis. Table 5e presents an analysis of vari-
+ous feature fusion strategies for integrating multiple expert-
+parsed representations. Almost all integration strategies
+lead to performance improvements, with the proposed coef-
+ficient mapper showing the most significant improvement,
+achieving a 0.7% mIoU increase. By adaptively assigning
+pixel-specific weights to the fine-grained features parsed
+by each expert, it effectively integrates diverse knowledge
+while preserving complementary information.
+Redundancy Analysis. Figure 5 presents the CCA-
+quantified [42] (canonical correlation analysis) redundancy
+of feature knowledge among different expert blocks. Fea-
+ture redundancy among experts is mostly below 50%, in-
+dicating that they provide rich, complementary information
+for improved segmentation.
+Knowledge Diversity Analysis. We analyze the knowledge
+diversity between the two knowledge flows under different
+cost aggregation frameworks. As shown in Figure 6, the
+serial design exhibits significant coupling throughout train-
+020k40k60k80k88
+92
+96
+100Similarity (%)
+Iteration(a)
+020k40k60k80k0
+1
+2
+3Similarity (%)
+Iteration(b)
+SCA (ViT-B)SCA (ViT-L) PCA (ViT-B)PCA (ViT-L)
+Figure 6. Knowledge coupling analysis between class-level se-
+mantics and spatial context under different designs. SCA/PCA
+denote serial/parallel cost aggregation. See §4.3 for details.
+ing, with values remaining above 88% even at its lowest
+point. This indicates that, due to knowledge interference,
+the two flows are inadequately disentangled in the repre-
+sentation space. In contrast, the proposed parallel design
+maintains consistently low redundancy, starting at less than
+3% and approaching zero in later stages. This demonstrates
+that the FOD strategy allows for more independent and in-
+formative features to be utilized by the EPL module.
+5. Conclusion
+In this paper, we propose a simple yet effective parallel
+cost aggregation ( PCA-Seg) paradigm designed to allevi-
+ate knowledge interference between class-level semantics
+and spatial context, an issue associated with the serial ar-
+chitecture in the OSPS domain. Specifically, we first design
+an expert-driven perceptual learning (EPL) module that ex-
+tracts complementary feature information from both class-
+level semantics and spatial context, and adaptively aggre-
+gates these features using learnable pixel-specific weights.
+Furthermore, we further propose a feature orthogonaliza-
+tion decoupling (FOD) strategy to reduce redundancy be-
+tween semantic and spatial information, enabling the EPL
+module to capture more diverse knowledge. Experimen-
+tal results on eight benchmarks demonstrate that PCA-Seg
+achieves state-of-the-art performance.
+Acknowledgements. This work was supported by the Na-
+tional Natural Science Foundation of China (No. 62506169,
+62472222, U25A20442, and 62427808), Natural Science
+Foundation of Jiangsu Province (No. BK20240080), Na-
+tional Defense Science and Technology Industry Bureau
+Technology Infrastructure Project (JSZL2024606C001).
+27640
+
+
+=== PAGE 9 ===
+References
+[1] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. In CVPR, pages
+1209–1218, 2018. 5
+[2] Xinhao Cai, Qiuxia Lai, Yuwei Wang, Wenguan Wang,
+Zeren Sun, and Yazhou Yao. Poly kernel inception network
+for remote sensing detection. In CVPR, pages 27706–27716,
+2024. 1
+[3] Xinhao Cai, Qiuxia Lai, Gensheng Pei, Xiangbo Shu,
+Yazhou Yao, and Wenguan Wang. Cycle-consistent learning
+for joint layout-to-image generation and object detection. In
+ICCV, pages 6797–6807, 2025. 1
+[4] Tao Chen, Xiruo Jiang, Gensheng Pei, Zeren Sun, Yucheng
+Wang, and Yazhou Yao. Knowledge transfer with simulated
+inter-image erasing for weakly supervised semantic segmen-
+tation. In ECCV, pages 441–458. Springer, 2024. 1
+[5] Tao Chen, Yazhou Yao, Xingguo Huang, Zechao Li, Liqiang
+Nie, and Jinhui Tang. Spatial structure constraints for weakly
+supervised semantic segmentation. IEEE TIP , 33:1136–
+1148, 2024. 1
+[6] Weitao Chen, Hongbin Xu, Zhipeng Zhou, Yang Liu, Baigui
+Sun, Wenxiong Kang, and Xuansong Xie. Costformer: cost
+transformer for cost aggregation in multi-view stereo. In IJ-
+CAI, pages 599–608, 2023. 3
+[7] Xianjie Chen, Roozbeh Mottaghi, Xiaobai Liu, Sanja Fidler,
+Raquel Urtasun, and Alan Yuille. Detect what you can: De-
+tecting and representing objects using holistic models and
+body parts. In CVPR, pages 1971–1978, 2014. 5
+[8] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention mask
+transformer for universal image segmentation. In CVPR,
+pages 1290–1299, 2022. 3
+[9] Seokju Cho, Sunghwan Hong, Sangryul Jeon, Yunsung Lee,
+Kwanghoon Sohn, and Seungryong Kim. Cats: Cost aggre-
+gation transformers for visual correspondence. In NeurIPS,
+pages 9011–9023, 2021. 3
+[10] Seokju Cho, Sunghwan Hong, and Seungryong Kim.
+Cats++: Boosting cost aggregation with convolutions and
+transformers. IEEE TPAMI, 45(6):7174–7194, 2022. 3
+[11] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. In CVPR, pages 4113–4123, 2024. 1, 3, 5, 6
+[12] Jiho Choi, Seonho Lee, Seungho Lee, Minhyun Lee, and
+Hyunjung Shim. Understanding multi-granularity for open-
+vocabulary part segmentation. In NeurIPS, pages 137161–
+137189, 2024. 3, 5, 6
+[13] Jiho Choi, Seonho Lee, Minhyun Lee, Seungho Lee, and
+Hyunjung Shim. Fine-grained image-text correspondence
+with cost aggregation for open-vocabulary part segmenta-
+tion. In CVPR, pages 9782–9793, 2025. 1, 2, 3, 5, 6
+[14] Subhabrata Choudhury, Iro Laina, Christian Rupprecht, and
+Andrea Vedaldi. Unsupervised part discovery from con-
+trastive reconstruction. In NeurIPS, pages 28104–28118,
+2021. 3
+[15] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. In CVPR, pages
+11583–11592, 2022. 1, 3, 6
+[16] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge. IJCV, 88:303–338, 2010. 5
+[17] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scal-
+ing open-vocabulary image segmentation with image-level
+labels. In ECCV, pages 540–557, 2022. 1, 3, 6
+[18] Cong Han, Yujie Zhong, Dengjie Li, Kai Han, and Lin
+Ma. Open-vocabulary semantic segmentation with decou-
+pled one-pass network. In ICCV, pages 1086–1096, 2023. 1,
+3
+[19] Kunyang Han, Yong Liu, Jun Hao Liew, Henghui Ding, Ji-
+ajun Liu, Yitong Wang, Yansong Tang, Yujiu Yang, Jiashi
+Feng, Yao Zhao, et al. Global knowledge calibration for
+fast open-vocabulary segmentation. In ICCV, pages 797–
+807, 2023. 6
+[20] Ju He, Jieneng Chen, Ming-Xian Lin, Qihang Yu, and Alan L
+Yuille. Compositor: Bottom-up clustering and compositing
+for robust part and object segmentation. In CVPR, pages
+11259–11268, 2023. 3
+[21] Sunghwan Hong, Seokju Cho, Jisu Nam, Stephen Lin, and
+Seungryong Kim. Cost aggregation with 4d convolutional
+swin transformer for few-shot segmentation. InECCV, pages
+108–126. Springer, 2022. 3
+[22] Sunghwan Hong, Seokju Cho, Seungryong Kim, and
+Stephen Lin. Unifying feature and cost aggregation with
+transformers for semantic and visual correspondence. In
+ICLR, 2024. 3
+[23] Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc Le, Yun-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representation
+learning with noisy text supervision. In ICML, pages 4904–
+4916, 2021. 1, 3
+[24] Angelos Katharopoulos, Apoorv Vyas, Nikolaos Pappas, and
+Franc ¸ois Fleuret. Transformers are rnns: Fast autoregressive
+transformers with linear attention. In ICML, pages 5156–
+5165, 2020. 3
+[25] Junnan Li, Ramprasaath Selvaraju, Akhilesh Gotmare,
+Shafiq Joty, Caiming Xiong, and Steven Chu Hong Hoi.
+Align before fuse: Vision and language representation learn-
+ing with momentum distillation. In NeurIPS, pages 9694–
+9705, 2021. 3
+[26] Junyi Li, Junfeng Wu, Weizhi Zhao, Song Bai, and Xiang
+Bai. Partglee: A foundation model for recognizing and pars-
+ing any objects. In ECCV, pages 475–494. Springer, 2024.
+3, 5, 6
+[27] Yongkang Li, Tianheng Cheng, Bin Feng, Wenyu Liu, and
+Xinggang Wang. Mask-adapter: The devil is in the masks
+for open-vocabulary segmentation. In CVPR, pages 14998–
+15008, 2025. 1, 6
+[28] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. In CVPR, pages 7061–7070, 2023. 1, 3,
+6
+27641
+
+
+=== PAGE 10 ===
+[29] Yanbin Liu, Linchao Zhu, Makoto Yamada, and Yi Yang.
+Semantic correspondence as an optimal transport problem.
+In CVPR, pages 4463–4472, 2020. 3
+[30] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng
+Zhang, Stephen Lin, and Baining Guo. Swin transformer:
+Hierarchical vision transformer using shifted windows. In
+ICCV, pages 10012–10022, 2021. 3
+[31] Ilya Loshchilov and Frank Hutter. Decoupled weight decay
+regularization. arXiv preprint arXiv:1711.05101, 2017. 5
+[32] Timo L ¨uddecke and Alexander Ecker. Image segmentation
+using text and image prompts. In CVPR, pages 7086–7096,
+2022. 6
+[33] Huayu Mai, Rui Sun, Tianzhu Zhang, and Feng Wu.
+Rankmatch: Exploring the better consistency regularization
+for semi-supervised semantic segmentation. In CVPR, pages
+3391–3401, 2024. 1
+[34] Juhong Min, Jongmin Lee, Jean Ponce, and Minsu Cho.
+Hyperpixel flow: Semantic correspondence with multi-layer
+neural features. In ICCV, pages 3395–3404, 2019. 3
+[35] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and se-
+mantic segmentation in the wild. In CVPR, pages 891–898,
+2014. 5
+[36] Zelin Peng, Zhengqin Xu, Zhilin Zeng, Yu Huang, Yaom-
+ing Wang, and Wei Shen. Parameter-efficient fine-tuning in
+hyperspherical space for open-vocabulary semantic segmen-
+tation. In CVPR, pages 15009–15020, 2025. 2, 3, 6
+[37] Zelin Peng, Zhengqin Xu, Zhilin Zeng, Changsong Wen, Yu
+Huang, Menglin Yang, Feilong Tang, and Wei Shen. Under-
+standing fine-tuning clip for open-vocabulary semantic seg-
+mentation in hyperbolic space. In CVPR, pages 4562–4572,
+2025. 3
+[38] Jie Qin, Jie Wu, Pengxiang Yan, Ming Li, Ren Yuxi, Xue-
+feng Xiao, Yitong Wang, Rui Wang, Shilei Wen, Xin Pan,
+et al. Freeseg: Unified, universal and open-vocabulary im-
+age segmentation. In CVPR, pages 19446–19455, 2023. 3
+[39] Wentao Qu, Yuantian Shao, Lingwu Meng, Xiaoshui Huang,
+and Liang Xiao. A conditional denoising diffusion proba-
+bilistic model for point cloud upsampling. In CVPR, pages
+20786–20795, 2024. 1
+[40] Wentao Qu, Jing Wang, YongShun Gong, Xiaoshui Huang,
+and Liang Xiao. An end-to-end robust point cloud semantic
+segmentation network with single-step conditional diffusion
+models. In CVPR, pages 27325–27335, 2025. 1
+[41] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learn-
+ing transferable visual models from natural language super-
+vision. In ICML, pages 8748–8763, 2021. 1, 3
+[42] Maithra Raghu, Justin Gilmer, Jason Yosinski, and Jascha
+Sohl-Dickstein. Svcca: Singular vector canonical correla-
+tion analysis for deep learning dynamics and interpretability.
+NeurIPS, 30:6076–6085, 2017. 4, 8
+[43] Xiangheng Shan, Dongyue Wu, Guilin Zhu, Yuanjie Shao,
+Nong Sang, and Changxin Gao. Open-vocabulary semantic
+segmentation with image embedding balancing. In CVPR,
+pages 28412–28421, 2024. 3, 6
+[44] Yifan Shen, Yuanzhe Liu, Jingyuan Zhu, Xu Cao, Xiaofeng
+Zhang, Yixiao He, Wenming Ye, James Matthew Rehg,
+and Ismini Lourentzou. Fine-grained preference optimiza-
+tion improves spatial reasoning in vlms. arXiv preprint
+arXiv:2506.21656, 2025. 3
+[45] Hengcan Shi, Son Duy Dao, and Jianfei Cai. Llmformer:
+Large language model for open-vocabulary semantic seg-
+mentation. IJCV, 133(2):742–759, 2025. 6
+[46] Heeseong Shin, Chaehyun Kim, Sunghwan Hong, Seokju
+Cho, Anurag Arnab, Paul Hongsuck Seo, and Seungryong
+Kim. Towards open-vocabulary semantic segmentation with-
+out semantic labels. In NeurIPS, pages 9153–9177, 2024. 3
+[47] Peize Sun, Shoufa Chen, Chenchen Zhu, Fanyi Xiao, Ping
+Luo, Saining Xie, and Zhicheng Yan. Going denser with
+open-vocabulary part segmentation. In ICCV, pages 15453–
+15465, 2023. 1, 3, 6
+[48] Prune Truong, Martin Danelljan, and Radu Timofte. Glu-
+net: Global-local universal network for dense flow and cor-
+respondences. In CVPR, pages 6258–6268, 2020. 3
+[49] Robert van der Klis, Stephan Alaniz, Massimiliano Mancini,
+Cassio F Dantas, Dino Ienco, Zeynep Akata, and Diego Mar-
+cos. Pdisconet: Semantically consistent part discovery for
+fine-grained recognition. In ICCV, pages 1866–1876, 2023.
+3
+[50] Junjie Wang, Bin Chen, Yulin Li, Bin Kang, Yichi Chen,
+and Zhuotao Tian. Declip: Decoupled learning for open-
+vocabulary dense perception. In CVPR, pages 14824–14834,
+2025. 1, 2, 3, 5, 6, 7
+[51] Meng Wei, Xiaoyu Yue, Wenwei Zhang, Shu Kong, Xi-
+hui Liu, and Jiangmiao Pang. Ov-parts: Towards open-
+vocabulary part segmentation. In NeurIPS, pages 70094–
+70114, 2024. 2, 3, 5, 6
+[52] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Xiangtai Li,
+Wentao Liu, and Chen Change Loy. CLIPSelf: Vision trans-
+former distills itself for open-vocabulary dense prediction. In
+ICLR, 2024. 1
+[53] Monika Wysocza ´nska, Oriane Sim´eoni, Micha¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzci ´nski, and Patrick P ´erez.
+Clip-dinoiser: Teaching clip a few dino tricks for open-
+vocabulary semantic segmentation. In ECCV, pages 320–
+337, 2024. 1
+[54] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. Sed: A simple encoder-decoder for open-
+vocabulary semantic segmentation. In CVPR, pages 3426–
+3436, 2024. 3, 6
+[55] Jilan Xu, Junlin Hou, Yuejie Zhang, Rui Feng, Yi Wang, Yu
+Qiao, and Weidi Xie. Learning open-vocabulary semantic
+segmentation models from natural language supervision. In
+CVPR, pages 2935–2944, 2023. 1
+[56] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+CVPR, pages 2955–2966, 2023. 3, 6
+[57] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. In ECCV, pages 736–753. Springer, 2022.
+1, 6
+27642
+
+
+=== PAGE 11 ===
+[58] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. In CVPR, pages 2945–2954, 2023. 3
+[59] Jianjian Yin, Tao Chen, Gensheng Pei, Huafeng Liu, Yazhou
+Yao, Liqiang Nie, and Xiansheng Hua. Semi-supervised
+semantic segmentation with multi-constraint consistency
+learning. IEEE TMM, 27:6449–6461, 2025. 1
+[60] Jianjian Yin, Yi Chen, Zhichao Zheng, Junsheng Zhou, and
+Yanhui Gu. Uncertainty-participation context consistency
+learning for semi-supervised semantic segmentation. In
+ICASSP, pages 1–5. IEEE, 2025. 1
+[61] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip. In NeurIPS,
+pages 32215–32234, 2023. 1
+[62] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ade20k dataset. In CVPR, pages 633–641, 2017. 5
+[63] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset. IJCV, 127:
+302–321, 2019. 5
+[64] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. In ECCV, pages 696–712, 2022. 1
+27643

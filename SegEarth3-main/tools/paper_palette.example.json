@@ -1,0 +1,12 @@
+{
+  "class_names": ["background", "building", "road", "water", "barren", "forest", "agriculture"],
+  "colors": [
+    [255, 255, 255],
+    [255, 0, 0],
+    [255, 255, 0],
+    [0, 0, 255],
+    [159, 129, 183],
+    [0, 255, 0],
+    [0, 255, 255]
+  ]
+}

@@ -1,0 +1,1150 @@
+=== PAGE 1 ===
+Fine-Grained Image-Text Correspondence with Cost Aggregation
+for Open-Vocabulary Part Segmentation
+Jiho Choi1*, Seonho Lee 1*, Minhyun Lee 2, Seungho Lee 2, Hyunjung Shim 1†
+1KAIST, Republic of Korea
+2Samsung Electronics, Republic of Korea
+{jihochoi, glanceyes, kateshim }@kaist.ac.kr, {mh315.lee, sh622.lee }@samsung.com
+Base Class
+airplane’s wingairplane’s bodyairplane’s sternairplane
+cat’s headcat’s torsocat’s neckcat
+StructuralGuidancePredictionSource Object㐱s PartCorrespondenceObjectCorrespondence
+bird’s headbird’s torsobird’s neckbird
+Novel Class StructuralUnderstanding㛭Object㎼aware PartImage㎼Text Correspondence㛭Compositional Guidance
+Figure 1. The proposed PartCATSeg exploits part-level and object-level image-text correspondence using cost aggregation, enhancing
+object-aware part image-text matching. Additionally, it utilizes structural guidance to achieve successful part segmentation even for classes
+not encountered during training.
+Abstract
+Open-Vocabulary Part Segmentation (OVPS) is an emerg-
+ing field for recognizing fine-grained parts in unseen cate-
+gories. We identify two primary challenges in OVPS: (1) the
+difficulty in aligning part-level image-text correspondence,
+and (2) the lack of structural understanding in segment-
+ing object parts. To address these issues, we propose Part-
+CATSeg, a novel framework that integrates object-aware
+part-level cost aggregation, compositional loss, and struc-
+tural guidance from DINO. Our approach employs a disen-
+tangled cost aggregation strategy that handles object and
+part-level costs separately, enhancing the precision of part-
+level segmentation. We also introduce a compositional loss
+to better capture part-object relationships, compensating
+for the limited part annotations. Additionally, structural
+guidance from DINO features improves boundary delin-
+eation and inter-part understanding. Extensive experiments
+*Equal contribution
+†Corresponding author
+on Pascal-Part-116, ADE20K-Part-234, and PartImageNet
+datasets demonstrate that our method significantly outper-
+forms state-of-the-art approaches, setting a new baseline
+for robust generalization to unseen part categories.
+1. Introduction
+The rapid advancements in model architectures and im-
+proved training techniques have allowed cutting-edge mod-
+els to achieve exceptional performance on closed-set
+datasets and object-level segmentation [6, 9, 10, 26, 34, 46,
+55]. However, they still exhibit suboptimal performance in
+zero-shot scenarios [1, 2, 4, 20] and open-vocabulary se-
+tups [22, 38, 69, 74, 76]. Moreover, part-level fine-grained
+segmentation [3, 8, 24] remains challenging, highlighting
+the ongoing difficulties in these research areas.
+Recently, Open-V ocabulary Part Segmentation (OVPS)
+has emerged as a novel approach aimed at recognizing novel
+objects at a fine-grained, part level [14, 36, 57, 65]. OVPS
+enables the segmentation of detailed object parts, even for
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+9782
+
+
+=== PAGE 2 ===
+(a) Original Image
+ (b) “head”
+ (c) “wing”
+(d) “bird”
+ (e) “bird’s head”
+ (f) “bird’s wing”
+Figure 2. CLIP Image-Text Similarity Visualization for Object-
+Level and Part-Level Text. The visualization [37] compares the
+frozen CLIP [53] image-text similarity between object-level and
+part-level text descriptions. (a) shows the original images; (b),
+(c) depict the part-level similarities for terms such as ”head” and
+”wing” while (e), (f) show object-specific parts. The stronger acti-
+vation for object-level text in (d) suggests a dominant focus on the
+entire object rather than individual parts in the image-text corre-
+spondence.
+categories not seen during training, positioning it as both
+a research challenge and a high-demand application area.
+This framework has numerous practical applications, in-
+cluding robotic control [63, 70], medical imaging [71], im-
+age editing [40, 44], and image generation [32, 64], serving
+as a significant milestone for the advancement of visual sys-
+tems.
+OVPS research has recently accelerated, leveraging pre-
+trained vision-language models (VLMs) [31, 35, 53] to
+transfer part-level knowledge from base to novel classes.
+Recently, VLPart [57] utilizes DINO [5, 50] features to es-
+tablish part-level correspondence between base and novel
+categories, while OV-PARTS [65] focuses on leverag-
+ing object-level contextual information to enhance part-
+level segmentation. More recent approaches, such as Part-
+GLEE [36] and PartCLIPSeg [14], further advance the field
+by employing attention-based approaches with joint train-
+ing of object and part to refine part segmentation.
+Despite recent advancements, OVPS still suffers from
+poor performance, as key challenges remain unresolved.
+First, aligning part-level text with its corresponding visual
+features is more challenging than at the object level. This
+stems from the significantly lower ratio of part-level text-
+image pairs compared to object-level text during the pre-
+training of VLMs, as noted in previous studies [24, 51, 57].
+Consequently, part-level data often receives weaker or nois-
+ier guidance compared to object-level data due to its di-
+versity. Additionally, the limited availability of part-level
+ground truth (GT) labels in base datasets further degrades
+performance. Figure 2 (b, c, e, f) illustrate the lower simi-
+larity and weaker alignment of part-level text compared to
+object-level text [37, 53] in pretrained CLIP.
+Second, current OVPS approaches struggle to achieve a
+comprehensive structural understanding between parts and
+(a) CAT-Seg [13]
+ (b) PartCLIPSeg [14]
+Figure 3. Challenges of Current OVPS. (a, b) Prediction results
+of state-of-the-art OVSS [13] and OVPS [14] methods. Due to a
+lack of structural understanding, these methods often produce in-
+correct OVPS predictions, such as predicting a “sheep’s neck” as
+being larger than its “torso” or placing a “bird’s beak” and a “bird’s
+neck” at the tip of its “tail”.
+objects. As shown in Figure 3, existing state-of-the-art mod-
+els may misclassify a “leg” as a “tail” due to an incomplete
+understanding of part-object relationships and structural in-
+formation. This happens because the visual features of the
+“leg” resemble those of the “tail”, leading to misrecogni-
+tion. This issue is similar to the part-whole illusion [58]
+observed in humans when focusing only on parts without
+considering the whole.
+We propose a novel framework, PartCATSeg, to address
+the critical challenges of OVPS and significantly improve
+model performance, as summarized in Figure 1. First, we
+focus on the issue of part-level image guidance being bi-
+ased toward object-level guidance and propose a solution
+to mitigate this bias. Specifically, we adopt a cost aggrega-
+tion strategy for explicit handling of image-text correspon-
+dence, as outlined in [11, 13]. Then, we extend this model
+architecture to separate and operate with cost volumes tai-
+lored to both object and part levels. This extension enables
+our model to disentangle and process object-level and part-
+level costs independently. This change provides more pre-
+cise guidance and enhances image-text alignment, particu-
+larly at the part level. To further augment training signals,
+we integrate an unsupervised compositional loss that en-
+forces the compositional relationship where parts collec-
+tively represent the object. This approach ensures robust
+part representation even with the lack of explicit part-level
+supervision.
+Second, we leverage DINO [34, 50] features for struc-
+tural guidance to improve the model’s ability to understand
+inter-part relationships and effectively separate objects from
+the background. Previous works, such as VLPart, high-
+lighted DINO’s rich semantic representations and utilized
+them for matching novel classes to their closest base classes.
+Unlike their perspective, our study focuses on DINO’s ca-
+pability to convey spatial structure and geometric proximity
+information between features. To fully exploit this rich geo-
+metric prior, we incorporate pixel-level features as guidance
+when conducting the cost aggregation. This pixel-level sim-
+ilarity between features proves particularly beneficial for
+9783
+
+
+=== PAGE 3 ===
+distinguishing parts.
+Our approach sets a new standard baseline for OVPS,
+demonstrating remarkable performance gains across di-
+verse unseen categories in multiple datasets. Extensive
+experiments on benchmark datasets such as Pascal-Part-
+116, ADE20K-Part-234, and PartImageNet show that our
+method significantly outperforms existing state-of-the-art
+methods. We achieve notable improvements in segmen-
+tation accuracy and generalization capabilities, with in-
+creases in h-IoU scores by over 10% on all datasets in the
+Pred-All setting. Our analyses confirm that the combina-
+tion of object-aware part-level cost aggregation techniques,
+the compositional loss, and structural guidance from DINO
+contribute to these performance gains, validating the effec-
+tiveness of our proposed framework in addressing the criti-
+cal challenges of OVPS.
+2. Related Work
+Open-Vocabulary Semantic Segmentation (OVSS).
+OVSS [22, 33, 43, 47, 66, 67, 72–74, 76, 77] advances
+beyond traditional semantic segmentation’s [6, 10, 26]
+predefined class limitation by enabling predictions for
+unseen classes. OVSS methods generally rely on the
+shared embedding space of vision-language models
+(VLMs) [31, 35, 53] such as CLIP, allowing both visual
+and text features to be aligned in a unified semantic space.
+There are two main approaches. The first approach is a
+two-stage approach [18, 21, 23, 38, 43, 68, 69, 73], such as
+ZSSeg and ODISE, that first generates class-agnostic masks
+before VLM-based classification. The second approach
+is single-stage frameworks [13, 33, 47, 67, 72, 77] such
+as CLIPSeg and CAT-Seg that directly align pixel-level
+features with text features.
+Dense Correspondence and Cost Aggregation. In com-
+puter vision, cost computation is used to evaluate dense vi-
+sual correspondence [7, 11, 27–29, 42, 48, 49, 56, 59] by
+assessing the differences between matching points. From
+the perspective of Optimal Transport [52, 62], this cost re-
+flects the difficulty of matching or high disparity. Minimiz-
+ing disparity aligns with maximizing similarity. Hence, we
+interpret cost as a measure of correspondence, similar to
+prior notations [7, 11, 27, 28]. Cost Aggregation [7, 11, 12,
+27, 29, 56, 59] is a key framework to reduce matching er-
+rors and enhance generalization in dense correspondence
+tasks. Early methods using handcrafted approaches [16, 41]
+transitioned to learnable kernels with 2D and 4D convo-
+lutions [27, 54]. With the advent of Transformer architec-
+tures, CATs and CATs++ [11, 12] demonstrated the effec-
+tiveness of Transformer-based cost aggregation. Recently,
+CAT-Seg [13] extended this concept to multi-modal set-
+tings, using cosine similarity between image and text em-
+beddings as a matching cost volume. In this study, we apply
+cost aggregation to open-vocabulary part segmentation, en-
+abling recognition of finer-grained entities.
+Part Segmentation [3, 8, 8, 15, 24, 25, 30, 60] aims to
+recognize objects by dividing them into finer units (parts).
+Early works focused on contrastive and self-supervised co-
+part segmentation [15, 25, 30, 60], establishing founda-
+tional methods for identifying object parts without exten-
+sive labeled data. Recent developments have advancing to-
+ward open-vocabulary approaches, with notable research
+including VLPart [57], OV-PARTS [65], PartGLEE [36],
+and PartCLIPSeg [14]. VLPart aimed to generalize to novel
+classes using DINO correspondence [34, 50], OV-PARTS
+introduced object mask prompts, while PartGLEE and Part-
+CLIPSeg combined part information with object-level con-
+text. These approaches have enhanced part segmentation
+performance, particularly in handling previously unseen
+categories. In this work, we further advance these studies
+by improving the image-text correspondence for both ob-
+jects and parts.
+3. Method
+3.1. Problem Definition
+Open-V ocabulary Part Segmentation (OVPS) [14,
+36, 57, 65] aims to segment an image into distinct
+object-specific parts , CObj-Part, (e.g., “cat’s
+paw,” “bus’s headlight”) without relying on predefined
+part categories. During training, the model uses image and
+ground-truth mask pairs, where the masks represent only
+the CObj-Part of base categories, Cbase
+Obj-Part. At inference,
+the model segments novel categories, Cnovel
+Obj-Part, beyond
+these base categories, leveraging learned representations
+to generalize without additional annotations. OVPS per-
+formance is assessed in two scenarios [14, 57, 65]: In
+Zero-Shot setup, the training and test categories do not
+overlap ( Cbase
+Obj-Part ∩ Cnovel
+Obj-Part = ∅). While in Cross-
+Dataset setting, the model evaluated on a different dataset
+from the training set without fine-tuning, introducing
+challenges from domain shifts and differences in part
+granularity.
+3.2. Preliminary
+Image-Text Cost Computation.As described in Section 2,
+cost refers to the correspondence between image-to-image
+or image-to-text features. CAT-Seg [13] extends the cost
+computation approach to effectively model image-text cor-
+respondence, showing promising performance in object-
+level open-vocabulary segmentation tasks [18, 22, 74]. The
+initial cost C ∈ R(H×W )×|T | between the ith image patch
+and the nth text token is defined as:
+C(i, n) = DV (i)·DL(n)
+∥DV (i)∥∥DL(n)∥ , (1)
+where DV (·) and DL(·) are dense visual and language em-
+beddings, respectively. Here, i ∈ R(H×W ) is the spatial in-
+9784
+
+
+=== PAGE 4 ===
+𝒯Part!"
+𝒯Obj!"
+𝒯Part#"
+𝒯Obj#"
+ 㚅
+C
+S
+ 𝒯Obj−Part!"
+ 𝒯Obj−Part#" 
+CLIPImageEncoder
+CLIPTextEncoder
+ClassAggregationCostComputationSpatialAggregationℂPart 
+ℂObj 
+object
+part
+SimilarityComputationobject㎼specific part
+ℂObj−Part 
+⋮cat’s torsocat’s pawcat’s nosebus’s window⋮
+DINO Structural Guidance
+Decoder
+𝑭′′Obj−Part 
+𝑭′′Obj 
+Decoder
+Decoder
+Predictions𝒔#𝒑 
+𝒔#𝒐 
+𝒔#𝒒 
+CompositionalGuidance
+𝑭′′Part 
+Text Class
+Input Image
+Figure 4. The Overall Architecture of PartCATSeg.
+dex of the image patch andn ∈ RT denotes the index of the
+text token corresponding to category classes T .
+Cost Aggregation. The computed cost volume is refined
+through a process known as cost aggregation [7, 11, 13, 27,
+28], which employs self-attention modules [61]. This pro-
+cess consists of two main components: the spatial aggre-
+gation transformer ( T SA) and the class aggregation trans-
+former ( T CA), both of which are designed to effectively
+model image-text correspondence.Spatial aggregation uti-
+lizes the local continuity of image embeddings within the
+cost volume to capture spatially consistent features. Specif-
+ically, Swin Transformer [45] blocks are used to enhance
+semantic coherence by capturing both local and semi-
+global features, refining class representations, and reduc-
+ing background noise. The initial cost volume feature F ∈
+R(H×W )×|T |×d is derived from C using convolutional lay-
+ers, represented as: F = Conv(C). The spatial aggregation
+operation for each class is then defined as:
+F ′(:, n) = T SA(F (:, n)), F (:, n) ∈ R(H×W )×d, (2)
+where T SA is applied independently for each class in the
+cost volume. Class aggregation models inter-class relation-
+ships using a Transformer block without positional embed-
+dings, ensuring permutation invariance. This operation ac-
+counts for the spatial context of each class and its interac-
+tions with other classes, enabling a holistic cost calculation
+for each class:
+F ′′(i, :) = T CA(F ′(i, :)), F ′ ∈ R(H×W )×|T |×d. (3)
+This two-stage aggregation framework refines the cost vol-
+ume, enhancing prediction accuracy across diverse object
+categories.
+3.3. Disentangled Cost Aggregation
+Although CAT-Seg [13] has shown promising results in
+open-vocabulary semantic segmentation (OVSS), its perfor-
+mance is limited when it comes to fine-grained, part-level
+categories. This limitation arises from the predictions being
+biased towards object-level categories, caused by the lack
+of part-level correspondence, as shown in Figure 2.
+To address this issue, we propose a method of parsing
+object-level and part-level class names CObj and CPart,
+computing separate cost volumes for each, similar to ap-
+proaches in OVPS frameworks like PartGLEE [36] and
+PartCLIPSeg [14]. However, our approach differentiates
+itself by explicitly constructing separate cost volumes
+from the image-text correspondence perspective. Specif-
+ically, we compute the initial cost volumes for object-
+level categories and part-level categories, C{Obj|Part} ∈
+R(H×W )×|C{Obj|Part}| as follows:
+C{Obj|Part}(i, x) = DV (i)·DL(x)
+∥DV (i)∥∥DL(x)∥ , x ∈ {o, p}, (4)
+where o and p are the object-level and part-level class to-
+kens, respectively, from the categories CObj and CPart.
+We then obtain initial cost volume features FObj ∈
+R(H×W )×|CObj|×d and FPart ∈ R(H×W )×|CPart|×d through
+convolutional layers, respectively. These features are fur-
+ther refined using spatial and class aggregation transformers
+to enhance the correspondence between image regions and
+class tokens. This allows us to compute cost volumes that
+are better aligned with the hierarchical concepts, providing
+more precise correspondence for both object-level and part-
+level class tokens. As shown in Figure 4, the features are
+processed through a sequence of spatial and class aggrega-
+tion transformers as:
+F ′′
+Obj(i, :) = T CA
+Obj(T SA
+Obj(FObj(i, :))), (5)
+F ′′
+Part(i, :) = T CA
+Part(T SA
+Part(FPart(i, :))), (6)
+where i is a spatial location index. The refined cost volume
+embeddings F ′′
+Obj and F ′′
+Part are then fed into decoders to
+generate prediction masks ˆso for objects and ˆsp for parts.
+These predictions are supervised using the corresponding
+9785
+
+
+=== PAGE 5 ===
+object cost volume
+dogcatcowdog’shead torso tail leg⋯ ⋯
+⋯ ⋯
+dogcatcow
+object㎼specific part costinput image
+⋯cat’s⋯cow’s⋯ ⋯
+dog’shead torso tail legnormalizationdog
+object㎼specific part class distribution
+mapping 𝑴
+aggregated object class distributionobject class distribution
+𝓛comp
+ℙ'obj
+ℙobj㚐
+⋯⋯ ⋯⋯
+Figure 5. Compositional Loss. The loss function Lcomp guides
+learning by ensuring that the aggregated class distribution of ob-
+ject parts aligns closely with the overall class distribution of the
+object, enhancing the consistency between part-level and object-
+level representations.
+ground truth masks so, sp with disentanglement loss as:
+Ldisen = λObj
+P
+o∈CObj
+BCE(so, ˆso)+λPart
+P
+p∈CPart
+BCE(sp, ˆsp),
+(7)
+where BCE denotes the binary cross-entropy loss, and λObj
+and λPart are hyperparameters balancing two losses. By
+leveraging this decoupled and disentangled cost aggregation
+strategy, our approach effectively enhances object-aware
+part-level image-text correspondence.
+3.4. Object-aware Part Cost Aggregation
+To further enhance image-text correspondence for object-
+specific parts, we integrate the object-level cost feature
+F ′′
+Obj and the part-level cost feature F ′′
+Part. This integration
+forms an object-part combination, denoted as FObj-Part ∈
+R(H×W )×|CObj-Part|×d, using a simple projection as follows:
+FObj-Part(i) = Linear
+ 
+F ′′
+Obj(i); F ′′
+Part(i)
+
+, (8)
+where [·; ·] denotes concatenation and Linear is a projec-
+tion layer. By combining object and part features, the model
+integrates object-level context with part-level details. We
+then align the integrated features with the object-specific
+part category names, CObj-Part, by computing the similar-
+ity between FObj-Part and the object-specific part text em-
+beddings q ∈ CObj-Part, thereby obtaining CObj-Part as:
+CObj-Part(i, q) = FObj-Part(i,q)·DL(q)
+∥FObj-Part(i,q)∥∥DL(q)∥ . (9)
+The updated object-aware part cost undergoes a convolu-
+tion operation to transform it into a feature representation,
+FObj-Part, before refinement through spatial and class ag-
+gregation transformers.
+F ′′
+Obj-Part(i, :) = T CA
+Obj-Part
+ 
+T SA
+Obj-Part (FObj-Part(i, :))
+
+,
+(10)
+where FObj-Part is a convoluted object-aware cost feature
+from CObj-Part. By propagating object-level and part-level
+semantics between image and text, this approach improves
+image-text correspondence alignment, enhancing accurate
+boundary recognition at both object and part levels. Finally,
+the refined object-aware part embeddingsFObj-Part are fed
+into the shared decoder to generate the prediction masks ˆsq
+and supervised using the ground truth masks sq with the
+following loss: LObj-Part =P
+q∈CObj-Part BCE (sq, ˆsq).
+3.5. Cost as Compositional Components
+Parts are compositional components that constitute an ob-
+ject. However, the ground truth annotations for parts are
+relatively scarce compared to those for objects, making su-
+pervision from part annotations alone insufficient.
+Compositional Bias. To address this problem, we propose
+a compositional loss, Lcomp, that enforces inductive bias of
+ensuring that the parts are the compositional component of
+its object. This loss function enhances the model’s capacity
+to capture spatial relationships among parts and improves
+the part boundary delineation, particularly for smaller com-
+ponents. Specifically, at each spatial location i ∈ R(H×W )
+in the cost volumes, we compute the normalized distribu-
+tions PObj and PObj-Part over object and part classes, re-
+spectively, by applying a softmax function to CObj and
+CObj-Part along the class dimension as:
+PObj(i, o) = exp(CObj(i,o))P
+k∈CObj exp(CObj(i,k)) , (11)
+PObj-Part(i, p) = exp(CObj-Part(i,p))P
+k∈CObj-Part exp(CObj-Part(i,k)) . (12)
+We then map the part distributions to their correspond-
+ing object classes using a predefined mapping M :
+{1, . . . ,|CObj-Part|} → { 1, . . . ,|CObj|}, which is deter-
+ministically defined based on CObj-Part. The aggregated
+object class distribution ˜PObj ∈ R(H×W )×|CObj| is then ob-
+tained by summing the mapped part probabilities as:
+˜PObj(i, o) =P
+p∈M −1(o) PObj-Part(i, p). (13)
+We finally compute the Jensen-Shannon [19, 39] divergence
+between the object’s distribution and the aggregated object
+distribution at each spatial location:
+Lcomp = 1
+2
+
+DKL(PObj∥˜PObj) + DKL(˜PObj∥PObj)
+
+,
+(14)
+By enforcing the similarity between the object’s distribu-
+tion and the aggregated object distribution, we inject the in-
+ductive bias that parts collectively compose the object. This
+encourages the model to recognize the spatial relationships
+among parts and ensures that smaller parts are appropriately
+delineated.
+9786
+
+
+=== PAGE 6 ===
+(a) w/o mask
+ (b) w/ mask
+Figure 6. Visualization of Frozen DINO PCA results. (a) With-
+out mask: The PCA visualization shows that DINO can separate
+object features from the background. (b) With mask: highlights
+consistent feature values across structurally similar parts of the
+objects, indicating strong part correspondences. This showcases
+DINO’s ability to capture detailed object representations.
+Ultimately, our training objective aims to minimize the
+following loss function:
+L = LObj-Part + Ldisen + λcompLcomp, (15)
+where λcomp is a hyperparameter for balancing the loss.
+3.6. Cost with Structural Guidance
+We utilize DINO’s [5, 50] self-supervised learning capabil-
+ities, which are known to exhibit strong semantic and geo-
+metric priors. DINO features have previously demonstrated
+their effectiveness in VLPart [57] by aiding in the corre-
+spondence computation between base and novel classes.
+While VLPart focused on image-to-image correspondences,
+we extend this approach by forming an image-text cost vol-
+ume, enabling the use of DINO features for image-text cor-
+respondence directly related to specific categories.
+We employ DINO features to provide structural guidance
+during spatial aggregation. As shown in Figure 6 (a), the
+PCA visualization illustrates that DINO features effectively
+distinguish between objects and background components.
+Additionally, in Figure 6 (b), after background masking and
+PCA application, we observed detailed intra-object infor-
+mation, revealing continuous PCA results within objects.
+This indicates that DINO features effectively capture struc-
+tural information useful for predicting part relationships.
+The visualization further shows consistent representations
+for structurally similar parts (e.g., “heads” in red, “torso” in
+blue, and “legs” in green for two “cats”), demonstrating the
+alignment capability of DINO features.
+Structural Guidance. To maximize the use of these struc-
+tural features, we introduce structural guidance during the
+spatial aggregation process by incorporating it into the
+Query and Key matrices along with the cost volume as:
+F ′(:, n) = T SA(F (:, n), Fdino(:, n)) ∈ R(H×W )×(d+ddino).
+(16)
+The effectiveness of our approach is comprehensively eval-
+uated in the ablation study (see Section 4.3). The study
+demonstrates the impact of incorporating structural guid-
+ance into the cost volume, leading to improved part and ob-
+ject image-text correspondences.
+4. Experiments
+4.1. Experimental Setup
+Datasets. We perform our evaluation on three OVPS bench-
+marks: Pascal-Part-116 [8, 65], ADE20K-Part-234 [65, 75],
+and PartImageNet [24]. Pascal-Part-116 is an adapted ver-
+sion of PascalPart [8] of OVPS, containing 8k training im-
+ages and 850 test images, with 116 part classes across 17
+object categories. ADE20K-Part-234, which is a more chal-
+lenging and fine-grained dataset, includes 7k training im-
+ages and 1k validation images with 234 part classes in 44
+object categories. PartImageNet provides 16k training im-
+ages and 2.9k validation images across 158 object classes
+from ImageNet [17], with 40 representative classes used for
+cross-dataset evaluation in this study. Additionally, we use
+PartImageNet (OOD), a split originally designed for few-
+shot learning, consisting of 109 training, 19 validation, and
+30 test classes. This split is included for cross-dataset eval-
+uation. Additional details of the datasets are provided in the
+supplementary materials.
+Evaluation Metrics. To comprehensively evaluate OVPS
+performance, we use two protocols: (1)Pred-All introduced
+by PartCLIPSeg [14], where the model performs segmenta-
+tion without access to object masks or class labels, relying
+entirely on its own predictions, and (2) Oracle-Obj, where
+ground truth object-level masks and class labels are pro-
+vided as in setting of OV-PARTS [65]. This setup assumes
+the scenario of part segmentation with the reliance on an
+object-level segmentation results. We measure segmenta-
+tion performance using mIoU and assess generalization via
+the harmonic mean (h-IoU) of seen and unseen categories.
+Implementation Details. We adopted the training approach
+of CAT-Seg [13] and fine-tuned the Query and Value heads
+of CLIP’s encoders. Details on the information on the exper-
+imental setup, hyperparameters, and training can be found
+in the supplementary materials.
+4.2. Main Results
+Zero-Shot Part Segmentation. We compare PartCATSeg
+with previous methods on three popular OVPS benchmarks,
+demonstrating its significant performance and strong gen-
+eralization capabilities. As shown in Table 1, PartCATSeg
+consistently outperforms existing methods on Pascal-Part-
+116, with significant improvements in h-IoU: a 15.10%
+increase in Pred-All and 11.62% increase in Oracle-Obj
+over the second-best method, PartCLIPSeg [14]. On the
+more challenging ADE20K-Part-234 dataset, as demon-
+strated in Table 2, PartCATSeg again outperforms previous
+SoTA methods, achieving a remarkable 12.81% improve-
+ment in Pred-All and 8.13% in Oracle-Obj. On PartIma-
+geNet, as in Table 3, PartCATSeg sets new performance
+benchmarks, breaking through the h-IoU thresholds with
+55.12% in Pred-All and 72.66% in Oracle-Obj. These re-
+9787
+
+
+=== PAGE 7 ===
+Method Pred-All Oracle-Obj
+Seen Unseen h-IoU Seen Unseen h-IoU
+ZSSeg+ [69] 38.05 3.38 6.20 54.43 19.04 28.21
+VLPart [57] 35.21 9.04 14.39 42.61 18.70 25.99
+CLIPSeg [47, 65] 27.79 13.27 17.96 48.91 27.54 35.24
+CAT-Seg [13, 65] 36.80 23.39 28.60 43.81 27.66 33.91
+PartGLEE [36] - - - 57.43 27.41 37.11
+PartCLIPSeg [14] 43.91 23.56 30.67 50.02 31.67 38.79
+PartCATSeg (Ours)52.62 40.51 45.77 57.49 44.88 50.41
+(+15.10) (+11.62)
+1 The best score isboldand the second-best score is underlined.
+Table 1. Comparison of zero-shot performance with state-of-the-
+art methods on Pascal-Part-116.
+Method Pred-All Oracle-Obj
+Seen Unseen h-IoU Seen Unseen h-IoU
+ZSSeg+ [69] 32.20 0.89 1.74 43.19 27.84 33.85
+CLIPSeg [47, 65] 3.14 0.55 0.93 38.15 30.92 34.15
+CAT-Seg [13, 65] 7.02 2.36 3.53 33.80 25.93 29.34
+PartGLEE [36] - - - 51.29 35.33 41.83
+PartCLIPSeg [14] 14.15 9.52 11.38 38.37 38.82 38.60
+PartCATSeg (Ours)38.87 17.56 24.19 53.13 47.16 49.96
+(+12.81) (+8.13)
+Table 2. Comparison of zero-shot performance with state-of-the-
+art methods on ADE20K-Part-234.
+Method Pred-All Oracle-Obj
+Seen Unseen h-IoU Seen Unseen h-IoU
+CLIPSeg [47, 65] 32.39 12.27 17.80 53.91 37.17 44.00
+CAT-Seg [13, 65] 33.58 23.04 27.33 47.34 35.14 40.33
+PartCLIPSeg [14] 38.82 19.47 25.94 56.26 51.65 53.85
+PartCATSeg (Ours)57.33 53.07 55.12 73.83 71.52 72.66
+(+27.79) (+18.81)
+Table 3. Comparison of zero-shot performance with state-of-the-
+art methods on PartImageNet.
+sults highlight PartCATSeg’s advanced capabilities, partic-
+ularly in performance on unseen categories, positioning it
+as a leading solution in OVPS with exceptional accuracy in
+both seen and unseen classes. By addressing the challenges
+in OVPS, our method achieves a significant advancement in
+OVPS, highlighting PartCATSeg’s robustness and superior
+generalization abilities across diverse datasets.
+Cross-Dataset Part Segmentation. Our experiments evaluate the
+performance of our method in two cross-dataset settings: (1) Par-
+tImageNet (OOD) and (2) PartImageNet → Pascal-Part-116. Par-
+tImageNet (OOD) includes classes with complex, irregular part
+shapes that differ from the training data, for evaluating adaptability
+to novel configurations within a familiar structure. As shown in Ta-
+ble 4, PartCATSeg outperforms previous methods in both Pred-All
+and Oracle-Obj settings, demonstrating its robustness in handling
+unseen categories in an OOD context. On PartImageNet→ Pascal-
+Part-116, we evaluate the model’s ability to transfer to a differ-
+ent dataset, Pascal-Part-116 [8, 65]. Trained on PartImageNet, our
+model is evaluated on Pascal-Part-116. Herein, PartCATSeg again
+achieves the highest performance across both Pred-All and Oracle-
+Obj settings. These results confirm PartCATSeg’s effectiveness in
+diverse cross-dataset scenarios, highlighting its versatility and ro-
+bustness in part segmentation tasks across various dataset config-
+urations.
+Qualitative Evaluation. We present qualitative results on the
+Method
+PartImageNet (OOD)PartImageNet→Pascal-Part-116
+Pred-All Oracle-Obj Pred-All Oracle-Obj
+Unseen Unseen Unseen Unseen
+CLIPSeg [47, 65] 6.69 55.86 11.72 14.87
+CAT-Seg [13, 65] 19.83 39.12 11.55 12.50
+PartCLIPSeg [14] 10.33 59.16 14.74 19.86
+PartCATSeg (Ours) 40.17 66.15 18.21 22.88
+(+20.34) (+6.99) (+3.47) (+3.02)
+Table 4. Cross-dataset performance with PartImageNet (OOD) and
+PartImageNet to Pascal-Part-116.
+Compositional
+Loss
+Pred-All Oracle-Obj
+Seen Unseen h-IoU Seen Unseen h-IoU
+Cost Agg 44.05 25.06 31.94 56.40 28.26 37.66
++ DINO 54.48 35.89 43.28 60.56 40.51 48.55
++ DINO +Lcomp-L1 54.70 35.92 43.36 61.29 41.62 49.57
++ DINO +Lcomp-SM 52.62 40.51 45.77 57.49 44.88 50.41
+Table 5. Impact of Compositional Loss on Pascal-Part-116
+Structural
+Guidance
+Pred-All Oracle-Obj
+Seen Unseen h-IoU Seen Unseen h-IoU
+w/o Structural Guidance 42.29 27.94 33.65 46.44 31.59 37.60
+DINO (TSAObj) 50.24 31.35 38.61 55.03 34.29 42.25
+DINO (TSAPart) 56.28 36.67 44.41 62.73 43.47 51.35
+DINO (TSAObj, TSAPart) 52.62 40.51 45.77 57.49 44.88 50.41
+1 All configurations use the compositional lossLcomp.
+2 Configurations utilizing DINO also include object-specific part-level guidance.
+Table 6. Impact of Structural Guidance on Pascal-Part-116.
+Pascal-Part-116 dataset in the Pred-All setting. Figure 7 compares
+our method with other baselines, demonstrating significant im-
+provements by addressing several challenges in previous OVPS
+methods. For instance, in rows 1 and 2 , compared to the other
+baselines showing unnatural segmentations, our model success-
+fully segments the cat’s leg and the dog’s neck, preserving the
+object’s structural integrity with the structural guidance. In row
+6, PartCATSeg correctly segments the person’s upper and lower
+arm as distinct parts. Additionally, our method almost completely
+segments the parts in the object without leaving regions unseg-
+mented and effectively captures smaller parts that other models
+often miss. For example, in rows 2 – 4, finer details like the dog’s
+ear, the cow’s tail, and the bird’s beak are accurately segmented
+in our method. In rows 5 and 6, our method segments almost all
+the parts in the object without sacrificing accuracy compared to
+the other baselines. This improvement is largely due to the com-
+positional loss, which encourages the competitive assignment of
+parts that collectively constitute the whole object. Moreover, our
+method resolves confusion between similar object categories. In
+rows 1 and 2 , other models misclassify parts of the cat and dog,
+sometimes confusing the cat for a dog and vice versa. Our object-
+aware part-level guidance helps the model correctly segment the
+parts of the correct object.
+4.3. Ablation Study
+Impact of Compositional Loss. To assess the effectiveness of the
+proposed compositional loss Lcomp, we conduct an ablation study
+on its impact on Pascal-Part-116 in Table 5. We compare the ef-
+fects of using compositional loss with a softmax-based normal-
+9788
+
+
+=== PAGE 8 ===
+(a) Ground-truth (b) VLPart [57] (c) CLIPSeg [53, 65] (d) CAT-Seg [13, 65] (e) PartCLIPSeg [14] (f) PartCATSeg
+Figure 7. Qualitative evaluation of zero-shot part segmentation on Pascal-Part-116 in thePred-All configuration. Note that annotations for
+unseen categories (e.g., bird, cow, dog) are excluded from the training set.
+ization ( Lcomp-SM), which encourages each spatial location to be
+predominantly assigned to a single part class, versus L1 normal-
+ization ( Lcomp-L1) before combining part costs. We observe that
+adding Lcomp gains about 2% h-IoU increase in the Pred-All set-
+ting compared to the model without using Lcomp. Furthermore,
+the model using Lcomp-SM outperforms the one using Lcomp-L1.
+These results confirm thatLcomp effectively improves performance
+by leveraging the inductive bias that parts collectively compose the
+object. Further qualitative results of ablation onLcomp are provided
+in the supplementary materials.
+Impact of Structural Guidance from DINO. To investigate the
+effect of structural guidance from DINO, we conduct an ablation
+study by selectively applying it in our cost aggregation framework.
+In PartCATSeg, structural guidance from DINO is incorporated
+into three levels of spatial aggregation transformer modules: ob-
+jects ( T SA
+Obj), parts ( T SA
+Part), and object-specific parts ( T SA
+Obj-Part).
+We measure performance changes on Pascal-Part-116 when struc-
+tural guidance is applied only at the object level, only at the part
+level, and at both levels. As shown in Table 6, applying struc-
+tural guidance at the part level yields more h-IoU increases in both
+Pred-All and Oracle-Obj settings than at the object level. When
+structural guidance is applied at both levels, we observe further
+improvements, especially in unseen classes. This suggests that,
+within the cost aggregation framework, structural guidance from
+DINO is more effective when leveraging detailed structural in-
+formation within individual objects, rather than relying solely on
+DINO’s background-object separation ability.
+5. Conclusion
+In this paper, we present a novel approach to open-vocabulary part
+segmentation, PartCATSeg, which leverages cost aggregation to
+address the inherent challenges of OVPS. We make strategic mod-
+ifications to cost aggregation to enhance object-aware part-level
+guidance, incorporate a compositional loss to compensate for lim-
+ited part-level guidance from the base set, and utilize DINO fea-
+tures for robust structural guidance. These combined efforts en-
+able PartCATSeg to significantly outperform existing state-of-the-
+art methods. We believe that our approach can serve as a powerful
+new baseline for practitioners and researchers, fostering greater
+interest and advancement within the community.
+9789
+
+
+=== PAGE 9 ===
+Acknowledgements
+This research was supported by the Basic Science Research Pro-
+gram through the National Research Foundation of Korea (NRF)
+funded by the MSIP (RS-2025-00520207, RS-2023-00219019),
+KEIT grant funded by the Korean government (MOTIE) (No.
+2022-0-00680, No. 2022-0-01045), the IITP grant funded by the
+Korean government (MSIT) (No. RS-2024-00457882, National AI
+Research Lab Project, No. 2021-0-02068 Artificial Intelligence
+Innovation Hub, RS-2019-II190075 Artificial Intelligence Grad-
+uate School Program (KAIST)), Samsung Electronics Co., Ltd
+(IO230508-06190-01) and SAMSUNG Research, Samsung Elec-
+tronics Co., Ltd.
+Bibliography
+[1] Zeynep Akata, Florent Perronnin, Zaid Harchaoui, and
+Cordelia Schmid. Label-embedding for image classification.
+IEEE transactions on pattern analysis and machine intelli-
+gence, 38(7):1425–1438, 2015. 1
+[2] Zeynep Akata, Scott Reed, Daniel Walter, Honglak Lee,
+and Bernt Schiele. Evaluation of output embeddings for
+fine-grained image classification. In Proceedings of the
+IEEE conference on computer vision and pattern recogni-
+tion, pages 2927–2936, 2015. 1
+[3] Juan Antonio Balbuena, Ra ´ul M ´ıguez-Lozano, and Isabel
+Blasco-Costa. Paco: a novel procrustes application to co-
+phylogenetic analysis. PloS one, 8(4):e61048, 2013. 1, 3
+[4] Maxime Bucher, Tuan-Hung Vu, Matthieu Cord, and Patrick
+P´erez. Zero-shot semantic segmentation.Advances in Neural
+Information Processing Systems, 32, 2019. 1
+[5] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. In Pro-
+ceedings of the IEEE/CVF international conference on com-
+puter vision, pages 9650–9660, 2021. 2, 6
+[6] Liang-Chieh Chen. Rethinking atrous convolution
+for semantic image segmentation. arXiv preprint
+arXiv:1706.05587, 2017. 1, 3
+[7] Weitao Chen, Hongbin Xu, Zhipeng Zhou, Yang Liu, Baigui
+Sun, Wenxiong Kang, and Xuansong Xie. Costformer: Cost
+transformer for cost aggregation in multi-view stereo. arXiv
+preprint arXiv:2305.10320, 2023. 3, 4
+[8] Xianjie Chen, Roozbeh Mottaghi, Xiaobai Liu, Sanja Fi-
+dler, Raquel Urtasun, and Alan Yuille. Detect what you
+can: Detecting and representing objects using holistic mod-
+els and body parts. InProceedings of the IEEE conference on
+computer vision and pattern recognition, pages 1971–1978,
+2014. 1, 3, 6, 7
+[9] Bowen Cheng, Alex Schwing, and Alexander Kirillov. Per-
+pixel classification is not all you need for semantic segmen-
+tation. Advances in neural information processing systems ,
+34:17864–17875, 2021. 1
+[10] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention mask
+transformer for universal image segmentation. In Proceed-
+ings of the IEEE/CVF conference on computer vision and
+pattern recognition, pages 1290–1299, 2022. 1, 3
+[11] Seokju Cho, Sunghwan Hong, Sangryul Jeon, Yunsung Lee,
+Kwanghoon Sohn, and Seungryong Kim. Cats: Cost aggre-
+gation transformers for visual correspondence. Advances
+in Neural Information Processing Systems , 34:9011–9023,
+2021. 2, 3, 4
+[12] Seokju Cho, Sunghwan Hong, and Seungryong Kim.
+Cats++: Boosting cost aggregation with convolutions and
+transformers. IEEE Transactions on Pattern Analysis and
+Machine Intelligence, 45(6):7174–7194, 2022. 3
+[13] Seokju Cho, Heeseong Shin, Sunghwan Hong, Seungjun
+An, Seungjun Lee, Anurag Arnab, Paul Hongsuck Seo,
+and Seungryong Kim. Cat-seg: Cost aggregation for
+open-vocabulary semantic segmentation. arXiv preprint
+arXiv:2303.11797, 2023. 2, 3, 4, 6, 7, 8
+[14] Jiho Choi, Seonho Lee, Seungho Lee, Minhyun Lee,
+and Hyunjung Shim. Understanding multi-granularity
+for open-vocabulary part segmentation. arXiv preprint
+arXiv:2406.11384, 2024. 1, 2, 3, 4, 6, 7, 8
+[15] Subhabrata Choudhury, Iro Laina, Christian Rupprecht, and
+Andrea Vedaldi. Unsupervised part discovery from con-
+trastive reconstruction. Advances in Neural Information Pro-
+cessing Systems, 34:28104–28118, 2021. 3
+[16] Navneet Dalal and Bill Triggs. Histograms of oriented gra-
+dients for human detection. In 2005 IEEE computer soci-
+ety conference on computer vision and pattern recognition
+(CVPR’05), pages 886–893. Ieee, 2005. 3
+[17] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li,
+and Li Fei-Fei. Imagenet: A large-scale hierarchical image
+database. In 2009 IEEE conference on computer vision and
+pattern recognition, pages 248–255. Ieee, 2009. 6
+[18] Zheng Ding, Jieke Wang, and Zhuowen Tu. Open-
+vocabulary universal image segmentation with maskclip.
+arXiv preprint arXiv:2208.08984, 2022. 3
+[19] Erik Englesson and Hossein Azizpour. Generalized jensen-
+shannon divergence loss for learning with noisy labels.
+Advances in Neural Information Processing Systems , 34:
+30284–30297, 2021. 5
+[20] Andrea Frome, Greg S Corrado, Jon Shlens, Samy Bengio,
+Jeff Dean, Marc’Aurelio Ranzato, and Tomas Mikolov. De-
+vise: A deep visual-semantic embedding model. Advances
+in neural information processing systems, 26, 2013. 1
+[21] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scal-
+ing open-vocabulary image segmentation with image-level
+labels. In European Conference on Computer Vision, pages
+540–557. Springer, 2022. 3
+[22] Xiuye Gu, Tsung-Yi Lin, Weicheng Kuo, and Yin Cui. Open-
+vocabulary object detection via vision and language knowl-
+edge distillation. arXiv preprint arXiv:2104.13921, 2021. 1,
+3
+[23] Kunyang Han, Yong Liu, Jun Hao Liew, Henghui Ding, Ji-
+ajun Liu, Yitong Wang, Yansong Tang, Yujiu Yang, Jiashi
+Feng, Yao Zhao, et al. Global knowledge calibration for
+fast open-vocabulary segmentation. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision ,
+pages 797–807, 2023. 3
+[24] Ju He, Shuo Yang, Shaokang Yang, Adam Kortylewski, Xi-
+aoding Yuan, Jie-Neng Chen, Shuai Liu, Cheng Yang, Qi-
+9790
+
+
+=== PAGE 10 ===
+hang Yu, and Alan Yuille. Partimagenet: A large, high-
+quality dataset of parts. In European Conference on Com-
+puter Vision, pages 128–145. Springer, 2022. 1, 2, 3, 6
+[25] Ju He, Jieneng Chen, Ming-Xian Lin, Qihang Yu, and Alan L
+Yuille. Compositor: Bottom-up clustering and compositing
+for robust part and object segmentation. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 11259–11268, 2023. 3
+[26] Kaiming He, Georgia Gkioxari, Piotr Doll ´ar, and Ross Gir-
+shick. Mask r-cnn. In Proceedings of the IEEE international
+conference on computer vision, pages 2961–2969, 2017. 1,
+3
+[27] Sunghwan Hong, Seokju Cho, Jisu Nam, Stephen Lin, and
+Seungryong Kim. Cost aggregation with 4d convolutional
+swin transformer for few-shot segmentation. In European
+Conference on Computer Vision , pages 108–126. Springer,
+2022. 3, 4
+[28] Sunghwan Hong, Seokju Cho, Seungryong Kim, and
+Stephen Lin. Unifying feature and cost aggregation with
+transformers for semantic and visual correspondence. In The
+Twelfth International Conference on Learning Representa-
+tions, 2024. 3, 4
+[29] Asmaa Hosni, Christoph Rhemann, Michael Bleyer, Carsten
+Rother, and Margrit Gelautz. Fast cost-volume filtering for
+visual correspondence and beyond. IEEE transactions on
+pattern analysis and machine intelligence , 35(2):504–511,
+2012. 3
+[30] Wei-Chih Hung, Varun Jampani, Sifei Liu, Pavlo
+Molchanov, Ming-Hsuan Yang, and Jan Kautz. Scops:
+Self-supervised co-part segmentation. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 869–878, 2019. 3
+[31] Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc Le, Yun-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representa-
+tion learning with noisy text supervision. In International
+conference on machine learning, pages 4904–4916. PMLR,
+2021. 2, 3
+[32] Juil Koo, Seungwoo Yoo, Minh Hieu Nguyen, and Minhyuk
+Sung. Salad: Part-level latent diffusion for 3d shape gen-
+eration and manipulation. In Proceedings of the IEEE/CVF
+International Conference on Computer Vision, pages 14441–
+14451, 2023. 2
+[33] Boyi Li, Kilian Q Weinberger, Serge Belongie, Vladlen
+Koltun, and Ren ´e Ranftl. Language-driven semantic seg-
+mentation. arXiv preprint arXiv:2201.03546, 2022. 3
+[34] Feng Li, Hao Zhang, Huaizhe Xu, Shilong Liu, Lei Zhang,
+Lionel M Ni, and Heung-Yeung Shum. Mask dino: Towards
+a unified transformer-based framework for object detection
+and segmentation. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+3041–3050, 2023. 1, 2, 3
+[35] Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi.
+Blip: Bootstrapping language-image pre-training for unified
+vision-language understanding and generation. In Interna-
+tional conference on machine learning, pages 12888–12900.
+PMLR, 2022. 2, 3
+[36] Junyi Li, Junfeng Wu, Weizhi Zhao, Song Bai, and Xiang
+Bai. Partglee: A foundation model for recognizing and pars-
+ing any objects. arXiv preprint arXiv:2407.16696, 2024. 1,
+2, 3, 4, 7
+[37] Yi Li, Hualiang Wang, Yiqun Duan, and Xiaomeng Li. Clip
+surgery for better explainability with enhancement in open-
+vocabulary tasks. arXiv preprint arXiv:2304.05653 , 2023.
+2
+[38] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+7061–7070, 2023. 1, 3
+[39] Jianhua Lin. Divergence measures based on the shannon en-
+tropy. IEEE Transactions on Information theory, 37(1):145–
+151, 1991. 5
+[40] Huan Ling, Karsten Kreis, Daiqing Li, Seung Wook Kim,
+Antonio Torralba, and Sanja Fidler. Editgan: High-precision
+semantic image editing. Advances in Neural Information
+Processing Systems, 34:16331–16345, 2021. 2
+[41] Ce Liu, Jenny Yuen, and Antonio Torralba. Sift flow: Dense
+correspondence across scenes and its applications. IEEE
+transactions on pattern analysis and machine intelligence ,
+33(5):978–994, 2010. 3
+[42] Yanbin Liu, Linchao Zhu, Makoto Yamada, and Yi Yang. Se-
+mantic correspondence as an optimal transport problem. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 4463–4472, 2020. 3
+[43] Yong Liu, Sule Bai, Guanbin Li, Yitong Wang, and Yansong
+Tang. Open-vocabulary segmentation with semantic-assisted
+calibration. arXiv preprint arXiv:2312.04089, 2023. 3
+[44] Zongdai Liu, Feixiang Lu, Peng Wang, Hui Miao, Liangjun
+Zhang, Ruigang Yang, and Bin Zhou. 3d part guided image
+editing for fine-grained object understanding. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 11336–11345, 2020. 2
+[45] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng
+Zhang, Stephen Lin, and Baining Guo. Swin transformer:
+Hierarchical vision transformer using shifted windows. In
+Proceedings of the IEEE/CVF international conference on
+computer vision, pages 10012–10022, 2021. 4
+[46] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully
+convolutional networks for semantic segmentation. In Pro-
+ceedings of the IEEE conference on computer vision and pat-
+tern recognition, pages 3431–3440, 2015. 1
+[47] Timo L ¨uddecke and Alexander Ecker. Image segmenta-
+tion using text and image prompts. In Proceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 7086–7096, 2022. 3, 7
+[48] Juhong Min, Jongmin Lee, Jean Ponce, and Minsu Cho.
+Hyperpixel flow: Semantic correspondence with multi-layer
+neural features. In Proceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision , pages 3395–3404,
+2019. 3
+[49] Juhong Min, Jongmin Lee, Jean Ponce, and Minsu Cho.
+Learning to compose hypercolumns for visual correspon-
+dence. In Computer Vision–ECCV 2020: 16th European
+9791
+
+
+=== PAGE 11 ===
+Conference, Glasgow, UK, August 23–28, 2020, Proceed-
+ings, Part XV 16, pages 346–363. Springer, 2020. 3
+[50] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 2, 3, 6
+[51] Tai-Yu Pan, Qing Liu, Wei-Lun Chao, and Brian Price. To-
+wards open-world segmentation of parts. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 15392–15401, 2023. 2
+[52] Gabriel Peyr ´e, Marco Cuturi, et al. Computational optimal
+transport: With applications to data science.Foundations and
+Trends® in Machine Learning, 11(5-6):355–607, 2019. 3
+[53] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. In International conference on machine learning, pages
+8748–8763. PMLR, 2021. 2, 3, 8
+[54] Ignacio Rocco, Mircea Cimpoi, Relja Arandjelovi ´c, Akihiko
+Torii, Tomas Pajdla, and Josef Sivic. Neighbourhood con-
+sensus networks. Advances in neural information processing
+systems, 31, 2018. 3
+[55] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-
+net: Convolutional networks for biomedical image segmen-
+tation. In Medical image computing and computer-assisted
+intervention–MICCAI 2015: 18th international conference,
+Munich, Germany, October 5-9, 2015, proceedings, part III
+18, pages 234–241. Springer, 2015. 1
+[56] Deqing Sun, Xiaodong Yang, Ming-Yu Liu, and Jan Kautz.
+Pwc-net: Cnns for optical flow using pyramid, warping, and
+cost volume. In Proceedings of the IEEE conference on
+computer vision and pattern recognition, pages 8934–8943,
+2018. 3
+[57] Peize Sun, Shoufa Chen, Chenchen Zhu, Fanyi Xiao, Ping
+Luo, Saining Xie, and Zhicheng Yan. Going denser with
+open-vocabulary part segmentation. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision ,
+pages 15453–15465, 2023. 1, 2, 3, 6, 7, 8
+[58] James W Tanaka and Martha J Farah. Parts and wholes in
+face recognition. The Quarterly Journal of Experimental
+Psychology Section A, 46(2):225–245, 1993. 2
+[59] Prune Truong, Martin Danelljan, and Radu Timofte. Glu-
+net: Global-local universal network for dense flow and corre-
+spondences. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pages 6258–6268,
+2020. 3
+[60] Robert van der Klis, Stephan Alaniz, Massimiliano Mancini,
+Cassio F Dantas, Dino Ienco, Zeynep Akata, and Diego Mar-
+cos. Pdisconet: Semantically consistent part discovery for
+fine-grained recognition. In Proceedings of the IEEE/CVF
+International Conference on Computer Vision, pages 1866–
+1876, 2023. 3
+[61] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszko-
+reit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia
+Polosukhin. Attention is all you need. Advances in neural
+information processing systems, 30, 2017. 4
+[62] C ´edric Villani et al. Optimal transport: old and new .
+Springer, 2009. 3
+[63] Zifu Wan, Yaqi Xie, Ce Zhang, Zhiqiu Lin, Zihan Wang, Si-
+mon Stepputtis, Deva Ramanan, and Katia P Sycara. In-
+structpart: Affordance-based part segmentation from lan-
+guage instruction. In AAAI-2024 Workshop on Public Sector
+LLMs: Algorithmic and Sociotechnical Design, 2024. 2
+[64] Xudong Wang, Trevor Darrell, Sai Saketh Rambhatla, Ro-
+hit Girdhar, and Ishan Misra. Instancediffusion: Instance-
+level control for image generation. arXiv preprint
+arXiv:2402.03290, 2024. 2
+[65] Meng Wei, Xiaoyu Yue, Wenwei Zhang, Shu Kong, Xi-
+hui Liu, and Jiangmiao Pang. Ov-parts: Towards open-
+vocabulary part segmentation. Advances in Neural Informa-
+tion Processing Systems, 36, 2024. 1, 2, 3, 6, 7, 8
+[66] Yongqin Xian, Subhabrata Choudhury, Yang He, Bernt
+Schiele, and Zeynep Akata. Semantic projection network
+for zero-and few-label semantic segmentation. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 8256–8265, 2019. 3
+[67] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. Sed: A simple encoder-decoder for
+open-vocabulary semantic segmentation. arXiv preprint
+arXiv:2311.15537, 2023. 3
+[68] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 2955–2966, 2023. 3
+[69] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. In European Conference on Computer Vi-
+sion, pages 736–753. Springer, 2022. 1, 3, 7
+[70] Sriram Yenamandra, Arun Ramachandran, Karmesh Yadav,
+Austin Wang, Mukul Khanna, Theophile Gervet, Tsung-Yen
+Yang, Vidhi Jain, Alexander William Clegg, John Turner,
+et al. Homerobot: Open-vocabulary mobile manipulation.
+arXiv preprint arXiv:2306.11565, 2023. 2
+[71] Qihang Yu, Dong Yang, Holger Roth, Yutong Bai, Yixiao
+Zhang, Alan L Yuille, and Daguang Xu. C2fnas: Coarse-
+to-fine neural architecture search for 3d medical image seg-
+mentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 4126–
+4135, 2020. 2
+[72] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip.Advances in
+Neural Information Processing Systems, 36, 2024. 3
+[73] Alireza Zareian, Kevin Dela Rosa, Derek Hao Hu, and Shih-
+Fu Chang. Open-vocabulary object detection using captions.
+In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 14393–14402, 2021.
+3
+[74] Hang Zhao, Xavier Puig, Bolei Zhou, Sanja Fidler, and Anto-
+nio Torralba. Open vocabulary scene parsing. InProceedings
+of the IEEE International Conference on Computer Vision ,
+pages 2002–2010, 2017. 1, 3
+9792
+
+
+=== PAGE 12 ===
+[75] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ade20k dataset. In Proceedings of the IEEE conference on
+computer vision and pattern recognition , pages 633–641,
+2017. 6
+[76] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. In European Conference on Com-
+puter Vision, pages 696–712. Springer, 2022. 1, 3
+[77] Ziqin Zhou, Yinjie Lei, Bowen Zhang, Lingqiao Liu, and Yi-
+fan Liu. Zegclip: Towards adapting clip for zero-shot se-
+mantic segmentation. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+11175–11185, 2023. 3
+9793

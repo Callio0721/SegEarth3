@@ -1,0 +1,605 @@
+=== ppt/slides/slide1.xml ===
+RESEARCH PROGRESS · AUG 2026
+Joint Role–View Grounding
+01
+RolFun:Role-Functional Prompting and Visual-Field Complementarity 
+for Training-Free Remote Sensing OVSS
+SAM3-native role-functional text and aligned visual-field grounding
+Peng Junhao · 2026.08
+
+=== ppt/slides/slide2.xml ===
+RESEARCH BACKGROUND
+遥感 OVSS 的核心矛盾，不只是“文本
+、图像
+不够遥感”
+02
+自然图像预训练的开放词汇模型进入遥感后，同时面对 ontology、视觉尺度与
+计算角色
+三类错位。
+01
+Ontology gap
+road / pavement / bareland 的边界由数据集定义；一个通用自然语言模板无法替代 benchmark ontology。
+02
+Visual-field gap
+车辆与建筑需要局部细节；道路与农田又依赖大范围连续结构。固定 crop 很难同时满足。
+03
+Role gap
+Presence 判断存在，Semantic 做密集覆盖，Instance 组织区域/实体；它们未必需要同一种补充信息。
+我们的切入点：把“类别适配”进一步分解成 Role × View 的信息适配。
+
+=== ppt/slides/slide3.xml ===
+RELATED WORK LINEAGE
+相关工作在“校准概念”，但很少继续区分 SAM3 的计算角色
+03
+ConceptBank
+数据集/类别级概念库
+统一影响 SAM3 整体概念
+TMPA
+CLIP 范式测试时多提示适配
+图像视觉核心更新文本
+ProC-SAM3
+约束提示池 + 批量推理
+Presence-guided residual fusion
+Our gap
+P
+S
+I
+×
+Local / Context
+同一类别内部：P / S / I 对语言与视野的需求是否不同？
+研究空隙：现有工作多以“类别”为校准单位；我们把校准单位进一步细化到 computational role 与 visual field。
+
+=== ppt/slides/slide4.xml ===
+SEGEARTH-OV3
+Baseline：SAM3 先共享 grounding，再由三路证据完成像素分类
+04
+Native evidence
+Presence
+p_c：类别是否存在
+Semantic
+S_c(x)：密集类别响应
+Instance
+I_c(x)：query mask 证据
+F_c(x) = p_c · max(S_c(x), I_c(x))
+最后跨类别 argmax
+关键假设：一个文本 concept 
+与一个固定视野，
+足以同时服务 P / S / I。
+
+=== ppt/slides/slide5.xml ===
+SAM3 INTERNALS
+放大 SAM3：共享 grounding 如何形成 Presence / Semantic / Instance
+05
+Image X
+Concept:
+ 
+road
+Perception Encoder
+vision tokens V
+text tokens T_c
+Fusion Encoder
+T_c cross-attends V
+conditioned memory H_c
+Shared conditioned states
+Dense memory H_c
+Presence token
++ object queries
+同一 concept
+先完成一次共享条件化
+Presence  P
+Presence
+ 
+token
+Transformer
+decoder
+M
+L
+P
+p_c  ·  concept existence
+Semantic  S
+Dense H_c
+SimpleFPN +
+shared seg. head
+S_c(x)  ·  dense semantic coverage
+Instance  I
+Object queries Q
+DETR-like
+decoder
+Mask
+head
+M_cq(x), r_cq  →  I_c(x)
+query-organized regions
+Shared grounding is coupled; the readouts are role-specific: 
+ P judges existence, S covers dense regions, I organizes query masks.
+
+=== ppt/slides/slide6.xml ===
+OBSERVATION 1 · ROLE HETEROGENEITY
+问题一：同一个“road”无法同时表达三种计算职责
+06
+Ontology Anchor
+road
+定义“分什么”
+必须保留数据集类别边界
+共享 anchor 仍承担三路
+grounding 的基本共识
+Presence
+roads / roadway
+判断概念是否在图像中成立
+Semantic
+continuous paved road surface
+补充连续、密集、表面覆盖信息
+Instance
+connected road region
+补充区域连通与 query 组织信息
+同类候选并非“更长越好”：文本的价值由最终分割功能决定。
+
+=== ppt/slides/slide7.xml ===
+RESEARCH EVOLUTION · TEXT
+试错一：Prompt 扩展有效，但“全头共享”和“整体替换”都不安全
+07
+36 组 dataset × prompt 路径的结构筛查
+01
+Shared full grounding
+0 / 36 正向
+−21.15
+mean ΔmIoU
+同一描述同时改变 P / S / I，
+角色冲突被放大
+→
+02
+Semantic replacement
+3 / 36 正向
+−6.36
+mean ΔmIoU
+只保留 candidate semantic，
+仍会抹掉稳定类别基座
+→
+03
+Anchor-preserving residual
+13 / 36 正向
+−0.50
+mean ΔmIoU
+保留 anchor；bounded ΔS 在 36 / 36 对照中优于 replacement。
+OpenEarthMap · S1
++1.88
+Semantic-only
+−1.09
+same text shared
+由此形成当前结构
+Ontology anchor 保留共享概念边界
++
+不同 role 接收不同功能信息
+→
+Role-only：8 / 8 ↑ · macro 
++2.25
+结论不是“长文本更好”，而是：补充信息必须按计算职责进入，并受 anchor 约束。
+
+=== ppt/slides/slide8.xml ===
+OBSERVATION 2 · VIEW HETEROGENEITY
+问题二：同一角色也可能需要不同空间范围的视觉证据
+08
+Local / Native
+高分辨率、小视野
+更适合：边界、车辆、建筑细节
+保留像素级局部结构
+Context / Large-FoV
+低分辨率、大范围布局
+更适合：道路连续性、农田与场景结构
+补充单一 crop 看不到的上下文
+关键不是“global 一定更好”，而是对齐视野中的证据具有互补性。
+
+=== ppt/slides/slide9.xml ===
+RESEARCH EVOLUTION · VIEW
+试错二：Context 确有互补信息，但固定融合无法稳定利用
+09
+Information exists
+Shared Canvas
++0.92 macro
+4 / 6 vs matched Fine-only
+Context 提供了真实新信息，
+但改变 token allocation / resolution。
+→
+Interface fails
+Fixed fusion families
++0.10 macro
+R1–R14 best · 3 / 6
+Residual、surround、low-frequency、
+Q/K/V 与 agreement 均未形成通用规则。
+→
+Conditional use
+Joint Role × View
++1.67
+ macro
+8 / 8 over Role-only
+联合 role information 与 visual field
+。
+6 / 8
+positive
+Role × View
+interaction
++0.63
+macro
+interaction
+Selected-profile Role × View interaction ΔmIoU
+LoveDA
++0.66
+OEM
++1.68
+Potsdam
++0.11
+UDD5
+−0.28
+Vaihingen
++2.07
+VDD
++0.53
+UAVid
++0.47
+iSAID
+−0.23
+
+=== ppt/slides/slide10.xml ===
+EXECUTIVE TAKEAWAY
+一句话：共享概念不等于共享信息需求
+10
+SAM3 用一个 concept 同时驱动三种输出，但三种输出承担的是不同计算职责。
+01
+Role-Functional Text
+类别名保留为 ontology anchor；新增文本按 Presence、Semantic、Instance 的职责分别进入。
+02
+Joint View Profile
+Native 保留细节，Context 提供大范围布局；每个视野都走完整、冻结的 SAM3 grounding。
+03
+Joint Role × View
+联合角色文本与视野证据
+。
+53.56
+Baseline
++2.25
+Role Text
+ Only
++1.67
+Joint Role–View over Role-only
+57.49
+Final:
+Joint Role–View
+8 / 8 datasets ↑
+
+=== ppt/slides/slide11.xml ===
+11
+
+=== ppt/slides/slide12.xml ===
+
+
+=== ppt/slides/slide13.xml ===
+
+
+=== ppt/slides/slide14.xml ===
+MAIN RESULTS
+主结果：Joint Role–View 在 8 个数据集上全部超过 baseline
+14
+灰色：Official baseline　蓝色：
+Ours
+（
+Joint Role–View
+）
+LoveDA
+47.34
+48.81
++1.46
+OpenEarthMap
+44.30
+53.08
++8.77
+Potsdam
+57.87
+63.18
++5.31
+UDD5
+71.80
+72.94
++1.14
+Vaihingen
+60.86
+66.38
++5.52
+VDD
+64.11
+66.56
++2.45
+UAVid
+54.59
+59.82
++5.24
++1.48
+iSAID
+27.64
+29.13
+
+=== ppt/slides/slide15.xml ===
+AGGREGATE EVIDENCE
+Macro 提升可分解为两步：角色文本先建立增益，视野
+信息
+继续放大
+增益
+15
+53.56
+Official baseline
++2.25
+Role-Functional Text
++1.67
+Joint View Profile
+57.49
+Joint Role–View
+8 / 8
+Role-only 正提升
+8
+ / 8
+Joint over Role 正提升
++3.92
+总 macro 增益
+
+=== ppt/slides/slide16.xml ===
+Method
+Backbone
+Potsdam
+Vaihingen
+LoveDA
+iSAID
+OEM
+UAVid
+UDD5
+VDD
+Avg.
+VIP* (ICML'26)
+DINOv3 + dino.txt
+23.0
+30.5
+31.2
+23.5
+20.7
+19.9
+35.2
+52.5
+29.6
+SCLIP (ECCV'24)
+CLIP
+39.6
+35.9
+30.4
+16.1
+29.3
+31.4
+38.7
+37.9
+32.4
+ClearCLIP (ECCV'24)
+CLIP
+42.0
+36.2
+32.4
+18.2
+31.0
+36.2
+41.8
+39.3
+34.6
+ProxyCLIP (ECCV'24)
+CLIP + DINOv2
+49.0
+47.5
+34.3
+21.8
+38.9
+35.8
+40.8
+47.8
+39.5
+SegEarth-OV (CVPR'25)
+CLIP
+48.5
+29.1
+36.9
+21.7
+40.3
+42.5
+50.6
+45.3
+39.2
+RSCLIP* (J-STARS'26)
+CLIP
+47.4
+40.3
+35.5
+21.2
+39.8
+42.5
+50.4
+42.5
+39.9
+CorrCLIP (ICCV'25)
+CLIP + DINO + SAM2
+51.9
+47.0
+36.9
+25.5
+32.9
+38.3
+46.1
+47.3
+40.7
+ConInfer 
+(CVPR Findings'26)
+CLIP + DINOv3
+50.0
+31.4
+39.3
+20.1
+42.0
+46.4
+46.9
+50.3
+40.8
+ReAttnCLIP (CVPR'26)
+CLIP
+48.7
+29.9
+37.0
+23.2
+41.1
+44.0
+53.7
+49.7
+40.9
+ActiveSAM* (arXiv'26)
+SAM 3
+40.6
+45.1
+41.1
+28.3
+40.7
+53.3
+72.1
+62.2
+47.9
+SegEarth-OV3
+*(
+arXiv'25)
+SAM 3
+57.
+8
+60.8
+4
+7.4
+2
+7.6
+4
+4.3
+54.7
+71.
+7
+64.
+1
+5
+3
+.
+5
+ProC-SAM3
+(
+GRSL’26
+)
+SAM 3
+58.8
+64.5
+46.1
+29.5
+48.9
+60.0
+73.4
+67.5
+56.1
+Our
+SAM 3
+63.2
+66.4
+48.8
+2
+9
+.
+1
+53.1
+59.8
+72.9
+66.6
+57.
+5
+
+=== ppt/slides/slide17.xml ===
+ABLATION · ROLE TEXT
+Role ablation：文本
+补充
+在不同遥感 ontology 上都能形成明显收益
+16
+只挑选 Role 增益最清楚的三个数据集展示；完整 8 数据集结果见主表。
+OpenEarthMap
+44.30
+50.53
++6.23
+VDD
+64.11
+66.12
++2.01
+UAVid
+54.59
+59.51
++4.92
+What this supports
+• 一个类别名的信息量不足
+• P / S / I 的补充信息应按职责组织
+• Anchor 仍是稳定 ontology 基座
+Macro 
++2.25
+ mIoU
+
+=== ppt/slides/slide18.xml ===
+ABLATION · VIEW PROFILE
+View ablation：视野
+信息
+在 Role 条件下
+能
+形成稳定增益
+17
+比较：Role-only → Joint；右侧为 selected operator 的交互分解
+UAVid
+59.51
+59.82
++0.31
+LoveDA
+48.31
+48.81
++0.50
+OpenEarthMap
+50.53
+53.08
++2.55
+Interaction evidence
+• UAVid：Anchor 下 View-only 
++0.00
+  selected View main 
+−0.15
+  Role×View interaction 
++0.47
+• LoveDA：
+−0.16
+ → 
++0.66
+• OEM：
++0.87
+ → 
++1.68
+Joint over Role: 
+8
+ / 8 ↑
+
+=== ppt/slides/slide19.xml ===
+NEXT EXPERIMENTS
+下一步
+实验
+规划
+18
+01
+遥感主实验
+跑
+iSAID
+完整实验
+结果
+02
+自然图像探索
+VOC20 与 Cityscapes：检验 role–view 机制是否超出遥感域并超过匹配 baseline
+03
+推理加速优化（Part 3）
+工程压缩；方法
+压缩？
+主线顺序：iSAID Joint → 
+自然图像
+ → 推理加速。

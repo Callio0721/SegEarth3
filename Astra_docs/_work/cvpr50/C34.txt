@@ -1,0 +1,1365 @@
+=== PAGE 1 ===
+SegEarth-R2: Towards Comprehensive Language-guided Segmentation for
+Remote Sensing Images
+Zepeng Xin1∗, Kaiyu Li1∗, Luodi Chen1, Wanchen Li1, Y uchen Xiao1, Hui Qiao5,
+Weizhan Zhang1, Deyu Meng2,3,4, Xiangyong Cao1,2†
+1Faculty of Electronic and Information Engineering, Xi’an Jiaotong University
+2Ministry of Education Key Laboratory of Intelligent Networks and Network Security
+3School of Mathematics and Statistics, Xi’an Jiaotong University
+4Macao Institute of Systems Engineering, Macau University of Science and Technology
+5China Telecom Shaanxi Branch
+SegEarth-R2
+Hierarchical Segmentation Granularity
+Semantic Level
+Instance Level
+Part Level
+Hierarchical Concept Granularity
+Coarse-grained Concept Fine-grained Concept
+Linguistic Variability
+Short Long
+Reasoning Requirements
+Target Multiplicity
+Implicit
+Explicit
+The airplane engine on the
+right wing of the purple and
+yellow airplane provides
+thrust for flight.
+Sure, I have segmented the
+<p> airplane engine </p>
+[SEG] area.
+The B1-B boomber at the
+top of the image is a
+strategic military aircraft
+parked on the tarmac.
+Of course! The <p> B1-B
+bomber </p> [SEG] at the
+top of the image is now
+segmented.
+Where can I find a facility
+for a racket sport where
+players compete in sets
+and games, aiming to hit
+the ball over a net so the
+opponent cannot legally
+return it?
+The <p> tennis courts
+complex </p> [SEG]
+located near the woods.
+At this airbase, which
+large vehicle parked
+on the left is awaiting
+its turn for takeoff on
+the runway?
+The <p> airplane
+</p> [SEG] on the
+left is parked on the
+apron, prepared for
+its upcoming flight
+mission.
+For a long-haul flight,
+which wide-body, twin-
+engine vehicle on the
+tarmac is celebrated for
+its fuel efficiency?
+The <p> boeing787
+</p> [SEG] is the
+aircraft celebrated for its
+extensive use of
+composite materials.
+Av e s s e ls p e c -
+ialized in
+transporting
+the contents of
+the adjacent
+large cylindri-
+cal tanks.
+This is a <p> liquid cargo ship </p>
+[SEG], used to load or unload liquids
+from the coastal storage tanks.
+For urban planning and traffic
+management in this area, we
+need to identify different modes
+of transport. Which vehicles are
+designed for personal or family
+travel on the road, which single
+vehicle is built for transporting
+heavy cargo, and which vessels
+are used for recreational
+activities on the water?
+The <p> small vehicles </p> [SEG] are designed for
+personal travel, the <p> large vehicle </p> [SEG] is
+for transporting heavy cargo, and the <p> ships </p>
+[SEG] are used for recreational activitie.
+What should I do if an
+earthquake occurs in
+this area?
+In this area, we should
+stay away from the large,
+white <p> building </p>
+[SEG] in the top -left
+corner, and run towards
+the large, <p> ground
+track field </p> [SEG]
+to wait for rescue.
+The diagonal road in the
+bottom right corner,
+running parallel to the
+canal, facilitates vehicle
+transportation.
+Done. The <p> road </p>
+[SEG] is now segmented.
+Where in the lower portion
+of the image does traffic
+merge, requiring careful
+navigation?
+The <p> intersection <p>
+[SEG] in the lower portion
+is where traffic merges,
+demanding caution.
+F
+Figure 1. SegEarth-R2 can handle various language-guided segmentation in remote sensing across four key dimensions: (1) Hierarchical
+Granularity; (2) Target Multiplicity; (3) Reasoning Requirements; and (4) Linguistic Variability.
+Abstract
+Effectively grounding complex language to pixels in re-
+mote sensing (RS) images is a critical challenge for ap-
+plications like disaster response and environmental mon-
+itoring. Current models can parse simple, single-target
+commands but fail when presented with complex geospa-
+tial scenarios, e.g., segmenting objects at various granu-
+larities, executing multi-target instructions, and interpret-
+ing implicit user intent. To drive progress against these
+failures, we present LaSeRS, the ﬁrst large-scale dataset
+built for comprehensive training and evaluation across four
+*Equal contribution
+† Corresponding author (caoxiangyong@mail.xjtu.edu.cn)
+critical dimensions of language-guided segmentation: hier-
+archical granularity, target multiplicity, reasoning require-
+ments, and linguistic variability. By capturing these dimen-
+sions, LaSeRS moves beyond simple commands, providing
+a benchmark for complex geospatial reasoning. This ad-
+dresses a critical gap: existing datasets oversimplify, lead-
+ing to sensitivity-prone real-world models. We also propose
+SegEarth-R2, an MLLM architecture designed for com-
+prehensive language-guided segmentation in RS, which di-
+rectly confronts these challenges. The model’s effectiveness
+stems from two key improvements: (1) a spatial attention
+supervision mechanism speciﬁcally handles the localization
+of small objects and their components, and (2) a ﬂexible
+and efﬁcient segmentation query mechanism that handles
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+13199
+
+
+=== PAGE 2 ===
+both single-target and multi-target scenarios. Experimen-
+tal results demonstrate that our SegEarth-R2 achieves out-
+standing performance on LaSeRS and other benchmarks,
+establishing a powerful baseline for the next generation of
+geospatial segmentation. All data and code will be released
+at https://github.com/earth-insights/SegEarth-R2.
+1. Introduction
+Imagine you are walking in a park when the ground begins
+to shake violently—an earthquake. Immediately, instinct
+kicks in and your mind swiftly translates the abstract goal
+of “ﬁnding a safe refuge” into a complex, spatially-aware
+plan (e.g., the target multiplicity case depicted in Figure 1):
+simultaneously identifying the nearby, open ground track
+ﬁeld (the safe destination) while also urgently moving away
+from the surrounding tall, swaying buildings (the hazards).
+This remarkable human ability to ground a high-level, com-
+pound instruction into a precise, multi-target, pixel-level ac-
+tion is vital for survival. Y et, it is precisely this ability that
+even advanced AI systems for Earth observation struggle
+to replicate. While these systems excel at executing literal
+commands [ 9, 23, 25, 27, 28, 36, 41, 50, 72, 79], they fall
+short when interpreting abstract natural language that re-
+quires understanding spatial relationships between multiple
+targets, especially in the context of precise language-guided
+segmentation in complex, real-world remote sensing (RS)
+environments.
+This inability to interpret complex instructions directly
+hinders the deployment of advanced geoinformation sys-
+tems. Indeed, language-guided segmentation holds im-
+mense promise across diverse and complex real-world
+RS applications, including environmental dynamics, urban
+planning, and, critically, disaster management [ 1, 3, 7, 26,
+39, 45, 49, 58]. However, its development has been signif-
+icantly inhibited by the lack of comprehensive training and
+evaluation resources. Speciﬁcally, existing datasets do not
+adequately capture the full range of required complexity,
+such as segmenting objects across hierarchical granularity
+and handling complex target multiplicity instructions.
+To address these critical gaps, we introduce LaSeRS, a
+large-scale dataset of over 40k high-quality masks and 30k
+QA pairs, generated via a scalable semi-automated anno-
+tation pipeline. As illustrated in Figure 1, LaSeRS is con-
+structed to serve as a comprehensive training and evalua-
+tion resource across the four dimensions of RS language-
+guided segmentation. Unlike prior works limited to single-
+target and explicit queries, LaSeRS systematically incorpo-
+rates: Hierarchical Granularity , requiring both concep-
+tual (coarse- to ﬁne-grained) and segmentation (semantic to
+part-level) precision; Target Multiplicity, where a single
+instruction demands grounding of multiple objects; Rea-
+soning Requirements, both explicit descriptions and chal-
+lenging implicit instructions; and Linguistic Variability ,
+spanning concise short queries and highly detailed long de-
+scriptions. Further, LaSeRS signiﬁcantly pushes scale, of-
+fering more than 5 × the category coverage of existing RS
+datasets [9, 28, 29, 36, 79], thereby signiﬁcantly expanding
+the boundary of language-guided segmentation in RS.
+The LaSeRS dataset poses some critical challenges to ex-
+isting models [ 19, 28, 50, 62
+], motivating the introduction
+of our SegEarth-R2 model. We built our model to overcome
+two primary failures. First, existing methods struggle with
+ﬁne-grained segmentation of small and part-level object in
+LaSeRS. SegEarth-R2 confronts this with a spatial atten-
+tion supervision mechanism, enforcing an internal focus on
+precise details. Second, grounding multiple targets from a
+single instruction is inefﬁcient or unsupported by previous
+query designs [ 28]. SegEarth-R2 address this with a ﬂexi-
+ble segmentation query mechanism capable of dynamically
+handling both single and multi-target requests.
+In summary, our contributions are as follows:
+• We introduce LaSeRS, the ﬁrst benchmark for training
+and evaluation comprehensive language-guided segmen-
+tation in RS across four critical dimensions spanning hi-
+erarchical granularity, target multiplicity, reasoning re-
+quirements, and linguistic variability.
+• We propose SegEarth-R2, a effective MLLM architecture
+for comprehensive language-guided segmentation in RS.
+It incorporates a spatial attention supervision for precise
+ﬁne-grained localization and a ﬂexible query mechanism
+for handling multi-target instructions.
+• SegEarth-R2 sets a new state-of-the-art on LaSeRS and
+other public benchmarks. With only 3B parameters, it
+demonstrates superior performance against larger models,
+establishing a powerful yet highly efﬁcient baseline for
+the comprehensive language-guided segmentation.
+2. Related works
+Multimodal Large Language Models (MLLMs).
+MLLMs build upon Large Language Models (LLMs)
+to acquire vision capabilities. In the general domain,
+pioneers like LLaV A [ 24, 32, 33] and InstructBLIP [ 6]
+aligned visual features with language representations using
+a vision-language connector, enhanced by instruction
+tuning. While these initial models focused on image-level
+understanding, subsequent works like GPT4RoI [ 75] and
+RegionGPT [10] advanced this by introducing regional un-
+derstanding. This evolution is mirrored in the RS domain,
+where MLLMs have evolved from foundational conversa-
+tional agents like RSGPT [ 14]. Subsequent RS-speciﬁc
+models have integrated more complex functionalities. For
+instance, GeoChat [ 18] supports region-speciﬁc inputs
+and visual grounding through oriented bounding box
+coordinates in its responses. Others extend capabilities to
+RS-video captioning, such as SkyEyeGPT [ 73], or integrate
+13200
+
+
+=== PAGE 3 ===
+Table 1. Comparison between LaSeRS and other related datasets. TI: Textual Instruction, TA: Textual Answer, BBox: Bounding Box,
+Seg: Segmentation Mask. LaSeRS outperforms other datasets with the largest number of classes and unique support for Hierarchical
+Granularity, Target Multiplicity, Reasoning Requirements, and Linguistic Variability.
+Dataset Masks Class Num Annotation Type Hierarchical Granularity Target Multiplicity Reasoning Requirements Linguistic V ariability
+Segmentation Concept Single Multiple Explicit Implicit Long Short
+EarthVQA [57] 6,000 14 TI, TA  ✓✓✓✓  ✓
+RegSegRS [72] 4,420 14 TI, Seg  ✓  ✓  ✓
+RRSIS-D [36] 17,420 20 TI, Seg, BBox  ✓  ✓  ✓
+RISBench [9] 52,472 26 TI, Seg, BBox  ✓  ✓  ✓
+EarthReason [28] 5,434 28 TI, TA, Seg  ✓  ✓✓ 
+LaSeRS 40,396 122 TI, TA, Seg, BBox ✓ ✓✓✓✓✓ ✓✓
+multi-sensor tasks, as exempliﬁed by EarthGPT [ 76] and
+EarthDial [ 52]. However, despite these advances in inter-
+pretation [2, 15, 30, 42] and relation reasoning [ 43, 55, 73],
+a fundamental limitation persists: these models lack crucial
+pixel-level understanding and segmentation capabilities.
+Language-guided Segmentation. Language-guided seg-
+mentation refers to locating target regions at the pixel
+level from natural language, including referring segmen-
+tation [ 8, 12, 34, 59, 65, 67, 81] and reasoning segmenta-
+tion [16, 19, 48, 81]. In RS, RefSegRS [ 72] introduced the
+ﬁrst referring segmentation dataset, while RRSIS-D [ 36]
+and some subsequent works [ 9, 41, 41, 68, 79, 79]e x -
+panded dataset scale and enriched prompts, though still lim-
+ited to explicit category queries. EarthReason [ 28] further
+introduced geospatial pixel reasoning with the ﬁrst reason-
+ing segmentation dataset for Earth observation. Y et, while
+a valuable step, it primarily focuses on implicit reasoning
+for single targets, leaving the complex challenges of multi-
+granularity ( e.g., part-level and ﬁne-grained concept) and
+multi-target grounding unaddressed. To bridge this gap,
+LaSeRS offers a more comprehensive benchmark that sys-
+tematically incorporates all of these critical dimensions.
+MLLMs for language-guided segmentation. Recent
+work has explored leveraging the reasoning capabilities
+of MLLMs for complex language-guided segmentation.
+In the general domain, a dominant approach employs
+MLLMs as a reasoning engine to provide prompt embed-
+dings ( e.g., [SEG] tokens) for SAM [ 17, 47], thereby in-
+tegrating reasoning into mask generation [ 11, 16, 19, 60,
+64, 66, 71]. Other methods follow pipelines inspired by
+Mask2Former [ 4] (“propose-then-select”) [ 56, 61, 62, 65,
+77] or treat segmentation as text generation [ 20, 21]. How-
+ever, these general-purpose methods often underperform
+on RS datasets, which are characterized by the prevalence
+of small objects and signiﬁcant scale variations. This
+has spurred the development of specialized MLLMs for
+the RS ﬁeld [ 37, 40, 41, 51, 69, 79], with methods like
+GeoPixel [ 50] adapting grounded conversation, SegEarth-
+R1 [ 28] and LISAt [ 44] handling implicit queries, Geo-
+R1 [78] and RemoteReasoner [ 70] exploring reinforcement
+learning. Despite these advances in RS-speciﬁc models,
+they still lack the ability to handle language-guided segmen-
+tation in complex scenarios, such as multi-target settings or
+multi-granularity (e.g., part-level).
+3. LaSeRS Dataset
+3.1. Data Generation and Filtering
+We develop a four-stage semi-automatic data generation
+pipeline to generate question-answer-mask triples, as shown
+in Figure 2. More details about the dataset construction can
+be found in Suppl. 7.
+Stage 1: Masks Generation. Our mask annotations are
+sourced from two complementary workﬂows. First, we in-
+corporate masks from the existing SAMRS [ 54] dataset.
+However, these annotations exhibit varying quality and are
+limited to ∼60 categories. Second, to expand coverage and
+introduce part-level details, we use SAM [ 17] to generate
+masks for the entire image using a grid of point prompts.
+Then, for common RS object categories like airplanes and
+ships, we cropped the object region and apply a denser grid
+of prompts within that region to produce more reﬁned, part-
+level masks. This stage generates a large volume of coarse
+masks that require subsequent ﬁltering.
+Stage 2: Masks Filtering. To ensure annotation quality, we
+apply distinct ﬁltering methods based on the mask source.
+For masks originating from SAMRS, we discard samples
+where the number of connected components in a mask does
+not match the number of provided bounding box annota-
+tions. Given that objects in remote sensing images often ex-
+hibit clear geometric properties ( e.g., the pronounced sym-
+metry of airplanes and the rotational invariance typical of
+intersections), we then conduct geometric feature matching
+to ﬁlter out candidates that deviate signiﬁcantly from a cu-
+rated set of ideal, category-speciﬁc reference shapes (details
+in the Suppl. 7.3). In contrast, all masks generated by the
+second workﬂow are manually reviewed. Annotators assess
+each mask based on two criteria: semantic coherence, to
+ensure it represents a meaningful object, and high boundary
+quality, to ensure mask precision. This stage yields approx-
+imately 50K high-quality, semantically meaningful masks
+at varying segmentation granularities, from semantic- and
+instance-level to part-level.
+Stage 3: QAs Generation. We used Gemini-2.5-pro [ 5]
+13201
+
+
+=== PAGE 4 ===
+SAMRS
+Stage 1漡Masks Generation
+SAM
+…
+Global Point Prompts
+SAM
+Local Point Prompts
+…
+Stage 2: Masks Filtering
+Coarse Masks & Images
+Ⅰ. Automatic Masks Filtering
+1. Bbox and Mask Component Counts Matching: Ensure the number of bounding boxes 
+matches the connected mask components. 
+2. Select Several High-Quality Masks: Choose high-quality masks based on accuracy, 
+resolution, and completeness.
+3. Geometric Feature Matching (e.g., symmetry and solidity): Compare geometric 
+features like symmetry and solidity with target mask characteristics.
+Examples:
+Geometric features mismatching with planes Geometric features mismatching with intersection
+Ⅱ. Manual Masks Filtering
+1.Verifying Semantic Coherence of a Mask: Check if the mask corresponds to 
+a clear and meaningful semantic region, ensuring it represents a distinct object 
+or concept.
+2. Mask Boundary Quality Check: Inspect the mask's boundaries to confirm 
+they are well-defined and accurately delineate the object from the background.
+Examples:
+Non-semantic geometric region The wing of airplane The fuselage of airplane
+Stage 3: QAs Generation
+Ⅰ. With Category Annotation
++
+Different Prompts
+1. Prompt_1: single-target explicit 
+long prompt + Category
+2. Prompt_2: single-target implicit 
+long prompt + Category
+3. Prompt_3: multi-target explicit 
+long prompt + Categories
+4. Prompt_4: multi-target explicit 
+short prompt + Categories
+…
+Question: In this sports facility, where can I find a venue for a racket game played between 
+two or four people, where the objective is to hit a ball over a net into the opponent's side? 
+Answer: The numerous rectangular playing surfaces are <p> tennis courts </p> [SEG], 
+which are designed for this type of racket game. 
+Ⅱ. Without Category Annotation
+Prompt_C: To get category 
+of label within the red circle.
+Response:
+The category within the red 
+circle is a {tree / white smoke}.
+Different Prompts
+1. Prompt_1: single-target explicit 
+long prompt + Category
+2. Prompt_2: single-target 
+implicit long prompt + Category
+3. Prompt_3: multi-target explicit 
+long prompt + Categories
+4. Prompt_4: multi-target explicit 
+short prompt + Categories
+…
+Question: Can you segment  the tree in the top right corner 
+of the image?
+Answer: Of course, the <p> tree </p> [SEG] in the top 
+right corner provides excellent greenery for the community.
+Question: White smoke is billowing from the cooling 
+tower on the right, a result of the plant's cooling process.
+Answer: Sure! The <p> white smoke </p> [SEG]area is 
+here.
+Stage 4: QAs Filtering 
+Manual Inspection
+1. Object recognition: Verifying the accuracy 
+of object category recognition in the image.
+2. Spatial description and logical consistency 
+of the question: Ensuring the spatial and 
+logical accuracy of the question’s description.
+3. Mask quality: Assessing if the annotated 
+mask meets quality standards for precision and 
+completeness.
+4. Grammatical error: Checking for 
+grammatical mistakes or inconsistencies in the 
+text.
+Examples:
+灅:The cooling tower in the 
+center of image.
+√:  The right side of the cooling 
+tower shell, a large hyperboloid 
+structure used for industrial 
+cooling processes.
+灅: The first inner airplane 
+engine on the left wing of the 
+aircraft on the left.
+√:  The first inner airplane 
+engine on the right wing of the 
+aircraft on the left.
+Coarse Masks & Images
+Coarse Masks 
+& Images
+Figure 2. Overview of the construction of LaSeRS. Our scalable, semi-automatic annotation pipeline comprises four stages: two dedicated
+to data generation and two dedicated to ﬁltering. Data quality is rigorously ensured through both automatic and manual veriﬁcation.
+(a) Distribution of Categories
+(c) Distribution of Instruction Length
+(b) Wordcloud of LaSeRS
+(d) Distribution of Mask Sizes
+Figure 3. Data Statistics of LaSeRS.
+to create question-answer pairs, with the process differing
+based on the mask source. For masks with pre-existing cat-
+egory annotations from SAMRS, we leverage this informa-
+tion to guide the generation of diverse textual annotations.
+Conversely, for unlabeled masks from our second workﬂow,
+we ﬁrst employ a prompting strategy to assign a category to
+each mask. This assigned category subsequently guides the
+generation of varied textual annotations. In both cases, we
+utilize multiple prompt templates to create question-answer
+pairs of varying styles, including explicit vs. implicit and
+detailed vs. concise. This stage ultimately yields approx-
+imately 40K question-answer pairs. However, due to po-
+tential hallucinations from the Gemini-2.5-pro, these pairs
+require further ﬁltering.
+Stage 4: QAs Filtering. Finally, all generated question-
+answer pairs are manually reviewed. This review veriﬁes
+the accuracy of object recognition, the logical consistency
+of spatial descriptions, the quality of the associated masks,
+and checks for grammatical errors to ensure the reliability
+of the ﬁnal dataset. This ﬁnal ﬁltering stage yields 30,830
+high-quality question-answer-masks triples. Additionally,
+to accommodate the demand for coarse localization, we
+convert the masks into bounding box annotations via mask-
+to-bbox [31].
+3.2. Data Statistics
+As detailed in Table 1, LaSeRS is a large-scale dataset
+comprising 40,396 high-quality masks. The dataset’s an-
+notations span four types: textual instructions, textual an-
+swers, segmentation masks, and bounding boxes for coarse
+localization. The test set consists of 1,900 held-out masks
+and is meticulously partitioned to evaluate performance
+across four critical dimensions: Hierarchical Segmen-
+tation Granularity (semantic, instance, and part-level),
+Target Multiplicity (single, multiple), Reasoning Re-
+quirements (explicit, implicit), and Linguistic Variability
+(short, long). Figure 3 summarizes the statistical properties
+of LaSeRS. Panel (a) shows the distribution across 122 ob-
+ject categories, highlighting our dataset’s broad coverage.
+This ensures the QA pairs are not skewed towards speciﬁc
+categories and exhibit high diversity. Further details on the
+categories are provided in the Suppl. 7.6. Panel (b) presents
+a word cloud of the instruction vocabulary. Panel (c) illus-
+trates the instruction length distribution, ranging from just a
+few words to over 80, ensuring linguistic variability. Fi-
+13202
+
+
+=== PAGE 5 ===
+nally, panel (d) highlights the distribution of mask sizes,
+with a signiﬁcant scale range from small, ﬁne-grained parts
+to large regions exceeding 80% of the image area.
+4. SegEarth-R2
+To address the challenges of language-guided segmentation
+in RS, we introduce SegEarth-R2, a framework designed for
+precise, language-driven segmentation in RS images. As
+depicted in Figure 4, the model is composed of two primary
+components. The ﬁrst is an MLLM that processes the input
+image and textual instruction to perform reasoning and gen-
+erate a textual response. The second is a dedicated segmen-
+tation head that interprets the MLLM’s internal semantic
+representation, speciﬁcally the [SEG] token queries, to pro-
+duce pixel-level masks. The performance of SegEarth-R2
+relies on two key mechanisms corresponding to the above
+components: a spatial attention supervision mechanism ap-
+plied to the model’s internal attention and a ﬂexible and ef-
+ﬁcient segmentation query mechanism for mask generation,
+which are detailed in the following.
+4.1. Spatial Attention Supervision
+A deﬁning characteristic of RS images is the extreme vari-
+ation in object scales, where targets can range from vast
+geographical features to entities spanning only a few pix-
+els ( e.g., the small engine of an airplane). This presents a
+signiﬁcant challenge for standard training paradigms. Su-
+pervision that relies solely on the ﬁnal segmentation mask
+proves insufﬁcient for instilling precise spatial awareness,
+as the learning signal becomes severely diluted when back-
+propagated to the network’s shallower layers. This dilution
+effect often leads to poor localization of small or complexly
+shaped objects, as visualized in Figure 4(d).
+To counteract this, we introduce a spatial attention super-
+vision mechanism, which provides direct supervisory sig-
+nals to the model’s internal vision-language representations.
+Rather than inferring focus from the ﬁnal output, our ap-
+proach constitutes a direct intervention within the model’s
+reasoning pathway, compelling it to distinguish between
+foreground and background regions at the attention level.
+This process is illustrated in Figure 4(c).
+This method operates on the attention maps originating
+from the [SEG] token to the image patch tokens within the
+MLLM’s transformer layers. Let A
+(m,n) ∈ Rd×d denote
+the attention map for the n-th head in the m-th transformer
+block, where the model has a total ofM blocks andN heads
+per block, d × d represents the spatial dimensions of the
+image feature grid to which attention is applied. We then
+aggregate these individual maps into a uniﬁed attention grid
+by averaging them across all layers and heads, i.e., A
+S =
+1
+MN
+∑M
+m=1
+∑N
+n=1 A(m,n). Using a downsampled version
+of the ground truth mask, ˆG ∈{0,1}d×d, we calculate the
+average attention score, a, across all background regions:
+a =
+∑
+i,j AS(i,j)·(1−ˆG(i,j))
+∑
+i,j(1−ˆG(i,j))
+where AS(i,j) and ˆG(i,j) represent the i-th row and j-th
+column of the corresponding tensors.
+The spatial attention supervision loss, LS , is then formu-
+lated to enforce a maximal separation between the attention
+scores on the foreground regions and the calculated back-
+ground average a:
+L
+S = −log
+( ∑
+i,j(AS(i,j)−a)2 · ˆG(i,j)
+∑
+i,j ˆG(i,j)
+)
+By maximizing the dissimilarity, this loss directly en-
+courages the model to sharpen its focus speciﬁcally on the
+target area. This provides a clear and localized learning sig-
+nal to the intermediate layers, substantially improving the
+model’s overall ability to ground and segment challenging
+objects with remarkable high ﬁdelity.
+4.2. Segmentation Query Mechanism
+Previous approaches, such as InstructSeg [ 62], rely on a
+cumbersome “propose-then-select” strategy. They ﬁrst gen-
+erate a large pool of candidate masks ( e.g., 100) and are
+subsequently plagued by a redundant and time-consuming
+matching process to ﬁlter for the desired output; this design
+is not only computationally inefﬁcient but also inﬂexible.
+On the other hand, while SegEarth-R1’s [ 28] “instruction-
+as-query” method offers simplicity, it is inherently limited
+by its assumption of a single target per instruction. This
+naive one-to-one mapping makes it fundamentally unsuit-
+able for complex, multi-target scenarios.
+As illustrated in Figure 4, to handle multi-target scenar-
+ios, we adopt the approach from LISA [19] by introducing a
+special [SEG] token. The model learns to dynamically out-
+put multiple [SEG] tokens based on the instruction’s con-
+text (e.g.“ In this area, we should stay away from the large,
+white <p>building </p>[SEG] in the top-left corner , and
+run towards the large, <p>ground track ﬁeld </p>[SEG]
+to wait for rescue.”), which then function as individual seg-
+mentation queries. Our architecture is composed of a Hi-
+erarchical Visual Encoder, i.e., the Swin-B [ 38] which ex-
+tracts multi-level image features. These features are then
+processed by a Pixel Decoder and a Transformer Decoder;
+we note that both of these modules adopt the identical archi-
+tecture from Mask2Former [4]. The Pixel Decoder fuses the
+hierarchical features from the Swin-B, and the Transformer
+Decoder utilizes the [SEG] token queries to interact with
+these fused features, generating the ﬁnal masks. This ﬂex-
+ible and efﬁcient segmentation query mechanism not only
+evades the redundant matching of “propose-then-select”
+methods but also capably handles the complex multi-target
+scenarios where “instruction-as-query” methods fail.
+13203
+
+
+=== PAGE 6 ===
+Large Language Model (Phi-2-2.7B)
+Global Visual Encoder
+SigLip-so400M-patch14-384 Text Tokenization
+Project
+27 × 27
+Image Tokens Text Tokens
+384 × 384
+Project
+Hierarchical 
+Visual 
+Encoder
+Swin-B
+1024 × 1024
+Pixel 
+Decoder
+Mask2Former
+Transformer 
+Decoder
+Mask2Former
+To manage waterway traffic
+and economic activity, which
+vessels docked in this port are
+designed for transporting
+large quantities of bulk
+materials like grain or ore,
+and which are equipped for
+the commercial harvesting of
+aquatic life?
+The <p> dry cargo ships </p>
+[SEG] are designed for
+transporting bulk materials,
+and the <p> fishing boats
+</p> [SEG] are equipped for
+the commercial harvesting of
+aquatic life.
+[SEG] prompt token
+Output text token
+Matrix multiplication operation
+Vision-Language Attention Map
+ܯ×ܰ
+c) Explanation of Spatial Attention Supervision
+Original Image w/o ℒௌ w/ ℒௌ Groud Truth Mask
+(d) Visualization of Spatial Attention
+(b) Segmentation Head
+(a) MLLM
+ଵ
+ସ downsampling feature
+ଵ
+ૡ downsampling feature
+ଵ
+ଵ଺downsampling feature
+ଵ
+૜૛downsampling feature
+detokenizer
+2× 2 560
+2×2 56
+2×2 7 ×2 7
+2 × 1024 × 1024
+2×2 7 ×2 7
+Downsample 
+Ground Truth Masks[SEG] prompt token Frozen
+Input text token Trainable
+Image token
+Figure 4. The overall architecture of SegEarth-R2. (a) is an MLLM for interpreting the image and instruction, (b) is the segmentation
+head, which includes a hierarchical visual encoder for generating multi-scale image features, and two decoders for producing masks (mask
+decoders). (c) illustrates the formation process of the spatial attention supervision. (d) presents a visualization of the attention map from
+the 6th head of the 16th layer in the MLLM, with additional visual results in the Suppl. 9.1
+Table 2. Performance comparison on LaSeRS. Baselines including LISA, PixelLM, M
+2A, and GeoPixel are ﬁne-tuned directly on
+LaSeRS. GLaMM-ft is pre-trained on large-scale natural image segmentation datasets before ﬁne-tuning. Metrics are gIoU/cIoU. Bold and
+underlined indicate the best and second-best scores, respectively.
+Model Hierarchical Segmentation Granularity Target Multiplicity Reasoning Requirements Linguistic V ariability Avg.Semantic Instance Part Single Multiple Explicit Implicit Short Long
+LISA-7B [19] 26.4/23.2 20.5/25.0 16.1/11.6 37.3/32.2 18.2/22.4 27.1/24.3 21.5/25.6 34.1/27.8 38.4/33.9 26.6/25.1
+LISA-13B [19] 27.0/24.5 22.3/25.6 17.7/13.1 38.4/34.2 19.9/23.5 27.1/25.5 22.6/25.8 35.2/28.0 38.4/34.3 27.6/26.1
+PixelLM-7B [48] 32.0/32.8 26.6/30.0 13.2/16.5 44.3/40.4 20.2/23.5 25.0/23.1 23.9/21.9 41.6/38.9 37.1/34.5 29.3/29.1
+PixelLM-13B [48] 31.6/34.0 27.5/30.2 15.8/17.6 42.2/40.5 20.9/22.4 26.3/24.4 25.9/22.1 42.0/39.1 37.1/34.5 29.9/29.4
+GLaMM-ft-7B [46] 44.8/47.9 41.2/48.3 32.6/42.7 47.3/50.3 32.2/41.0 59.1/60.3 42.6 /44.8 50.4/54.8 42.6/44.8 43.6/48.3
+M 2A-7B [16] 30.1/33.0 23.0/24.8 18.6/17.2 45.4/37.6 20.9/24.8 35.8/30.4 23.3/26.7 35.8/32.8 41.5/36.7 30.5/29.3
+GeoPixel-8B [50] 51.4/57.2 44.1/49.3 43.9/52.4 55.0/45.8 49.2/49.7 66.5/61.3 41.1/58.3 51.1/59.3 51.4/63.2 50.4/55.2
+SegEarth-R2-3B 60.2/71.8 65.4/70.3 64.8/68.3 55.1/69.2 38.3/56.2 78.4/80.4 42.8/59.7 60.2/69.9 50.1/65.7 57.2/67.9
+5. Experiment
+5.1. Implementation Details
+Training objectives. We train SegEarth-R2 with a uniﬁed
+loss function L, which is the weighted sum of four distinct
+components:
+L = Lt +Lb +Ld +λSLS
+Here, Lt is the standard autoregressive cross-entropy
+loss for text generation. For mask supervision, we com-
+bine the per-pixel binary cross-entropy loss L
+b and DICE
+loss Ld, while LS denotes the spatial attention supervision,
+which provides direct supervision on the model’s internal
+attention and is controlled by the coefﬁcient λS .
+Experiment Settings. We use the pre-trained lightweight
+MLLM Mipha-3B [ 80] as our base model. Follow-
+ing SegEarth-R1 [ 28], we use Swin-B [ 38] as the hi-
+erarchical visual encoder and the mask decoder from
+Mask2Former [4]. Furthermore, to conserve GPU memory,
+we keep all Visual Encoders frozen and employ LoRA with
+a rank of 8 to ﬁne-tune the LLM, while the smaller Pixel De-
+coder and Transformer Decoder components are fully ﬁne-
+tuned. More training details can be found in Suppl. 8.1.
+Metrics. We use gIoU and cIoU as evaluation metrics, fol-
+lowing prior studies [ 19, 63].
+5.2. Main Results
+As shown in Table 2, we conduct a comprehensive and
+fair evaluation on the LaSeRS benchmark, analyzing per-
+formance across four key dimensions.
+13204
+
+
+=== PAGE 7 ===
+Table 3. Performence comparison on three RS referring segmen-
+tation benchmarks. To ensure a fair comparison, our results are
+obtained by training separately on each of the three training set.
+The metric is gIoU.
+Method Pub RRSIS-D RefSegRS RISBench
+val test val test val test
+Segmentation Specialists
+CMPC+ [35] TPAMI’21 51.4 50.2 47.1 43.7 45.8 46.7
+RIS-DMMI [13] CVPR’23 60.7 60.1 65.7 52.2 62.6 63.9
+LA VT [67] CVPR’22 61.5 61.0 61.5 47.4 60.5 61.9
+RMSIN [36] CVPR’24 65.1 64.2 73.8 62.6 61.8 63.1
+MLLM based segmentation
+LISA [19] CVPR’24 27.8 26.8 -- --
+PixelLM [48] CVPR’24 33.9 31.7 -- --
+GeoGround [79] arXiv’24 61.1 60.5 -- --
+GeoPixel [50] ICML’25 68.0 67.3 -- --
+SegEarth-R1 [28] arXiv’25 67.6 66.4 82.2 72.5 --
+Text4Seg++ [22] arXiv’25 64.1 62.8 -- --
+SegEarth-R2 68.8 67.9 84.4 74.8 69.8 70.5
+Table 4. Performence comparison on RS reasoning segmentation
+benchmark: EarthReason [ 28]. Our model is trained solely on the
+EarthReason training set.
+Method LLM V al Test Avg.gIoU cIoU gIoU cIoU
+LISA [19] Vicuna-7B 61.0 57.4 60.9 59.1 59.6
+PixelLM [48] Vicuna-7B 57.9 57.8 60.0 59.2 58.7
+SegEarth-R1 [28] Phi-1.5-1.3B 68.6 64.1 70.8 68.3 68.0
+RemoteReasoner [70] Qwen2.5-7B 69.0 67.8 71.0 69.1 69.2
+Text4Seg++ [22] Qwen2-7B 71.9 69.8 73.0 65.6 70.1
+SegEarth-R2-3B Phi-2-2.7B 72.3 68.1 73.5 69.5 70.9
+Hierarchical Segmentation Granularity. We observe a
+consistent performance degradation across nearly all mod-
+els as the segmentation granularity reﬁnes, i.e., from the
+semantic-level, to the instance-level, and ﬁnally to the part-
+level, which often spans only a few pixels. This trend is ex-
+pected, as ﬁner granularities necessitate more precise model
+localization. Beneﬁting from our proposed spatial attention
+supervision mechanism, our model achieves the best per-
+formance across all granularities. This superiority is partic-
+ularly pronounced at the challenging part-level, where our
+model surpasses the second-best method by a signiﬁcant 20-
+point margin.
+Target Multiplicity. For complex multi-target scenarios,
+we observe a signiﬁcant performance degradation across
+most models. GeoPixel is a notable exception, which shows
+much less degradation, a result we attribute to the inherent
+strength of its 8B MLLM foundation [ 74]. We hypothe-
+size that our model’s 3B size limits its performance in these
+complex multi-target scenarios. Even so, our model still
+secures the best performance on single-target tasks and the
+second-best on multi-target tasks, signiﬁcantly outperform-
+ing other 7B and even 13B models.
+Reasoning Requirements. All models exhibit signiﬁcantly
+better performance on explicit instructions compared to im-
+plicit ones. This is an expected outcome, as implicit instruc-
+tions, unlike their explicit counterparts, require the model to
+infer the target segmentation region by reasoning over the
+instruction’s context and its internal geographic knowledge.
+Notably, our model achieves excellent performance on both
+explicit and implicit instructions.
+Linguistic Variability. Regarding linguistic variability, we
+observe an interesting phenomenon: models respond differ-
+ently to instruction length. Speciﬁcally, LISA, M
+2A, and
+GeoPixel excel at processing long, detailed instructions. In
+contrast, PixelLM, GLaMM, and SegEarth-R2 show more
+prominent performance on short, concise instructions. We
+hypothesize this divergence stems from fundamental differ-
+ences in their model architectures. Notably, SegEarth-R2
+demonstrates strong robustness, achieving superior perfor-
+mance on both instruction types.
+Overall. With only 3B parameters, SegEarth-R2 signiﬁ-
+cantly outperforms all other models on average, a result that
+showcases the superiority of our architecture. More quali-
+tative results can be found in the Suppl. 10.1.
+5.3. Results on Existing Benchmarks
+To ensure SegEarth-R2’s effectiveness is not limited to our
+proposed benchmark, we assess its generalization capabili-
+ties on established public datasets. For fair comparison, the
+model was trained separately on each benchmark’s ofﬁcial
+training split.
+RS Referring Segmentation. We evaluate on three
+referring segmentation benchmarks: RRSIS-D [ 36], Ref-
+SegRS [ 72], and RISBench [ 9]. As shown in Table 3,
+SegEarth-R2 demonstrates strong cross-dataset generaliza-
+tion. On the RRSIS-D dataset, it outperforms the powerful
+8B model, GeoPixel. On RefSegRS, SegEarth-R2 surpasses
+the previous state-of-the-art method by over 2 points. Fur-
+thermore, our model achieves the best performance on the
+larger-scale RISBench dataset. Qualitative results are pro-
+vided in the Suppl. 10.2.
+RS Reasoning Segmentation. On the more challeng-
+ing EarthReason [28] benchmark for implicit reasoning seg-
+mentation in RS, as shown in Table4, our model achieves an
+average score of 70.9, outperforming the previous state-of-
+the-art, Text4Seg++ (70.1), which represents masks using
+text. It also surpasses RemoteReasoner, a method explor-
+ing reinforcement learning for RS reasoning segmentation,
+demonstrating the superiority of our architecture in process-
+ing complex implicit instructions. Qualitative results are
+provided in Suppl. 10.3.
+5.4. Ablation Study
+We conduct thorough ablation studies on our proposed spa-
+tial attention supervision ( L
+S ) and the adopted segmenta-
+tion query mechanism. Furthermore, we investigate differ-
+ent combinations of the Segmentation Head (shown in Fig-
+13205
+
+
+=== PAGE 8 ===
+Figure 5. The left ﬁgure shows that as the number of segmentation
+queries decreases, both computational cost (TFLOPs) and infer-
+ence time are correspondingly reduced. The right ﬁgure illustrates
+that this reduction in queries leads to a gradual increase in gIoU
+scores on the RRSIS-D validation and test sets.
+Table 5. Ablation experiment on λ
+S , which controls the strength
+of the spatial attention supervision in the MLLM inner layers. The
+metric is gIoU.
+λS LS
+RRSIS-D RefSegRS EarthReason
+val test val test val test
+0 × 68.5 66.6 81.1 70.4 72.2 72.9
+0.1 ✓ 68.1 67.3 82.2 71.1 70.1 71.8
+0.05 ✓ 68.6 67.7 82.2 71.7 72.1 73.0
+0.01 ✓ 68.8 67.9 82.4 71.8 72.3 73.5
+Table 6. The comparison between different combination of seg-
+mentation head. ViT-H: Vision Transformer Huge, Swin-B:
+Swin Transformer Base, SAM: Segment Anything Model, M2F:
+Mask2Former. The metric is gIoU.
+Mask Decoder Visual Encoder EarthReason RefSegRS
+val test val test
+SAM [17] ViT-H [53] 62.7 65.4 73.9 60.3
+SAM 2 [ 47] ViT-H [53] 64.3 64.9 74.2 64.2
+M2F [4] Swin-B [38] 72.3 73.5 82.4 71.8
+ure 4) to demonstrate the superiority of our architecture.
+Spatial Attention Supervision Effect. The coefﬁcient λS
+controls the weight of spatial attention supervision LS .W e
+perform an ablation study on λS , and the results are shown
+in Table 5. As shown, setting λS =0 , which removes this
+supervision, results in the worst performance, highlighting
+the necessity of spatial attention guidance. However, we ob-
+serve that excessively large values of λ
+S (e.g., 0.1 or 0.05)
+degrade performance. We hypothesize this occurs because
+overly constraining the MLLM’s internal attention impairs
+its reasoning abilities. We ﬁnd that λ
+S =0 .01 strikes the
+optimal balance and adopt it as our ﬁnal setting. Notably,
+this value represents the best result in our discrete ablation
+set; further ﬁne-grained searches could potentially yield a
+marginally better optimum. The improvement from this su-
+pervision is small on the EarthReason benchmark, which
+we attribute to its limited scale variation and the predomi-
+nance of large objects.
+Segmentation Query Mechanism Effect. Previous
+works [56, 61, 62, 77] use 100 segmentation queries to gen-
+erate candidate masks and select the best one via a match-
+ing algorithm. Our experiments show that this approach
+is both redundant and inefﬁcient. Speciﬁcally, we eval-
+uate the number of segmentation queries k, using values
+k ∈{100,75,50,25,10,3,1}. When k> 1, the single
+[SEG] token is replaced by a sequence of k independent
+query tokens, [SEG1] [SEG2] ... [SEG k]. The model cor-
+respondingly generates k proposal masks, and a matching
+algorithm [ 4] is then employed to select the optimal mask
+from the k candidates. When k =1 , the model generates a
+single mask that is directly used as the ﬁnal output, bypass-
+ing the matching process. As shown in Figure 5, reducing
+the number of segmentation queries from 100 to just 1 re-
+sults in a 34.1% reduction in inference time (from 0.82 to
+0.54 s/image) and a 27.4% decrease in computational cost
+(from 8.4 to 6.1 TFLOPs), while also improving the gIoU
+score on the RRSIS-D [ 36] validation set by +2.4 points
+(66.4 → 68.8) and on the test set by +1.6 points (66.3 →
+67.9). Visual analysis is provided in the Suppl. 9.2.
+Combination of Segmentation Head Analysis. We sub-
+stitute the Pixel Decoder and Transformer Decoder mod-
+ule (Figure 4) with SAM or SAM2 decoder. Concur-
+rently, the Hierarchical Visual Encoder (Swin-B) is also re-
+placed with the corresponding ViT-H backbone. Table 6
+shows the results on EarthReason [ 28] and RefSegRS [ 72].
+The combination of a multi-scale Swin Transformer and a
+Mask2Former decoder signiﬁcantly outperforms architec-
+tures based on ViT-H and SAM or SAM2 decoder. This
+conﬁrms that a hierarchical vision backbone, which is adept
+at capturing features across a wide range of scales, is better
+suited for the unique challenges of RS images compared to
+monolithic vision transformers. Our architectural choices
+are thus empirically validated as optimal for RS domain.
+6. Conclusion
+In this work, we explore comprehensive language-guided
+segmentation in RS. To advance this task, we present
+LaSeRS, the ﬁrst large-scale benchmark designed to sys-
+tematically investigate four key dimensions of language-
+guided segmentation: hierarchical granularity, target mul-
+tiplicity, complex reasoning, and linguistic variability. This
+benchmark provides the community with a valuable re-
+source to drive progress beyond simple, single-target in-
+structions. To address the challenges of this benchmark, we
+propose SegEarth-R2, an effective and efﬁcient MLLM ar-
+chitecture. Our evaluations show that SegEarth-R2 not only
+excels on the challenges posed by LaSeRS but also estab-
+lishes a new SOTA across a range of established referring
+and reasoning segmentation benchmarks. Ultimately, we
+hope this work catalyzes a paradigm shift in the RS commu-
+nity, moving beyond parsing simple, single-target instruc-
+tions toward developing comprehensive, uniﬁed language-
+guided segmentation.
+13206
+
+
+=== PAGE 9 ===
+Acknowledge This work is supported by Fundamental
+and Interdisciplinary Disciplines Breakthrough Plan of the
+Ministry of Education of China (No. JYB2025XDXM101),
+China NSFC Projects under Contract 62272375 and
+Tianyuan Fund for Mathematics of the National Natural
+Science Foundation of China (Grant No. 12426105).
+References
+[1] Xiao An, Jiaxing Sun, Zihan Gui, and Wei He. Choice:
+Benchmarking the remote sensing capabilities of large
+vision-language models. arXiv preprint arXiv:2411.18145 ,
+2024. 2
+[2] Y akoub Bazi, Laila Bashmal, Mohamad Mahmoud Al Rah-
+hal, Riccardo Ricci, and Farid Melgani. Rs-llava: A large
+vision-language model for joint captioning and question an-
+swering in remote sensing imagery. Remote Sensing, 16(9):
+1477, 2024. 3
+[3] Zhenyuan Chen, Chenxi Wang, Ningyu Zhang, and Feng
+Zhang. Rscc: A large-scale remote sensing change caption
+dataset for disaster events. arXiv preprint arXiv:2509.01907,
+2025. 2
+[4] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention mask
+transformer for universal image segmentation. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 1290–1299, 2022. 3, 5, 6, 8
+[5] Gheorghe Comanici, Eric Bieber, Mike Schaekermann, Ice
+Pasupat, Noveen Sachdeva, Inderjit Dhillon, Marcel Blis-
+tein, Ori Ram, Dan Zhang, Evan Rosen, et al. Gemini 2.5:
+Pushing the frontier with advanced reasoning, multimodality,
+long context, and next generation agentic capabilities. arXiv
+preprint arXiv:2507.06261, 2025. 3
+[6] Wenliang Dai, Junnan Li, Dongxu Li, Anthony Tiong, Junqi
+Zhao, Weisheng Wang, Boyang Li, Pascale N Fung, and
+Steven Hoi. Instructblip: Towards general-purpose vision-
+language models with instruction tuning. Advances in neural
+information processing systems, 36:49250–49267, 2023. 2
+[7] Muhammad Sohail Danish, Muhammad Akhtar Munir, Syed
+Roshaan Ali Shah, Kartik Kuckreja, Fahad Shahbaz Khan,
+Paolo Fraccaro, Alexandre Lacoste, and Salman Khan.
+Geobench-vlm: Benchmarking vision-language models for
+geospatial tasks. In Proceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision (ICCV) , 2025. 2
+[8] Henghui Ding, Chang Liu, Suchen Wang, and Xudong Jiang.
+Vision-language transformer and query generation for refer-
+ring segmentation. In Proceedings of the IEEE/CVF interna-
+tional conference on computer vision , pages 16321–16330,
+2021. 3
+[9] Zhe Dong, Y uzhe Sun, Tianzhu Liu, Wangmeng Zuo, and
+Y anfeng Gu. Cross-modal bidirectional interaction model for
+referring remote sensing image segmentation. arXiv preprint
+arXiv:2410.08613, 2024. 2, 3, 7
+[10] Qiushan Guo, Shalini De Mello, Hongxu Yin, Wonmin
+Byeon, Ka Chun Cheung, Yizhou Y u, Ping Luo, and Sifei
+Liu. Regiongpt: Towards region understanding vision lan-
+guage model. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 13796–
+13806, 2024. 2
+[11] Y ue Han, Jiangning Zhang, Junwei Zhu, Runze Hou, Xi-
+aozhong Ji, Chuming Lin, Xiaobin Hu, Zhucun Xue, and
+Y ong Liu. Groundingface: Fine-grained face understand-
+ing via pixel grounding multimodal large language model.
+In Proceedings of the Computer Vision and Pattern Recogni-
+tion Conference, pages 3942–3951, 2025. 3
+[12] Rui Hu, Lianghui Zhu, Y uxuan Zhang, Tianheng Cheng,
+Lei Liu, Heng Liu, Longjin Ran, Xiaoxin Chen, Wenyu
+Liu, and Xinggang Wang. Groundingsuite: Measuring
+complex multi-granular pixel grounding. arXiv preprint
+arXiv:2503.10596, 2025. 3
+[13] Y utao Hu, Qixiong Wang, Wenqi Shao, Enze Xie, Zhenguo
+Li, Jungong Han, and Ping Luo. Beyond one-to-one: Re-
+thinking the referring image segmentation. In Proceedings
+of the IEEE/CVF International Conference on Computer Vi-
+sion, pages 4067–4077, 2023. 7
+[14] Y uan Hu, Jianlong Y uan, Congcong Wen, Xiaonan Lu, Y u
+Liu, and Xiang Li. Rsgpt: A remote sensing vision language
+model and benchmark. ISPRS Journal of Photogrammetry
+and Remote Sensing , 224:272–286, 2025. 2
+[15] Jeremy Andrew Irvin, Emily Ruoyu Liu, Joyce Chuyi Chen,
+Ines Dormoy, Jinyoung Kim, Samar Khanna, Zhuo Zheng,
+and Stefano Ermon. Teochat: A large vision-language as-
+sistant for temporal earth observation data. In International
+Conference on Learning Representations, 2025. 3
+[16] Donggon Jang, Y ucheol Cho, Suin Lee, Taehyeon Kim,
+and Daeshik Kim. MMR: A large-scale benchmark dataset
+for multi-target and multi-granularity reasoning segmenta-
+tion. In The Thirteenth International Conference on Learn-
+ing Representations, 2025. 3, 6
+[17] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Y en Lo, et al. Segment any-
+thing. In Proceedings of the IEEE/CVF international confer-
+ence on computer vision , pages 4015–4026, 2023. 3, 8
+[18] Kartik Kuckreja, Muhammad Sohail Danish, Muzammal
+Naseer, Abhijit Das, Salman Khan, and Fahad Shahbaz
+Khan. Geochat: Grounded large vision-language model for
+remote sensing. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 27831–
+27840, 2024. 2
+[19] Xin Lai, Zhuotao Tian, Y ukang Chen, Y anwei Li, Y uhui
+Y uan, Shu Liu, and Jiaya Jia. Lisa: Reasoning segmentation
+via large language model. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition ,
+pages 9579–9589, 2024. 2, 3, 5, 6, 7
+[20] Mengcheng Lan, Chaofeng Chen, Y ue Zhou, Jiaxing Xu,
+Yiping Ke, Xinjiang Wang, Litong Feng, and Wayne Zhang.
+Text4seg: Reimagining image segmentation as text genera-
+tion. arXiv preprint arXiv:2410.09855, 2024. 3
+[21] Mengcheng Lan, Chaofeng Chen, Jiaxing Xu, Zongrui Li,
+Yiping Ke, Xudong Jiang, Yingchen Y u, Y unqing Zhao,
+and Song Bai. Text4seg++: Advancing image segmen-
+tation via generative language modeling. arXiv preprint
+arXiv:2509.06321, 2025. 3
+13207
+
+
+=== PAGE 10 ===
+[22] Mengcheng Lan, Chaofeng Chen, Jiaxing Xu, Zongrui Li,
+Yiping Ke, Xudong Jiang, Yingchen Y u, Y unqing Zhao, and
+Song Bai. Text4seg++: Advancing image segmentation via
+generative language modeling, 2025. 7
+[23] Sen Lei, Xinyu Xiao, Tianlin Zhang, Heng-Chao Li, Zhen-
+wei Shi, and Qing Zhu. Exploring ﬁne-grained image-
+text alignment for referring remote sensing image segmenta-
+tion. IEEE Transactions on Geoscience and Remote Sensing,
+2024. 2
+[24] Bo Li, Y uanhan Zhang, Dong Guo, Renrui Zhang, Feng Li,
+Hao Zhang, Kaichen Zhang, Peiyuan Zhang, Y anwei Li, Zi-
+wei Liu, et al. Llava-onevision: Easy visual task transfer.
+arXiv preprint arXiv:2408.03326, 2024. 2
+[25] Kaiyu Li, Xiangyong Cao, Y upeng Deng, Chao Pang,
+Zepeng Xin, Deyu Meng, and Zhi Wang. Dynamicearth:
+How far are we from open-vocabulary change detection?
+arXiv preprint arXiv:2501.12931, 2025. 2
+[26] Kaiyu Li, Xiangyong Cao, Ruixun Liu, Shihong Wang, Zix-
+uan Jiang, Zhi Wang, and Deyu Meng. Annotation-free
+open-vocabulary segmentation for remote-sensing images.
+arXiv preprint arXiv:2508.18067, 2025. 2
+[27] Kaiyu Li, Ruixun Liu, Xiangyong Cao, Xueru Bai, Feng
+Zhou, Deyu Meng, and Zhi Wang. Segearth-ov: Towards
+training-free open-vocabulary segmentation for remote sens-
+ing images. In Proceedings of the Computer Vision and Pat-
+tern Recognition Conference, pages 10545–10556, 2025. 2
+[28] Kaiyu Li, Zepeng Xin, Li Pang, Chao Pang, Y upeng Deng,
+Jing Y ao, Guisong Xia, Deyu Meng, Zhi Wang, and Xiangy-
+ong Cao. Segearth-r1: Geospatial pixel reasoning via large
+language model. arXiv preprint arXiv:2504.09644, 2025. 2,
+3, 5, 6, 7, 8
+[29] Xiang Li, Jian Ding, and Mohamed Elhoseiny. Vrsbench: A
+versatile vision-language benchmark dataset for remote sens-
+ing image understanding. In The Thirty-eight Conference on
+Neural Information Processing Systems Datasets and Bench-
+marks Track. 2
+[30] Zhenshi Li, Dilxat Muhtar, Feng Gu, Y anglangxing He,
+Xueliang Zhang, Pengfeng Xiao, Guangjun He, and Xiaox-
+iang Zhu. Lhrs-bot-nova: Improved multimodal large lan-
+guage model for remote sensing vision-language interpreta-
+tion. ISPRS Journal of Photogrammetry and Remote Sens-
+ing, 227:539–550, 2025. 3
+[31] Fan Liu, Delong Chen, Zhangqingyun Guan, Xiaocong
+Zhou, Jiale Zhu, Qiaolin Y e, Liyong Fu, and Jun Zhou. Re-
+moteclip: A vision language foundation model for remote
+sensing. IEEE Transactions on Geoscience and Remote
+Sensing, 62:1–16, 2024. 4
+[32] Haotian Liu, Chunyuan Li, Qingyang Wu, and Y ong Jae Lee.
+Visual instruction tuning. Advances in neural information
+processing systems, 36:34892–34916, 2023. 2
+[33] Haotian Liu, Chunyuan Li, Y uheng Li, and Y ong Jae Lee.
+Improved baselines with visual instruction tuning. In Pro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 26296–26306, 2024. 2
+[34] Jiang Liu, Hui Ding, Zhaowei Cai, Y uting Zhang, Ravi Ku-
+mar Satzoda, Vijay Mahadevan, and R Manmatha. Poly-
+former: Referring image segmentation as sequential poly-
+gon generation. In Proceedings of the IEEE/CVF conference
+on computer vision and pattern recognition , pages 18653–
+18663, 2023. 3
+[35] Si Liu, Tianrui Hui, Shaofei Huang, Y unchao Wei, Bo Li,
+and Guanbin Li. Cross-modal progressive comprehension
+for referring segmentation. IEEE Transactions on Pattern
+Analysis and Machine Intelligence , 44(9):4761–4775, 2021.
+7
+[36] Sihan Liu, Yiwei Ma, Xiaoqing Zhang, Haowei Wang, Ji-
+ayi Ji, Xiaoshuai Sun, and Rongrong Ji. Rotated multi-scale
+interaction network for referring remote sensing image seg-
+mentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 26658–
+26668, 2024. 2, 3,
+7, 8
+[37] Xu Liu and Zhouhui Lian. Rsunivlm: A uniﬁed vision
+language model for remote sensing via granularity-oriented
+mixture of experts. arXiv preprint arXiv:2412.05679 , 2024.
+3
+[38] Ze Liu, Y utong Lin, Y ue Cao, Han Hu, Yixuan Wei, Zheng
+Zhang, Stephen Lin, and Baining Guo. Swin transformer:
+Hierarchical vision transformer using shifted windows. In
+Proceedings of the IEEE/CVF international conference on
+computer vision, pages 10012–10022, 2021. 5, 6, 8
+[39] Siqi Lu, Junlin Guo, James R Zimmer-Dauphinee, Jordan M
+Nieusma, Xiao Wang, Steven A Wernke, Y uankai Huo, et al.
+Vision foundation models in remote sensing: A survey. IEEE
+Geoscience and Remote Sensing Magazine , 2025. 2
+[40] Xianzhi Ma, Jianhui Li, Changhua Pei, and Hao Liu.
+Geomag: A vision-language model for pixel-level ﬁne-
+grained remote sensing image parsing. arXiv preprint
+arXiv:2507.05887, 2025. 3
+[41] Ruizhe Ou, Y uan Hu, Fan Zhang, Jiaxin Chen, and Y u Liu.
+Geopix: A multimodal large language model for pixel-level
+image understanding in remote sensing. IEEE Geoscience
+and Remote Sensing Magazine , 2025. 2, 3
+[42] Chao Pang, Jiang Wu, Jiayu Li, Yi Liu, Jiaxing Sun, Wei-
+jia Li, Xingxing Weng, Shuai Wang, Litong Feng, Gui-Song
+Xia, et al. H2rsvlm: Towards helpful and honest remote sens-
+ing large vision language model. CoRR, 2024. 3
+[43] Chao Pang, Xingxing Weng, Jiang Wu, Jiayu Li, Yi Liu, Ji-
+axing Sun, Weijia Li, Shuai Wang, Litong Feng, Gui-Song
+Xia, et al. Vhm: V ersatile and honest vision language
+model for remote sensing image analysis. In Proceedings of
+the AAAI Conference on Artiﬁcial Intelligence , pages 6381–
+6388, 2025. 3
+[44] Jerome Quenum, Wen-Han Hsieh, Tsung-Han Wu, Ritwik
+Gupta, Trevor Darrell, and David M Chan. Lisat: Language-
+instructed segmentation assistant for satellite imagery. arXiv
+preprint arXiv:2505.02829, 2025. 3
+[45] Maryam Rahnemoonfar, Tashnim Chowdhury, Argho
+Sarkar, Debvrat V arshney, Masoud Y ari, and Robin Rober-
+son Murphy. Floodnet: A high resolution aerial imagery
+dataset for post ﬂood scene understanding. IEEE Access ,
+9:89644–89654, 2021. 2
+[46] Hanoona Rasheed, Muhammad Maaz, Sahal Shaji, Abdel-
+rahman Shaker, Salman Khan, Hisham Cholakkal, Rao M.
+Anwer, Eric Xing, Ming-Hsuan Y ang, and Fahad S. Khan.
+Glamm: Pixel grounding large multimodal model. The
+13208
+
+
+=== PAGE 11 ===
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, 2024. 6
+[47] Nikhila Ravi, V alentin Gabeur, Y uan-Ting Hu, Ronghang
+Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman
+R¨adle, Chloe Rolland, Laura Gustafson, et al. Sam 2:
+Segment anything in images and videos. arXiv preprint
+arXiv:2408.00714, 2024. 3, 8
+[48] Zhongwei Ren, Zhicheng Huang, Y unchao Wei, Y ao Zhao,
+Dongmei Fu, Jiashi Feng, and Xiaojie Jin. Pixellm: Pixel
+reasoning with large multimodal model. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 26374–26383, 2024. 3, 6, 7
+[49] Esther Rolf, Konstantin Klemmer, Caleb Robinson, and
+Hannah Kerner. Mission critical–satellite data is a dis-
+tinct modality in machine learning. arXiv preprint
+arXiv:2402.01444, 2024. 2
+[50] Akashah Shabbir, Mohammed Zumri, Mohammed Ben-
+namoun, Fahad S Khan, and Salman Khan. Geopixel: Pixel
+grounding large multimodal model in remote sensing. arXiv
+preprint arXiv:2501.13925, 2025. 2, 3, 6, 7
+[51] Y an Shu, Bin Ren, Zhitong Xiong, Danda Pani Paudel, Luc
+V an Gool, Begum Demir, Nicu Sebe, and Paolo Rota. Earth-
+mind: Towards multi-granular and multi-sensor earth ob-
+servation with large multimodal models. arXiv preprint
+arXiv:2506.01667, 2025. 3
+[52] Sagar Soni, Akshay Dudhane, Hiyam Debary, Mustansar
+Fiaz, Muhammad Akhtar Munir, Muhammad Sohail Danish,
+Paolo Fraccaro, Campbell D Watson, Levente J Klein, Fa-
+had Shahbaz Khan, et al. Earthdial: Turning multi-sensory
+earth observations to interactive dialogues. In Proceedings
+of the Computer Vision and Pattern Recognition Conference,
+pages 14303–14313, 2025. 3
+[53] Ashish V aswani, Noam Shazeer, Niki Parmar, Jakob Uszko-
+reit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia
+Polosukhin. Attention is all you need. Advances in neural
+information processing systems, 30, 2017. 8
+[54] Di Wang, Jing Zhang, Bo Du, Minqiang Xu, Lin Liu,
+Dacheng Tao, and Liangpei Zhang. Samrs: Scaling-up re-
+mote sensing segmentation dataset with segment anything
+model. In Advances in Neural Information Processing Sys-
+tems, pages 8815–8827, 2023. 3
+[55] Fengxiang Wang, Mingshuo Chen, Y ueying Li, Di Wang,
+Haotian Wang, Zonghao Guo, Zefan Wang, Boqi Shan, Long
+Lan, Y ulin Wang, et al. Geollava-8k: Scaling remote-sensing
+multimodal large language models to 8k resolution. arXiv
+preprint arXiv:2505.21375, 2025. 3
+[56] Hao Wang, Limeng Qiao, Zequn Jie, Zhijian Huang,
+Chengjian Feng, Qingfang Zheng, Lin Ma, Xiangyuan Lan,
+and Xiaodan Liang. X-sam: From segment anything to any
+segmentation. arXiv preprint arXiv:2508.04655, 2025. 3, 8
+[57] Junjue Wang, Zhuo Zheng, Zihang Chen, Ailong Ma, and
+Y anfei Zhong. Earthvqa: Towards queryable earth via re-
+lational reasoning-based remote sensing visual question an-
+swering. In Proceedings of the AAAI conference on artiﬁcial
+intelligence, pages 5481–5489, 2024. 3
+[58] Junjue Wang, Weihao Xuan, Heli Qi, Zhihao Liu, Kunyi Liu,
+Y uhan Wu, Hongruixuan Chen, Jian Song, Junshi Xia, Zhuo
+Zheng, et al. Disasterm3: A remote sensing vision-language
+dataset for disaster damage assessment and response. arXiv
+preprint arXiv:2505.21089, 2025. 2
+[59] Zhaoqing Wang, Y u Lu, Qiang Li, Xunqiang Tao, Y andong
+Guo, Mingming Gong, and Tongliang Liu. Cris: Clip-
+driven referring image segmentation. In Proceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 11686–11695, 2022. 3
+[60] Cong Wei, Haoxian Tan, Y ujie Zhong, Y ujiu Y ang, and Lin
+Ma. Lasagna: Language-based segmentation assistant for
+complex queries. arXiv preprint arXiv:2404.08506, 2024. 3
+[61] Cong Wei, Y ujie Zhong, Haoxian Tan, Y ong Liu, Zheng
+Zhao, Jie Hu, and Y ujiu Y ang. Hyperseg: Towards univer-
+sal visual segmentation with large language model. arXiv
+preprint arXiv:2411.17606, 2024. 3, 8
+[62] Cong Wei, Y ujie Zhong, Haoxian Tan, Yingsen Zeng, Y ong
+Liu, Zheng Zhao, and Y ujiu Y ang. Instructseg: Unifying
+instructed visual segmentation with multi-modal large lan-
+guage models. arXiv preprint arXiv:2412.14006, 2024. 2, 3,
+5, 8
+[63] Chenyun Wu, Zhe Lin, Scott Cohen, Trung Bui, and
+Subhransu Maji. Phrasecut: Language-based image segmen-
+tation in the wild. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition , pages
+10216–10225, 2020. 6
+[64] Zhuofan Xia, Dongchen Han, Yizeng Han, Xuran Pan, Shiji
+Song, and Gao Huang. Gsva: Generalized segmentation
+via multimodal large language models. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 3858–3869, 2024. 3
+[65] Wentao Xiang, Haoxian Tan, Y ujie Zhong, Cong Wei,
+Dengjie Li, and Y ujiu Y ang. Advancing visual large lan-
+guage model for multi-granular versatile perception. In
+Proceedings of the IEEE/CVF International Conference on
+Computer Vision, pages 22153–22164, 2025. 3
+[66] Cilin Y an, Haochen Wang, Shilin Y an, Xiaolong Jiang, Y ao
+Hu, Guoliang Kang, Weidi Xie, and Efstratios Gavves. Visa:
+Reasoning video object segmentation via large language
+models. In European Conference on Computer Vision, pages
+98–115. Springer, 2024. 3
+[67] Zhao Y ang, Jiaqi Wang, Y ansong Tang, Kai Chen, Heng-
+shuang Zhao, and Philip HS Torr. Lavt: Language-aware
+vision transformer for referring image segmentation. In Pro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 18155–18165, 2022. 3, 7
+[68] Zhigang Y ang, Huiguang Y ao, Linmao Tian, Xuezhi Zhao,
+Qiang Li, and Qi Wang. A large-scale referring remote
+sensing image segmentation dataset and benchmark. arXiv
+preprint arXiv:2506.03583, 2025. 3
+[69] Kelu Y ao, Nuo Xu, Rong Y ang, Yingying Xu, Zhuoyan Gao,
+Titinunt Kitrungrotsakul, Yi Ren, Pu Zhang, Jin Wang, Ning
+Wei, et al. Falcon: A remote sensing vision-language foun-
+dation model. arXiv preprint arXiv:2503.11070, 2025. 3
+[70] Liang Y ao, Fan Liu, Hongbo Lu, Chuanyi Zhang, Rui Min,
+Shengxiang Xu, Shimin Di, and Pai Peng. Remotereasoner:
+Towards unifying geospatial reasoning workﬂow. arXiv
+preprint arXiv:2507.19280, 2025. 3, 7
+13209
+
+
+=== PAGE 12 ===
+[71] Haobo Y uan, Xiangtai Li, Tao Zhang, Zilong Huang, Shilin
+Xu, Shunping Ji, Y unhai Tong, Lu Qi, Jiashi Feng, and
+Ming-Hsuan Y ang. Sa2va: Marrying sam2 with llava for
+dense grounded understanding of images and videos. arXiv
+preprint arXiv:2501.04001, 2025. 3
+[72] Zhenghang Y uan, Lichao Mou, Y uansheng Hua, and
+Xiao Xiang Zhu. Rrsis: Referring remote sensing image seg-
+mentation. IEEE Transactions on Geoscience and Remote
+Sensing, 2024. 2, 3, 7, 8
+[73] Y ang Zhan, Zhitong Xiong, and Y uan Y uan. Skyeyegpt: Uni-
+fying remote sensing vision-language tasks via instruction
+tuning with large language model. ISPRS Journal of Pho-
+togrammetry and Remote Sensing , 221:64–77, 2025. 2, 3
+[74] Pan Zhang, Xiaoyi Dong, Y uhang Zang, Y uhang Cao, Rui
+Qian, Lin Chen, Qipeng Guo, Haodong Duan, Bin Wang,
+Linke Ouyang, et al. Internlm-xcomposer-2.5: A versatile
+large vision language model supporting long-contextual in-
+put and output. arXiv preprint arXiv:2407.03320, 2024. 7
+[75] Shilong Zhang, Peize Sun, Shoufa Chen, Min Xiao, Wenqi
+Shao, Wenwei Zhang, Y u Liu, Kai Chen, and Ping Luo.
+Gpt4roi: Instruction tuning large language model on region-
+of-interest. In European conference on computer vision ,
+pages 52–70. Springer, 2024. 2
+[76] Wei Zhang, Miaoxin Cai, Tong Zhang, Yin Zhuang, and
+Xuerui Mao. Earthgpt: A universal multi-modal large lan-
+guage model for multi-sensor image comprehension in re-
+mote sensing domain. IEEE Transactions on Geoscience and
+Remote Sensing, 2024. 3
+[77] Zheng Zhang, Y eyao Ma, Enming Zhang, and Xiang Bai.
+Psalm: Pixelwise segmentation with large multi-modal
+model. In European Conference on Computer Vision , pages
+74–91. Springer, 2024. 3, 8
+[78] Zilun Zhang, Zian Guan, Tiancheng Zhao, Haozhan Shen,
+Tianyu Li, Y uxiang Cai, Zhonggen Su, Zhaojun Liu, Jianwei
+Yin, and Xiang Li. Geo-r1: Improving few-shot geospatial
+referring expression understanding with reinforcement ﬁne-
+tuning. arXiv preprint arXiv:2509.21976, 2025. 3
+[79] Y ue Zhou, Mengcheng Lan, Xiang Li, Litong Feng, Yip-
+ing Ke, Xue Jiang, Qingyun Li, Xue Y ang, and Wayne
+Zhang. Geoground: A uniﬁed large vision-language
+model for remote sensing visual grounding. arXiv preprint
+arXiv:2411.11904, 2024. 2, 3, 7
+[80] Minjie Zhu, Yichen Zhu, Xin Liu, Ning Liu, Zhiyuan Xu,
+Chaomin Shen, Y axin Peng, Zhicai Ou, Feifei Feng, and
+Jian Tang. Mipha: A comprehensive overhaul of multi-
+modal assistant with small language models. arXiv preprint
+arXiv:2403.06199, 2024. 6
+[81] Y ongshuo Zong, Qin Zhang, Dongsheng An, Zhihua Li, Xi-
+ang Xu, Linghan Xu, Zhuowen Tu, Yifan Xing, and Onkar
+Dabeer. Ground-v: Teaching vlms to ground complex in-
+structions in pixels. In Proceedings of the Computer Vision
+and Pattern Recognition Conference , pages 24635–24645,
+2025. 3
+13210

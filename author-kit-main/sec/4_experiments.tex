@@ -1,0 +1,206 @@
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Experimental Setup}
+
+We evaluate on the eight remote-sensing benchmarks used by SegEarth-OV and SegEarth-OV3 \cite{R06,R11}: Potsdam and Vaihingen \cite{R42}, LoveDA \cite{R36}, iSAID \cite{R37}, OpenEarthMap (OEM) \cite{R38}, UAVid \cite{R39}, UDD5 \cite{R40}, and VDD \cite{R41}. We retain the baseline evaluation splits, class mappings, ignored labels, and image-based UAVid protocol. iSAID contains 11,644 processed validation tiles, and UAVid contains 1,020 evaluated patches. The primary metric is mean intersection over union (mIoU, \%). The overall average weights the eight datasets equally. Class-group analysis weights dataset--class pairs equally and is reported separately. VOC20 \cite{R44} and Cityscapes \cite{R43} provide additional natural-image evaluations.
+
+Potsdam and Vaihingen are ISPRS airborne urban benchmarks; LoveDA covers urban and rural land cover from three Chinese cities; iSAID is a large aerial instance-segmentation dataset derived from DOTA; OpenEarthMap is a global high-resolution land-cover benchmark; UAVid focuses on oblique UAV urban scenes; UDD5 is built from semantic-constrained aerial structure-from-motion; and VDD emphasizes varied drone scenes and flight conditions. VOC20 contains the 20 PASCAL VOC foreground classes, and Cityscapes provides 19-class urban street-scene evaluation.
+
+All experiments and inference were conducted on four NVIDIA RTX 3090 GPUs. The SAM3 weights remained frozen, and no model training or fine-tuning was performed. Candidate descriptions are generated offline and stored verbatim. Unless stated otherwise, $\alpha=0.5$ and $\tau=0.25$. For each benchmark, the role slots, admission mode, and view operator are selected offline using the available evaluation annotations and then fixed for every image. Inference with a fixed profile does not access annotations. The reported results therefore use evaluation-selected dataset-level profiles, not an independent held-out configuration-selection split.
+
+Local and Context observations are built from RGB data. For Potsdam and Vaihingen, the selected main protocol uses spatially aligned neighboring RGB tiles from the same original scene to reconstruct a 1,024-pixel context around a 512-pixel target; only the target region is scored, and neighboring ground truth is never used. This input extent is larger than the isolated-tile baseline. The same-image 256/512 control is reported as a scope experiment rather than a replacement for the main protocol. No temporal frames, labeled visual exemplars, or auxiliary sensing modalities are used.
+
+Competitor values in Table~\ref{tab:main-comparison} are transcribed from the ProC-SAM3 comparison \cite{R12}; the reproduced SegEarth-OV3 row and JRV come from matched local runs. All component gains and interaction statistics use the full-precision matched baseline, not the one-decimal comparison table. The mixed provenance means that Table~\ref{tab:main-comparison} supports an internal numerical comparison, not an independently established leaderboard rank.
+
+
+\begin{table*}[!t]
+\centering
+\captionsetup{hypcap=false}
+\caption{Remote-sensing open-vocabulary semantic segmentation (mIoU, \%). Method and dataset names cite their original papers. Competitor metrics follow the comparison in ProC-SAM3 \cite{R12}; published values may correspond to the versions used there. The SegEarth-OV3 row is our reproduction, and JRV uses the context-access protocol in Section~\ref{sec:experiments}. Avg. is the equal-weight mean over eight datasets, and published values retain their reported precision.}
+\captionsetup{hypcap=true}
+\label{tab:main-comparison}
+\setlength{\tabcolsep}{2pt}
+\scriptsize
+\begin{tabular}{lcccccccccc}
+\toprule
+Method & Backbone & Potsdam~\cite{R42} & Vaihingen~\cite{R42} & LoveDA~\cite{R36} & iSAID~\cite{R37} & OEM~\cite{R38} & UAVid~\cite{R39} & UDD5~\cite{R40} & VDD~\cite{R41} & Avg. \\
+\midrule
+VIP~\cite{R32} & DINOv3 + dino.txt & 23.0 & 30.5 & 31.2 & 23.5 & 20.7 & 19.9 & 35.2 & 52.5 & 29.6 \\
+SCLIP~\cite{R29} & CLIP & 39.6 & 35.9 & 30.4 & 16.1 & 29.3 & 31.4 & 38.7 & 37.9 & 32.4 \\
+ClearCLIP~\cite{R30} & CLIP & 42.0 & 36.2 & 32.4 & 18.2 & 31.0 & 36.2 & 41.8 & 39.3 & 34.6 \\
+ProxyCLIP~\cite{R31} & CLIP + DINOv2 & 49.0 & 47.5 & 34.3 & 21.8 & 38.9 & 35.8 & 40.8 & 47.8 & 39.5 \\
+SegEarth-OV~\cite{R06} & CLIP & 48.5 & 29.1 & 36.9 & 21.7 & 40.3 & 42.5 & 50.6 & 45.3 & 39.2 \\
+RSCLIP~\cite{R33} & CLIP & 47.4 & 40.3 & 35.5 & 21.2 & 39.8 & 42.5 & 50.4 & 42.5 & 39.9 \\
+CorrCLIP~\cite{R34} & CLIP + DINO + SAM2 & 51.9 & 47.0 & 36.9 & 25.5 & 32.9 & 38.3 & 46.1 & 47.3 & 40.7 \\
+ConInfer~\cite{R26} & CLIP + DINOv3 & 50.0 & 31.4 & 39.3 & 20.1 & 42.0 & 46.4 & 46.9 & 50.3 & 40.8 \\
+ReAttnCLIP~\cite{R07} & CLIP & 48.7 & 29.9 & 37.0 & 23.2 & 41.1 & 44.0 & 53.7 & 49.7 & 40.9 \\
+ActiveSAM~\cite{R35} & SAM3 & 40.6 & 45.1 & 41.1 & 28.3 & 40.7 & 53.3 & 72.1 & 62.2 & 47.9 \\
+SegEarth-OV3 (reproduced)~\cite{R11} & SAM3 & 57.8 & 60.8 & 47.4 & 27.6 & 44.3 & 54.7 & 71.7 & 64.1 & 53.5 \\
+ProC-SAM3~\cite{R12} & SAM3 & 58.8 & 64.5 & 46.1 & \textbf{29.5} & 48.9 & \textbf{60.0} & \textbf{73.4} & \textbf{67.5} & 56.1 \\
+JRV (ours) & SAM3 & \textbf{63.2} & \textbf{66.4} & \textbf{48.8} & 29.1 & \textbf{53.1} & 59.8 & 72.9 & 66.6 & \textbf{57.5} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Comparison with Existing Methods}
+
+
+
+JRV reaches 57.49 average mIoU in the full-precision pairwise evaluation. The matched baseline is 53.56, giving an average gain of 3.92 points. Role-Functional Text accounts for 2.25 points, and joint view composition adds another 1.67 over the independently selected best role-only stage. Gains appear on all eight datasets. The largest increases are on OEM (+8.77), Vaihingen (+5.52), Potsdam (+5.31), and UAVid (+5.24).
+
+Against the reported ProC-SAM3 row, JRV is higher on four datasets and lower on four, with a 1.39-point higher displayed average. The comparison is useful for positioning because ProC-SAM3 is the strongest verified published result under the full eight-dataset, training-free protocol. It remains a mixed-source comparison, and we do not describe the internal 57.49 result as an independently established state of the art.
+
+\subsection{Functional Use of Supplementary Text}
+
+We first separate the two stages of the final system under a fixed inference recipe. Table~\ref{tab:component-progression} reports the macro progression over the eight benchmarks and establishes the language-evidence stage before the matched interaction analysis.
+
+\begin{table}[!htbp]
+\centering
+\caption{Macro component progression. Stage entries refer to the configurations defined in Section~3; Role-only is the best recorded independent role profile and is not the matched Role condition used for interaction analysis.}
+\label{tab:component-progression}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lccc}
+\toprule
+Stage & Macro mIoU & $\Delta$ vs baseline & Positive \\
+\midrule
+Matched baseline & 53.56 & -- & -- \\
+Role-Functional Text & 55.82 & +2.25 & 8/8 \\
+Joint Role--View & 57.49 & +3.92 & 8/8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Across the sequence, Role-only improves every dataset over the matched baseline, including gains of 6.23 on OEM and 4.92 on UAVid. Joint composition then improves over the role-only stage on every dataset. The component progression therefore supports both the language-evidence stage and the additional view stage, while the interaction analysis below fixes the profile to avoid selecting a different role configuration for each cell.
+
+We next hold the role slots and admission mode fixed and ask how the same semantic-oriented candidate should be used. Table~\ref{tab:role-use} compares Semantic-only supplementation with sharing that candidate across Presence, Semantic, and Instance.
+
+\begin{table}[!htbp]
+\centering
+\caption{The same semantic-oriented candidate used either only for Semantic supplementation or for all three roles. Both variants retain the anchor and bounded update; values are final mIoU.}
+\label{tab:role-use}
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{llccc}
+\toprule
+Dataset & Candidate & Baseline & Semantic only & Shared P/S/I \\
+\midrule
+Potsdam~\cite{R42} & S2 & 57.87 & \textbf{58.00} & 56.63 \\
+Vaihingen~\cite{R42} & S3 & 60.86 & \textbf{61.57} & 61.28 \\
+LoveDA~\cite{R36} & S1 & 47.34 & \textbf{48.09} & 46.61 \\
+OEM~\cite{R38} & S3 & 44.30 & \textbf{46.28} & 44.02 \\
+UDD5~\cite{R40} & S3 & 71.80 & 71.56 & \textbf{73.04} \\
+VDD~\cite{R41} & S1 & 64.11 & \textbf{65.27} & 65.05 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The utility of a description depends on where it is used. Across all 18 recorded dataset--candidate settings, semantic-only supplementation is better in 13 cases, while shared use exceeds the baseline in 7. On OEM, the S3 description gives 46.28 when used only for Semantic and 44.02 when shared across all roles. LoveDA follows the same direction. UDD5 reverses it, reaching 73.04 with shared use. Shared supplementation is therefore not uniformly harmful; the supported conclusion is that a category-level phrase does not have a uniform functional effect across readouts.
+
+Anchor preservation also matters as a complete strategy. With the final profile fixed, the residual path gives 61.82 macro mIoU over the six datasets with completed direct-prediction closure, compared with 53.29 for direct prediction. VDD is the exception, where direct prediction reaches 67.26 versus 66.55 for the residual path. This control changes both the bounded update and the official-score compensation, so the result supports the anchor-preserving composition as a whole rather than clipping in isolation.
+
+\subsection{Matched Role--View Interaction}
+
+We evaluate four conditions with the final role slots, admission mode, and view operator held fixed: baseline $m_{00}$, role-only $m_{10}$, view-only $m_{01}$, and joint $m_{11}$. The performance interaction is
+\begin{equation}
+\Gamma=m_{11}-m_{10}-m_{01}+m_{00}.
+\label{eq:interaction}
+\end{equation}
+This factorial contrast measures whether the joint mIoU gain exceeds the sum of the matched individual gains. It is not a pixel-level interaction count.
+
+\begin{center}
+\centering
+\captionsetup{hypcap=false}
+\captionof{table}{Matched Role $\times$ View ablation. The Role column uses the final joint role configuration, not an independently reselected optimum. Values are computed before rounding.}
+\label{tab:interaction}
+\captionsetup{hypcap=true}
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lccccc}
+\toprule
+Dataset & $m_{00}$ & $m_{10}$ & $m_{01}$ & $m_{11}$ & $\Gamma$ \\
+\midrule
+Potsdam~\cite{R42} & 57.87 & 58.59 & 62.34 & \textbf{63.18} & +0.11 \\
+Vaihingen~\cite{R42} & 60.86 & 61.59 & 63.58 & \textbf{66.38} & +2.07 \\
+LoveDA~\cite{R36} & 47.34 & 48.30 & 47.18 & \textbf{48.81} & +0.66 \\
+iSAID~\cite{R37} & 27.64 & 28.27 & 28.73 & \textbf{29.13} & -0.23 \\
+OEM~\cite{R38} & 44.30 & 50.53 & 45.17 & \textbf{53.08} & +1.68 \\
+UAVid~\cite{R39} & 54.58 & 59.50 & 54.43 & \textbf{59.82} & +0.47 \\
+UDD5~\cite{R40} & 71.80 & 72.76 & 72.27 & \textbf{72.94} & -0.28 \\
+VDD~\cite{R41} & 64.11 & 65.83 & 64.30 & \textbf{66.55} & +0.53 \\
+\midrule
+Average & 53.56 & 55.67 & 54.75 & \textbf{57.49} & +0.63 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The joint configuration is better than either matched component on all eight datasets, and $\Gamma$ is positive on six. The largest positive interactions are on Vaihingen (+2.07) and OEM (+1.68). LoveDA and UAVid provide direct evidence of conditional usefulness: the selected view operator slightly lowers the anchor prediction ($-0.16$ and $-0.15$), but its interaction with the role configuration is positive (+0.66 and +0.47). Potsdam behaves differently: view composition already provides a large main effect (+4.48), and the additional interaction is only +0.11. iSAID and UDD5 have positive total gains but negative interactions, indicating overlapping rather than complementary corrections.
+
+A broader view screen provides context for these results. A shared-canvas observation produces +0.92 macro over 4/6 datasets, confirming that the additional observation contains usable information. The best fixed universal operator family, however, gives only +0.10 macro over 3/6, showing that a single view rule is unstable across datasets. The joint profile is selected per benchmark and fixed for inference; the interaction table tests whether role-conditioned text changes the value of that observation, not whether every possible context fusion is beneficial.
+
+\subsection{Category and Pixel Analysis}
+
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig/category_gain.png}
+\caption{Category-group improvements over the matched baseline. The background/clutter mean is influenced by OEM and is shown separately.}
+\label{fig:category-gain}
+\end{figure}
+
+
+Figure~\ref{fig:category-gain} summarizes the group-level pattern. JRV improves 48 of 63 dataset--class pairs, including 41 of 55 foreground pairs. Vegetation and land cover show the broadest consistency at 14/15 positive pairs. Water-related and built-structure groups also improve on average. Movable objects receive little average benefit from role text alone ($-0.02$) but improve after joint composition (+1.49), showing that the two stages do not have to benefit the same category groups.
+
+The gains concentrate on classes with weaker baseline performance. The 17 pairs below 30\% baseline IoU improve by +7.03 on average; the 30--60\% group improves by +3.82; the group above 60\% improves by +1.41. This is an average trend, not a monotone guarantee. Transport surfaces are a counterexample: they improve by +1.26 over the baseline but decline by 0.17 relative to role-only prediction. The background/clutter mean is +10.22 and is strongly influenced by OEM; its group median is +1.56, so the foreground results provide the more informative aggregate.
+
+Pixel transitions show that the gains correspond to corrected assignments. Approximately 429.16 million baseline errors become correct, while 165.85 million previously correct pixels become incorrect, a net increase of 263.31 million correct assignments and a correction-to-damage ratio of 2.59. These counts refer to evaluated images and tiles, not independent geographic samples. They complement class-balanced mIoU without implying that every class or component improves.
+
+
+\begin{center}
+\setlength{\fboxsep}{0pt}
+\fcolorbox{orange!65!black}{orange!5}{%
+\parbox{\dimexpr\columnwidth-2\fboxrule\relax}{%
+\centering
+\vspace{5pt}
+{\bf Qualitative comparison placeholder}\\[3pt]
+{\small RGB \quad GT \quad Baseline \quad Role-only \quad View-only \quad Joint}\\[4pt]
+{\small\itshape Real masks must be exported for OEM, Vaihingen, UAVid/LoveDA.}\\[5pt]
+}}
+\captionsetup{hypcap=false}
+\captionof{figure}{Placeholder for the qualitative comparison. No prediction or improvement is shown; the panel will be replaced with verified outputs from the fixed profile.}
+\label{fig:qualitative-placeholder}
+\captionsetup{hypcap=true}
+\end{center}
+
+\subsection{Natural-Image Evaluation and Scope}
+
+Natural-image evaluation tests whether role supplementation transfers beyond overhead geometry and remote-sensing ontologies, while keeping the same frozen model and role definitions. VOC20 uses a 20-class foreground vocabulary, and Cityscapes evaluates 19 urban classes under a different scene distribution. We first report the joint result under the same component definitions, then separate the role and view effects.
+
+\begin{center}
+\centering
+\captionsetup{hypcap=false}
+\captionof{table}{Natural-image evaluation (mIoU, \%). Role-only and view-only are separately selected optima; the table is not used to compute interaction. VOC20 uses the foreground vocabulary.}
+\label{tab:natural}
+\captionsetup{hypcap=true}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lcccccc}
+\toprule
+Dataset & Images & Baseline & Role & View & Joint & $\Delta$ \\
+\midrule
+VOC20~\cite{R44} & 1,449 & 96.89 & 97.00 & 97.00 & \textbf{97.11} & +0.22 \\
+Cityscapes~\cite{R43} & 500 & 67.90 & \textbf{72.20} & 68.72 & \textbf{72.20} & +4.29 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Role-functional evidence also improves the two natural-image evaluations. VOC20 rises from 96.89 to 97.11, with a small additional view gain and a near-additive interaction (+0.01 after rounding). Cityscapes rises from 67.90 to 72.20, driven by role supplementation. Its joint optimum reduces to the role-specialized Global endpoint, so additional view composition does not improve that endpoint.
+
+The same-image control clarifies the role of observation construction. On Potsdam and Vaihingen, using four 256-pixel crops and a 512-pixel Global view from the current image selects Global in both cases and returns 58.59 and 62.33, respectively, without an additional view gain. The main table instead uses aligned neighboring context for these two datasets. We therefore attribute the large Potsdam and Vaihingen gains to the combined role and observation protocol, not to an arbitrary extra crop. The natural-image results support the transfer of role supplementation while showing that view composition depends on whether the alternative observation yields compatible evidence.
+
+Across the evaluations, the method uses a fixed dataset profile selected offline, freezes all SAM3 weights, and performs no image-level ground-truth routing. These constraints define the evidence: the experiments support role-sensitive evidence organization and conditional view composition under the reported protocols, not universal superiority of shared text, larger fields, or a particular fusion operator.
+
+
+
+

@@ -1,0 +1,65 @@
+% CVPR 2026 Paper Template; see https://github.com/cvpr-org/author-kit
+
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+%%%%%%%%% PAPER TYPE
+\usepackage[review]{cvpr}
+
+% Import additional packages in the preamble file, before hyperref
+\input{preamble}
+
+\definecolor{cvprblue}{rgb}{0.21,0.49,0.74}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
+
+%%%%%%%%% PAPER ID - UPDATE FOR THE SUBMISSION
+\def\paperID{*****}
+\def\confName{CVPR}
+\def\confYear{2027}
+
+%%%%%%%%% TITLE
+\title{Joint Role--View Specialization for Training-Free Open-Vocabulary Remote Sensing Segmentation}
+
+%%%%%%%%% AUTHORS - UPDATE FOR THE SUBMISSION
+\author{First Author\\
+Institution\\
+Address\\
+{\tt\small firstauthor@example.org}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{strip}
+\centering
+\includegraphics[width=\linewidth]{fig/intro_teaser.png}
+\captionsetup{hypcap=false}
+\captionof{figure}{Motivation. A shared concept anchor conditions three readouts with different evidence needs. The same selected role profile is evaluated under aligned Local and Context observations. The aerial image is illustrative.}
+\label{fig:motivation}
+\captionsetup{hypcap=true}
+\end{strip}
+
+
+\input{sec/0_abstract}
+
+% The Chinese counterpart is maintained at ../中文论文/论文中文版.md.
+% References are fixed in R01--R51 order in references.tex to match the Chinese manuscript.
+% Keep main.bib synchronized as source metadata.
+% Future English sections should follow the section order in that file.
+
+\input{sec/1_intro}
+
+\input{sec/2_related_work}
+
+\input{sec/3_method}
+
+\input{sec/4_experiments}
+
+\input{sec/5_conclusion}
+
+\input{references}
+
+\end{document}
+
+
+

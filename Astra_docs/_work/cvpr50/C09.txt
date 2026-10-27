@@ -1,0 +1,1000 @@
+=== PAGE 1 ===
+Effective SAM Combination for Open-Vocabulary Semantic Segmentation
+Minhyeok Lee1 Suhwan Cho1 Jungho Lee1 Sunghun Yang1
+Heeseung Choi2 Ig-Jae Kim2 Sangyoun Lee1
+1Yonsei University
+2Korea Institute of Science and Technology (KIST)
+{hydragon516, chosuhwan, 2015142131, sunghun98, syleee }@yonsei.ac.kr
+{hschoi, drjay }@kist.re.kr
+Mask Generator
+(ex. MaskFormer)
+Dog
+Bat
+Dirt
+…
+CLIP Classifier
+CLIP
+Image
+CLIP
+Text
+Proposal Masks
+Category Labels
+(a) Proposal Mask Based Method (b) Correlation Based Method
+Correlation
+CLIP
+Text
+CLIP
+Image
+TF Block
+TF Block
+Classifier
+Category Labels
+(c) Ours Method
+Correlation
+CLIP
+Text
+CLIP
+Image
+SAM Block
+VLF Block
+Category Labels
+Input
+Input
+Input
+SAM 
+Prompt Encoder
+Prompt 
+Generator
+Classifier
+Masks
+Points
+Labels
+Freeze
+Fine-Tune
+Pseudo labels
+Dog
+Bat
+Dirt
+…
+Dog
+Bat
+Dirt
+…
+Figure 1. (a) A model structure that generates proposal masks using a mask generation model. (b) A model structure that refines the
+correlation between image and text. (c) The structure of the proposed ESC-Net. Our ESC-Net efficiently models the relationship between
+images and text by combining a pre-trained SAM block with pseudo prompts instead of an inefficient mask generation model. This
+approach enables much denser mask prediction compared to conventional correlation-based methods.
+Abstract
+Open-vocabulary semantic segmentation aims to assign
+pixel-level labels to images across an unlimited range of
+classes. Traditional methods address this by sequentially
+connecting a powerful mask proposal generator, such as
+the Segment Anything Model (SAM), with a pre-trained
+vision-language model like CLIP . But these two-stage ap-
+proaches often suffer from high computational costs, mem-
+ory inefficiencies. In this paper, we propose ESC-Net, a
+novel one-stage open-vocabulary segmentation model that
+leverages the SAM decoder blocks for class-agnostic seg-
+mentation within an efficient inference framework. By em-
+bedding pseudo prompts generated from image-text cor-
+relations into SAM’s promptable segmentation framework,
+ESC-Net achieves refined spatial aggregation for accurate
+mask predictions. Additionally, a Vision-Language Fusion
+(VLF) module enhances the final mask prediction through
+image and text guidance. ESC-Net achieves superior per-
+formance on standard benchmarks, including ADE20K,
+PASCAL-VOC, and PASCAL-Context, outperforming prior
+methods in both efficiency and accuracy. Comprehensive
+ablation studies further demonstrate its robustness across
+challenging conditions.
+1. Introduction
+Open-vocabulary semantic segmentation aims to segment
+an image at the pixel level using an unlimited range of class
+labels. To achieve this, many approaches have gained atten-
+tion by leveraging pre-trained vision-language models such
+as CLIP [28] and ALIGN [14], which associate images with
+various textual descriptions. However, since these mod-
+els are trained at the image level using paired image-text
+datasets, they tend to perform poorly on pixel-level tasks.
+To address this issue, many methods [7, 13, 21, 31, 35]
+adopt a two-stage approach that utilizes a mask proposal
+generator. As shown in Figure 1 (a), these methods first
+use a powerful class-agnostic mask proposal generator
+with strong pre-segmentation capabilities, such as Mask-
+Former [4] or Segment Anything Model (SAM) [19], to pre-
+segment the image. Next, each image region is fed into a
+pre-trained CLIP classifier to determine its class. However,
+these methods have two major issues. First, the two-stage
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+26081
+
+
+=== PAGE 2 ===
+pipeline incurs significant computational costs and ineffi-
+cient memory usage. Second, because these methods re-
+move the background outside the segmented regions, a do-
+main gap exists between the pre-trained CLIP model and
+the cropped regions. Additionally, as cropped regions typ-
+ically include parts of other objects, classification accuracy
+often suffers.
+To overcome these challenges, recent works [5, 16, 33]
+address open-vocabulary semantic segmentation by trans-
+ferring the modeling of image-text correlation to pixel-
+level predictions. As shown in Figure 1 (b), these meth-
+ods first establish multi-modal correlations from the em-
+bedded CLIP image and text features. Then, by refining
+this information through the model, they generate the final
+prediction masks in a manner similar to traditional seman-
+tic segmentation. Therefore, unlike the previous two-stage
+methods, these approaches can perform inference much
+more efficiently. Additionally, they generally enable direct
+fine-tuning of CLIP, further optimizing the cross-modality
+modeling between vision and language. However, CLIP’s
+vision-language contrastive learning aligns only the global
+representations of context, causing it to focus solely on the
+text-described information. As a result, these methods per-
+form correlation at a low-resolution, highly embedded fea-
+ture level to maximize the encoder’s localization capabil-
+ity. In other words, while previous two-stage methods can
+generate high-resolution boundary masks using a mask pro-
+posal generator, correlation-based models produce less ac-
+curate masks because of CLIP’s limited ability to recon-
+struct detailed local information.
+In this paper, we propose a novel one-stage open-
+vocabulary semantic segmentation model called the Effec-
+tive SAM Combination (ESC-Net) to address these chal-
+lenges. Our ESC-Net leverages SAM’s powerful class-
+agnostic segmentation capability while maintaining an ef-
+ficient inference pipeline. To achieve this, we focus on
+SAM’s ability to effectively transfer to downstream seg-
+mentation tasks through promptable segmentation. Fig-
+ure 1 (c) illustrates the proposed ESC-Net’s process. First,
+the proposed ESC-Net computes the correlation between
+CLIP image features and text features, generating pseudo
+coordinate points and object masks that are highly corre-
+lated with the text class. This pre-generated information is
+then embedded as prompts via SAM’s prompt encoder, and
+used as pseudo features that incorporate approximate loca-
+tion information. Next, the generated prompt features and
+CLIP encoder features are used as inputs to the pre-trained
+SAM transformer blocks, enabling cross-model interaction
+between the prompts and the image. Therefore, due to
+SAM’s region-wise spatial aggregation capability, the im-
+age features are effectively represented to facilitate model-
+ing the image-language relationships. In other words, this is
+made possible by SAM’s ability to generate valid segmen-
+tation masks even when the prompts are ambiguous and can
+reference multiple objects. Finally, we design an Vision-
+Language Fusion (VLF) module to guide the model in gen-
+erating the final class prediction masks based on image and
+text guidance.
+The ESC-Net structure has two major advantages. First,
+the combination of correlation-based pseudo prompts and
+SAM blocks provides more concentrated spatial context in-
+formation for image-text modeling. This allows for more
+accurate and dense prediction masks compared to previous
+one-stage methods that relied on CLIP’s weak spatial local-
+ization signals for images and text. Second, since ESC-Net
+does not use the SAM image encoder, it offers much more
+efficient inference compared to the existing two-stage meth-
+ods that utilize the entire SAM pipeline. Notably, the pro-
+posed method achieves better performance compared to the
+previous correlation-based one-stage method, CAT-Seg [5],
+despite having similar computational costs.
+The proposed ESC-Net is evaluated on standard open-
+vocabulary benchmarks, including the ADE20K [39],
+PASCAL-VOC [9], and PASCAL-Context [25] datasets,
+achieving state-of-the-art performance compared to previ-
+ous methods. Additionally, we demonstrate through various
+ablation studies that our model efficiently maintains strong
+performance across a range of challenging scenarios.
+Our main contributions can be summarized as follows:
+• We propose ESC-Net, a novel one-stage open-vocabulary
+semantic segmentation model. It effectively combines
+CLIP and SAM to leverage SAM’s powerful class-
+agnostic segmentation capabilities while maintaining ef-
+ficient inference.
+• ESC-Net introduces correlation-based pseudo prompts
+derived from CLIP image-text features. These prompts
+are embedded through SAM’s prompt encoder and used
+to guide the SAM transformer blocks. This enhances
+image-text modeling and results in more accurate, dense
+prediction masks.
+• Our method achieves state-of-the-art performance on
+standard open-vocabulary benchmarks such as ADE20K,
+PASCAL-VOC, and PASCAL-Context. It outperforms
+previous one-stage and two-stage methods with similar
+computational costs. Extensive ablation studies demon-
+strate its robust performance across various challenging
+scenarios.
+2. Related Work
+Open-vocabulary semantic segmentation. Open vocab-
+ulary semantic segmentation evolves as a specialized task
+within computer vision, aiming to enable models to seg-
+ment arbitrary, unseen categories beyond predefined labels.
+Early methods [1, 32, 38] in this area focus on aligning vi-
+sual features with pre-trained text embeddings by learning
+26082
+
+
+=== PAGE 3 ===
+a feature mapping that associates visual and text spaces ef-
+fectively.
+With the advent of vision-language models like CLIP,
+many works leverage its extensive vocabulary and visual-
+text alignment capabilities to address the vocabulary lim-
+itations of previous approaches. For instance, two-
+stage frameworks like OpenSeg [10], ZegFormer [6], and
+ZSseg [35] use class-agnostic mask proposals that are later
+matched with CLIP-based text embeddings for classifica-
+tion. OVSeg [21] improves this two-stage approach by
+fine-tuning CLIP with region-text pairs to enhance segmen-
+tation accuracy on diverse categories, while ODISE [34]
+employs a diffusion model to generate high-quality masks,
+thus bypassing the reliance on pre-trained mask generators.
+However, these methods often depend on region generators,
+which are typically trained on limited annotated data, thus
+constraining generalization to unseen categories.
+Single-stage frameworks emerge as an alternative to
+bypass the need for region proposals. Models such as
+LSeg [20] and MaskCLIP [7] adopt pixel-level learning
+directly from CLIP’s text embeddings, aiming to predict
+segmentation maps in one forward pass. Methods like
+SAN [36] and ZegCLIP [40] introduce side adapter net-
+works and learnable tokens to assist CLIP’s segmentation
+performance. CAT-Seg [5] adapts CLIP by aggregating co-
+sine similarity between image and text embeddings, fine-
+tuning the encoders to enhance segmentation on unseen
+classes. Meanwhile, MAFT+ [16] proposes a collabora-
+tive optimization approach, where content-dependent trans-
+fer adaptively refines text embeddings based on image con-
+text, while a Representation Compensation strategy pre-
+serves CLIP’s zero-shot capability.
+Segment Anything Model. The Segment Anything Model
+(SAM)[19], recently introduced by Meta AI Research,
+marks a pivotal advancement in the field of foundation mod-
+els for computer vision, particularly image segmentation. It
+builds on the Vision Transformer[8] architecture and trains
+on the vast SA-1B dataset, which contains over a billion
+segmentation masks across 11 million images. SAM posi-
+tions itself as a transformative tool in zero-shot image seg-
+mentation. Its primary innovation lies in its “promptable”
+design, which enables it to generalize across various image
+domains without fine-tuning, allowing effective segmenta-
+tion in new environments through prompt engineering. This
+promptability aligns SAM with trends in natural language
+processing, where large language models, also pre-trained
+on web-scale data, demonstrate robust zero-shot and few-
+shot capabilities.
+Prior to SAM, foundation models in computer vision,
+such as CLIP and ALIGN, focus on aligning multimodal
+data—specifically text and image encoders—through con-
+trastive learning for cross-modal zero-shot generalization.
+However, these earlier models primarily excel at tasks re-
+liant on cross-modal alignment, such as image captioning
+and generation, rather than segmentation. SAM advances
+beyond these models by specifically targeting image seg-
+mentation as a foundational task, making it a versatile tool
+for addressing complex segmentation challenges.
+3. Proposed Approach
+3.1. Overall Architecture
+Figure 2 shows the overall structure of the proposed ESC-
+Net. Our model consists of a CLIP vision encoder, lan-
+guage encoder, and a single decoder for mask prediction,
+similar to conventional one-stage methods, without the need
+for an additional mask proposal model. In this task, we
+provide the input image I and a set of text descriptions T
+for all candidate classes to the model, where T n denotes
+the text description of the n-th class. The total number
+of candidate classes is Nc, where n = 1 , . . . , Nc. There-
+fore, ESC-Net has the same input configuration as con-
+ventional one-stage methods. First, ESC-Net generates a
+vision-language correlation map Cv&l from the CLIP vision
+feature Fv ∈ RC×H×W and language feature Fl ∈ RC×Nc.
+Cv&l ∈ RNc×H×W represents the image similarity rela-
+tionships for each text class. Next, we design a Pseudo
+Prompt Generator (PPG) to generate pseudo point coordi-
+nates and mask regions for each class candidate based on
+Cv&l. These pseudo prompts embed approximate location
+information about the object regions and are passed to the
+pre-trained SAM block. A detailed explanation of the PPG
+is provided in Section 3.3. Next, Fv passes through the
+SAM transformer block along with the pseudo prompts, re-
+fining it into F ′
+v ∈ RC×H×W with enhanced class-agnostic
+spatial context information. Finally, we propose the Vision-
+Language Fusion (VLF) module to model the interaction
+between the refined vision feature and the text feature. In
+this module, Cv&l is aggregated withFv and Fl to produce a
+reconstructed correlation map C ′
+v&l ∈ RNc×C×H×W . De-
+tails on the VLF module are discussed in Section 3.5. As
+shown in Figure 2, we progressively refine Cv&l using N
+ESC blocks from the above process and generate the final
+prediction mask M through the mask decoder.
+3.2. Vision-Language Correlation
+Before generating the pseudo prompt, we first create a cor-
+relation map using the correlation between Fv and Fl. This
+process is performed based on simple cosine similarity. Let
+C n
+v&l (i) be the image correlation map for the n-th class in-
+formation, and let i represent the 2D spatial coordinates of
+the image embedding. Then, C n
+v&l (i) is expressed as fol-
+lows:
+C n
+v&l(i) = Fv(i) · F n
+l
+∥Fv(i)∥ ∥F n
+l ∥ . (1)
+26083
+
+
+=== PAGE 4 ===
+A photo of a
+{person}
+{bicycle}
+{road}
+…
+𝐹𝐹𝑣𝑣
+𝐹𝐹𝑙𝑙
+𝐶𝐶𝑣𝑣&l
+V-L
+Correlation
+Input Image I
+Input Text T
+PPG
+Pseudo Prompt
+Points
+ Masks
+SAM Block
+𝐹𝐹𝑣𝑣′
+VLF Block
+𝐶𝐶𝑣𝑣&l
+′
+× N
+Decoder
+Pred Mask M
+ESC-Block
+Figure 2. The proposed ESC-Net consists of the CLIP vision and language encoders,N consecutive ESCBlocks, and a decoder. Each ESC-
+Block generates a pseudo prompt from the image-text correlation map and uses it as input to the SAM block. The SAM block aggregates
+the CLIP image features. The VLF block models the image-text correlation using image features and text features, refining the correlation
+map through this process.
+𝐶𝐶𝑣𝑣&𝑙𝑙
+𝑛𝑛
+Softmax Threshold Clustering
+⊙
+𝑋𝑋𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝
+𝑛𝑛  & 𝑀𝑀𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝𝑝
+𝑛𝑛
+Points :
+Masks :
+𝑥𝑥1, 𝑦𝑦1
+𝑥𝑥2, 𝑦𝑦2
+𝑥𝑥3, 𝑦𝑦3
+Prompt Encoder
+𝑃𝑃𝑝𝑝𝑝𝑝𝑠𝑠𝑠𝑠𝑝𝑝𝑝𝑝𝑛𝑛
+𝑃𝑃𝑝𝑝𝑝𝑝𝑛𝑛𝑝𝑝𝑝𝑝
+𝑛𝑛
+Get Max Points
+(a) (b) (c) (d)
+(e)
+Figure 3. The process of the proposed Pseudo Prompt Generator
+(PPG). PPG aims to generate class-specific pseudo prompts from
+image-text correlation maps. For efficiency, all processes are com-
+puted in batch-wise parallelization over all classes.
+3.3. Pseudo Prompt Generator
+The purpose PPG aim to generate location information for
+candidate objects from C n
+v&l and convert it into the SAM
+prompt format. Traditional SAM [19] can take some or
+all of points, bounding boxes, masks, and text as input
+prompts. Among these, we use only points and masks as
+prompts. Figure 3 shows the proposed PPG process.
+First, PPG applies a softmax operation to the correlation
+map C n
+v&l ∈ R1×H×W for each n-th class to generate class-
+specific object probability masks (b). Then, it binarizes this
+probability mask using a predefined threshold value α. As
+a result, this binary mask (c) represents the approximate lo-
+cation of candidate objects corresponding to class n. How-
+ever, since multiple objects may exist for a single class, we
+cluster the mask by region, as shown in Figure 3 (d). To
+achieve this, we apply a k-means clustering algorithm [12]
+based on pixel locations to divide the binary mask into No
+mask regions. Next, we multiply the probabilistic mask (b)
+by the clustered mask region map (d) to generate a prob-
+ability map (e) where only the object regions are filtered.
+𝐹𝐹𝑣𝑣′
+𝐹𝐹𝑙𝑙
+𝐶𝐶𝑣𝑣&𝑙𝑙
+𝑛𝑛 𝐶𝐶𝑒𝑒𝑛𝑛
+Conv C
+𝐶𝐶𝑣𝑣𝑛𝑛
+𝐶𝐶𝑣𝑣
+MHA
+Norm
+Q
+K
+V
+Norm
+MHA
+Q
+K V
+Norm
+𝐶𝐶𝑣𝑣&l
+′
+(a) Vision Attention
+(b) Language Attention
+FFN
+Norm
+FFN
+Figure 4. The structure of the proposed Vision-Language Fusion
+(VLF) block. VLF sequentially applies image and text guidance
+to the correlation map to refine it.
+Finally, we generate pseudo points and pseudo masks from
+(e). As shown in Figure 3, the pseudo points are determined
+as the highest probability areas for each object region in (e),
+and the pseudo masks correspond to the masks of each re-
+gion. Consequently, a total of No pseudo points and No
+pseudo masks are generated.
+The generated pseudo points and pseudo masks are used
+as inputs to the prompt encoder, as proposed by the tradi-
+tional SAM. According to SAM’s approach, the points and
+masks are embedded as sparse prompt features P n
+sparse and
+dense prompt features P n
+dense, respectively.
+3.4. SAM Block
+The proposed ESC-Net utilizes a pre-trained SAM trans-
+former block, as shown in Figure 2, to aggregate the spa-
+tial context information of image features using gener-
+ated pseudo-prompt information. Specifically, we leverage
+the transformer decoder block of the SAM mask decoder,
+which effectively maps images and prompts. The SAM
+block first applies a prompt self-attention layer SA (.),
+26084
+
+
+=== PAGE 5 ===
+followed by bidirectional cross-attention BCA (., .) for
+image-to-prompt and prompt-to-image, updating the image
+embedding feature Fv to F ′
+v ∈ RC×H×W . However, unlike
+the original SAM, we use Nc sets of prompts, so the opera-
+tions for each prompt are parallelized in batches. Therefore,
+the refined image feature (F n
+v )′ ∈ RC×H×W for the n-th
+prompt set is expressed as follows:
+(F n
+v )′ = BCA (SA (F n
+l ) , Fv) ,
+F ′
+v = Conv
+ 
+F 0
+v ; F 1
+v ; . . . ; F Nc
+v
+
+,
+(2)
+where Conv (.) denotes a 1 × 1 convolution, and [.; .] rep-
+resents the concatenation operation. In this paper, we apply
+a total of N ESC blocks, thus utilizing the parameters of N
+consecutive pre-trained SAM blocks.
+3.5. Vision-Language Fusion Module
+The VLF module aims to refine the correlation map Cv&l
+by using the image embedding feature F ′
+v, which has en-
+hanced spatial aggregation through SAM blocks, and the
+text feature Fl. First, as shown in Figure 4 (a), the cor-
+relation map C n
+v&l ∈ R1×H×W for the n-th class is em-
+bedded using a 1 × 1 convolution layer. The embedded
+class correlation map C n
+e ∈ RC×H×W is then concatenated
+with F ′
+v and used as input to the transformer block. To
+improve the model’s efficiency, this process is performed
+with batch-level parallel operations for all classes, similar
+to the SAM block. Furthermore, similar to CAT-Seg [5],
+we structure the transformer block using the Swin Trans-
+former [23] architecture to gain additional memory advan-
+tages. As a result of the above process, the vision corre-
+lation map C n
+v ∈ RC×H×W for the n-th class is gener-
+ated, as shown in Figure 4 (a). Next, as shown in Figure 4
+(b), we introduce an attention mechanism with Fl as the
+key and value to explicitly capture relationships between
+different class categories. For open-vocabulary segmenta-
+tion, the number of input classes Nc can vary, and it needs
+to be order-agnostic. Therefore, we adopt a linear trans-
+former [18] structure without positional embedding. As a
+result, the VLF module generates a multimodally refined
+embedding correlation map C ′
+v&l.
+3.6. Mask Prediction Decoder
+We use the simple upsampling layers of a U-Net [29] archi-
+tecture, composed of bilinear interpolation and 3 × 3 con-
+volution layers, to generate the final predicted segmentation
+map. This approach is similar to existing one-stage methods
+and employs CLIP image encoder features as skip connec-
+tions.
+4. Experiments
+4.1. Datasets
+In this paper, we train the proposed ESC-Net on the
+COCO-Stuff [2] dataset, following established methods.
+The COCO-Stuff training set includes approximately 118k
+images annotated with masks across 171 semantic cate-
+gories. To ensure a fair comparison with previous meth-
+ods, we evaluate our model on the ADE20K [39], PASCAL-
+VOC [9], and PASCAL-Context [25] datasets. Details for
+each dataset are as follows:
+ADE20K [39] is a large-scale semantic segmentation
+dataset featuring 20,000 training images and 2,000 valida-
+tion images. In open-vocabulary semantic segmentation, it
+includes two distinct test sets: A-150, containing 150 com-
+monly seen categories, and A-847, which includes a total of
+847 categories.
+PASCAL-VOC[9], one of the foundational datasets for ob-
+ject detection and segmentation, has approximately 1,500
+training images and 1,500 validation images, covering 20
+object categories. For the open-vocabulary segmentation
+task, this dataset is referred to as PAS-20. Additionally,
+following the approaches in [5, 10], we include PAS-20 b
+in the evaluation dataset. Unlike PC-59, PAS-20b is defined
+without including the “background” class.
+PASCAL-Context [25], an extension of PASCAL VOC for
+semantic segmentation, also features two test sets for open-
+vocabulary segmentation: PC-59 with 59 categories and
+PC-459 with 459 categories.
+4.2. Evaluation Metric
+To quantitatively evaluate the performance, we follow ex-
+isting traditional open-vocabulary semantic segmentation.
+Semantic segmentation results are evaluated with mean In-
+tersection over Union (mIoU) [9].
+4.3. Implementation Details
+In this study, we set the class-specific object count N0 in
+PPG to 5 and the number of ESC-Blocks N to 4. In other
+words, PPG generates 5 points and masks per class, and the
+correlation map is refined through 4 ESC-Blocks after the
+CLIP encoder. Therefore, we take 4 SAM mask decoder
+transformer blocks from the pretrained SAM model. The in-
+put image is resized to 336 × 336, and the AdamW [24] op-
+timizer is used for training. For optimal training, the CLIP
+encoder and SAM blocks are trained with a learning rate of
+2 × 10−6, while the rest of the model part is trained with a
+learning rate of 2×10−4. All experiments are conducted us-
+ing the PyTorch [26] framework, and training is performed
+on four NVIDIA RTX A6000 GPUs.
+In traditional open-vocabulary segmentation methods [6,
+10, 35], the image-text relationship modeling of pre-trained
+CLIP is typically preserved by freezing its encoders. How-
+26085
+
+
+=== PAGE 6 ===
+Model Publication VLM Additional Backbone Training Dataset Additional DatasetA-847 PC-459 A-150 PC-59 PAS-20 PAS-20b
+SPNet [32] CVPR’19 - ResNet-101 PASCAL VOC ✗ - - - 24.3 18.3 -
+ZS3Net [1] NeurIPS’19 - ResNet-101 PASCAL VOC ✗ - - - 19.4 38.3 -
+LSeg [20] ICLR’22 CLIP ViT-B/32 ResNet-101 PASCAL VOC-15 ✗ - - - - 47.4 -
+LSeg+ [10] ECCV’22 ALIGN ResNet-101 COCO-Stuff ✗ 2.5 5.2 13.0 36.0 - 59.0
+ZegFormer [6]CVPR’22 CLIP ViT-B/16 ResNet-101 COCO-Stuff-156 ✗ 4.9 9.1 16.9 42.8 86.2 62.7
+ZSseg [35] ECCV’22 CLIP ViT-B/16 ResNet-101 COCO-Stuff ✗ 7.0 - 20.5 47.7 88.4 -
+OpenSeg [10]ECCV’22 ALIGN ResNet-101 COCO Panoptic ✓ 4.4 7.9 17.5 40.1 - 63.8
+OVSeg [21] CVPR’23 CLIP ViT-B/16 ResNet-101c COCO-Stuff ✓ 7.1 11.0 24.8 53.3 92.6 -
+ZegCLIP [40]CVPR’23 CLIP ViT-B/16 - COCO-Stuff-156 ✗ - - - 41.2 93.6 -
+SAN [36] CVPR’23 CLIP ViT-B/16 - COCO-Stuff ✗ 10.1 12.6 27.5 53.8 94.0 -
+DeOP [11] ICCV’23 CLIP ViT-B/16 ResNet-101c COCO-Stuff-156 ✗ 7.1 9.4 22.9 48.8 91.7 -
+SCAN [22] CVPR’24 CLIP ViT-B/16 Swin-B COCO-Stuff ✗ 10.8 13.2 30.8 58.4 97.0 -
+EBSeg [30] CVPR’24 CLIP ViT-B/16 SAM ViT-B COCO-Stuff ✗ 11.1 17.3 30.0 56.7 94.6 -
+SED [33] CVPR’24 ConvNeXt-B - COCO-Stuff ✗ 11.4 18.6 31.6 57.3 94.4 -
+CAT-Seg [5] CVPR’24 CLIP ViT-B/16 - COCO-Stuff ✗ 12.0 19.0 31.8 57.5 94.6 77.3
+13.3 21.1 35.6 59.0 97.3 80.1ESC-Net (ours) - CLIP ViT-B/16 - COCO-Stuff ✗ (+1.3) (+2.1) (+3.8)(+0.6) (+0.3) (+2.8)
+LSeg [20] ICLR’22 CLIP ViT-B/32 ViT-L/16 PASCAL VOC-15 ✗ - - - - 52.3 -
+OpenSeg [10]ECCV’22 ALIGN EfficientNet-B7 COCO Panoptic ✓ 8.1 11.5 26.4 44.8 - 70.2
+OVSeg [21] CVPR’23 CLIP ViT-L/14 Swin-B COCO-Stuff ✓ 9.0 12.4 29.6 55.7 94.5 -
+SAN [36] CVPR’23 CLIP ViT-L/14 - COCO-Stuff ✗ 12.4 15.7 32.1 57.7 94.6 -
+ODISE [34] CVPR’23 CLIP ViT-L/14 Stable Diffusion COCO-Stuff ✗ 11.1 14.5 29.9 57.3 - -
+FC-CLIP [37]NeurIPS’23 ConvNeXt-L - COCO Panoptic ✗ 11.2 12.7 26.6 42.4 89.5 -
+MAFT [15] NeurIPS’23 CLIP ViT-L/14 - COCO-Stuff ✗ 12.7 16.2 33.0 59.0 92.1 -
+USE [31] CVPR’24 CLIP ViT-L/14 DINOv2, SAM COCO-Stuff ✓ 13.4 15.0 37.1 58.0 - -
+SCAN [22] CVPR’24 CLIP ViT-L/14 Swin-B COCO-Stuff ✗ 14.0 16.7 33.5 59.3 97.0 -
+EBSeg [30] CVPR’24 CLIP ViT-L/14 SAM ViT-B COCO-Stuff ✗ 13.7 21.0 32.8 60.2 97.2 -
+SED [33] CVPR’24 ConvNeXt-L - COCO-Stuff ✗ 13.9 22.6 35.2 60.6 96.1 -
+CAT-Seg [5] CVPR’24 CLIP ViT-L/14 - COCO-Stuff ✗ 16.0 23.8 37.9 63.3 97.0 82.5
+MAFT+ [17]ECCV’24 ConvNeXt-L - COCO-Stuff ✗ 15.1 21.6 36.1 59.4 96.5 -
+18.1 27.0 41.8 65.6 98.3 86.3ESC-Net (ours) - CLIP ViT-L/14 - COCO-Stuff ✗ (+2.1) (+3.2) (+3.9)(+2.3) (+1.1) (+3.8)
+Table 1. Quantitative evaluation on open-vocabulary segmentation benchmarks. The best-performing results are presented in bold, while
+the second-best results are underlined. Improvements over the second-best are highlighted in red.
+ever, recent studies have demonstrated that fine-tuning
+CLIP’s image and text encoders can achieve higher perfor-
+mance in open-vocabulary segmentation tasks. This sug-
+gests that CLIP’s linguistic discrimination capability can
+be retained even with training datasets containing a lim-
+ited number of classes. Following this insight, the proposed
+ESC-Net adopts the approach of CAT-Seg [5] to fine-tune
+the attention layers of CLIP’s image and text encoders.
+4.4. Results
+Quantitative results. Table 1 presents the quantitative re-
+sults of the proposed ESC-Net compared to previous state-
+of-the-art methods on standard open-vocabulary semantic
+segmentation benchmark datasets [9, 25, 39]. In open-
+vocabulary semantic segmentation tasks, the final perfor-
+mance generally varies depending on the type of vision-
+language model (VLM) used. Therefore, as shown in
+Table 1, we perform comparisons between models with
+similar-scale VLMs. Some approaches utilize auxiliary
+models such as SAM or mask formers for mask genera-
+tion or additional information extraction, in addition to the
+VLM. Furthermore, some models enhance performance by
+leveraging additional training datasets [3, 27]. Hence, in Ta-
+ble 1, we provide information on the additional backbones
+and types of training datasets used for each method. As
+shown in Table 1, the proposed ESC-Net achieves state-of-
+the-art performance, surpassing existing methods with both
+CLIP ViT-B/16 and CLIP ViT-L/14 VLMs. Compared to
+previous state-of-the-art methods, MAFT+ [17] and CAT-
+Seg [5], there is a significant performance improvement
+across all evaluation datasets. Notably, ESC-Net shows an
+mIoU improvement of 2.1 on the A-847 dataset, which in-
+cludes a large number of classes, and 3.2 on the PC-459
+dataset. Furthermore, in Section 4.5, we demonstrate the
+effectiveness of the proposed ESC-Net over existing mod-
+els through various ablation studies.
+Qualitative results. Figure 5 presents the qualitative results
+comparing the proposed ESC-Net with the previous state-
+of-the-art single-stage model, CAT-Seg [5], across various
+benchmarks. As shown, our model demonstrates robustness
+to variations in object scale, lighting, and more, achieving
+denser segmentation compared to CAT-Seg. Furthermore,
+in scenarios with a high number of objects and complex
+backgrounds, the proposed model exhibits superior perfor-
+mance. This is due to the effective use of features from
+the SAM block, which learns class-agnostic segmentation
+across various scales, for mask generation.
+26086
+
+
+=== PAGE 7 ===
+RGBGTCAT-SegOurs
+Figure 5. Qualitative comparison of CAT-Seg and our ESC-Net across various datasets. Our model is capable of generating more accurate
+and robust masks compared to existing correlation-based state-of-the-art method.
+W/ SAM W/O SAM
+ESC-Block 1 ESC-Block 2 ESC-Block 3 ESC-Block 4
+Figure 6. Visualization of image-text correlation maps with and
+without the SAM block. We visualize the model activation maps
+for the “Person” class for each ESC-Block. The proposed SAM-
+based method enables more accurate and dense object localization
+compared to the baseline.
+4.5. Ablation Analysis.
+This section includes various ablation experiments on the
+proposed model. All experiments are evaluated using the
+CLIP ViT-L/14 VLM with an image size of336 × 336.
+Effect of SAM blocks. Table 2 demonstrates the effec-
+tiveness of the pre-trained SAM blocks in the proposed
+model. First, (a) represents the model without using the
+SAM blocks, meaning that Fv is not refined. Conse-
+quently, the proposed PPG is also removed in this exper-
+iment. Next, (b) shows the model that utilizes the SAM
+structure but does not use pre-trained parameters. Lastly,
+(c) corresponds to the model that uses the pretrained SAM
+blocks, which is identical to the proposed ESC-Net. As
+shown in the table, instead of generating masks using a
+mask proposal network, significant performance improve-
+ments can be achieved by integrating pretrained SAM trans-
+former blocks. In particular, when comparing (b) and (c),
+which have the same computational load, the approach us-
+ing pretrained SAM blocks reaches much better segmen-
+tation performance. This demonstrates that the proposed
+ESC-Net effectively utilizes the spatial aggregation capa-
+bilities learned by SAM through the pseudo prompts.
+Furthermore, to verify that the proposed SAM integra-
+tion structure aids in image-text modeling, we visualize
+C ′
+v&l with and without the SAM block as class-specific
+activation maps, as shown in Figure 6. Since we include
+one SAM block in each ESC block, we generate a total of
+four activation maps. As illustrated in the figure, the pro-
+posed SAM integration method shows more accurate and
+denser mapping to the class target objects compared to the
+baseline. This demonstrates that the ESC-Net structure can
+achieve more precise image-text modeling compared to ex-
+isting methods.
+Effect of the Pseudo Prompt Generation Method. Ta-
+ble 3 presents the performance of the proposed model
+based on different combinations of pseudo prompt gener-
+ation methods. Since the traditional SAM model takes
+points and bounding boxes as sparse prompt embeddings
+and masks as dense prompt embeddings, we explore var-
+26087
+
+
+=== PAGE 8 ===
+Index Methods A-847 PC-459 A-150 PC-59 PAS-20 PAS-20
+(a) W/OSAM 4.8 11.7 24.2 50.4 89.4 74.8(b) W/ SAM (rand init) 5.9 15.8 28.4 55.9 91.5 77.2(c) W/ SAM (pretrained) 18.1 27.0 41.8 65.6 98.3 86.3
+Table 2. Quantitative performance comparison based on the use
+of SAM blocks. “rand init” refers to SAM blocks with random
+initialization.
+Index Methods A-847 PC-459 A-150 PC-59 PAS-20 PAS-20Point B-box Mask
+(a) ✓ 15.2 23.6 37.8 59.4 96.7 81.3(b) ✓ 14.3 20.5 33.5 59.4 96.5 81.4(c) ✓ ✓ 15.1 23.4 38.1 62.0 96.7 82.5(d) ✓ ✓ 18.1 27.0 41.8 65.6 98.3 86.3(e) ✓ ✓ 17.0 26.1 39.9 62.0 97.1 84.2(f) ✓ ✓ ✓ 17.6 26.5 41.9 65.8 98.0 86.1
+Table 3. Quantitative performance comparison based on the com-
+bination of pseudo prompts used. “B-box” refers to a bounding
+box.
+ious combinations of prompt embeddings. In this exper-
+iment, we utilize the clustered masks shown in Figure 3
+(d) to generate bounding box pseudo prompts. For each
+mask, we find the smallest bounding box that covers it and
+use this as the pseudo bounding box. Similar to points and
+masks, 5 bounding boxes per class are sampled. As shown
+in Table 3 (d), the best performance was achieved when us-
+ing both points and masks together. In contrast, bounding
+boxes, as in (a) and (b), were found to be less effective as
+pseudo prompt embeddings than points. This is likely be-
+cause the accuracy of the generated pseudo bounding boxes
+is relatively low, and multiple objects can be overlapped
+within the box. Although the bounding boxes are gener-
+ated from pseudo masks, in traditional SAM, mask prompts
+are trained as areas that approximately indicate the object’s
+location. Therefore, they function effectively as pseudo
+prompts that are less dependent on the precise position of
+the object. Consequently, using all three pseudo prompts,
+as in Table 3 (e), is inefficient; thus, we use only points and
+masks as pseudo prompts.
+Model efficiency. In Table 4, we compare the model
+efficiency of the proposed ESC-Net with previous meth-
+ods [5, 6, 21, 35]. To this end, we calculate the model’s
+parameters, inference time, and inference GFLOPs. All ex-
+periments were conducted on the same single RTX A6000
+GPU, and except for the inference time, the rest of the data
+follows the results presented by [5]. As shown in Table 4,
+the proposed model exhibits lightweight and efficient in-
+ference performance compared to existing methods. Fur-
+thermore, it has comparable parameters and GFLOPs when
+compared to CAT-Seg, which is also a correlation-based
+one-stage model.
+Limitations. While ESC-Net leverages SAM blocks for
+spatial aggregation, it operates on low-resolution feature
+Model # of Params. (M) Inference time (s) Inference GFLOPs
+ZegFormer [6] 531.2 3.10 19,425.6
+ZSSeg [35] 530.8 3.11 22,302.1
+OVSeg [21] 532.6 2.98 19,345.6
+CAT-Seg [5] 433.7 0.78 2,121.1
+Ours 451.3 0.76 2,203.5
+Table 4. Model efficiency comparison. All results are measured
+with a single RTX A6000 GPU.
+levels, which limits the mask resolution and affects the
+precision of segmentation boundaries. This issue results
+in lower-quality masks compared to methods that can per-
+form high-resolution aggregation. Additionally, similar to
+other correlation-based approaches, ESC-Net’s memory re-
+quirements increase with the number of classes due to the
+expanded text-image feature correlations. This growth in
+memory usage can reduce the efficiency of the model, par-
+ticularly when handling a large variety of classes.
+5. Conclusion
+In this paper, we present ESC-Net, a one-stage open-
+vocabulary semantic segmentation model that efficiently
+segments images across diverse class labels. By combining
+SAM’s powerful class-agnostic segmentation with CLIP’s
+vision-language alignment, ESC-Net overcomes the lim-
+itations of prior two-stage and one-stage methods. Our
+model uses correlation-based pseudo prompts from CLIP’s
+image-text features to guide SAM, generating precise pre-
+diction masks without requiring a separate mask proposal
+stage, thus reducing computational costs. We evaluate ESC-
+Net on standard open-vocabulary benchmarks, including
+ADE20K, PASCAL-VOC, and PASCAL-Context, where it
+achieves state-of-the-art performance. Additionally, abla-
+tion studies confirm its robustness across various challeng-
+ing scenarios, demonstrating ESC-Net as an efficient and
+accurate solution for open-vocabulary semantic segmenta-
+tion.
+Acknowledgement. This work was supported by the Korea Institute
+of Science and Technology (KIST) Institutional Program (Project
+No.2E33001-24-086), National Research Foundation of Korea (NRF)
+grant funded by the Korea government (MSIT)(No. RS-2024-00423362),
+and Yonsei Signature Research Cluster Program of 2024 (2024-22-0161).
+References
+[1] Maxime Bucher, Tuan-Hung Vu, Matthieu Cord, and Patrick
+P´erez. Zero-shot semantic segmentation.Advances in Neural
+Information Processing Systems, 32, 2019. 2, 6
+[2] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. In Proceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 1209–1218, 2018. 5
+26088
+
+
+=== PAGE 9 ===
+[3] Xinlei Chen, Hao Fang, Tsung-Yi Lin, Ramakrishna Vedan-
+tam, Saurabh Gupta, Piotr Doll ´ar, and C Lawrence Zitnick.
+Microsoft coco captions: Data collection and evaluation
+server. arXiv preprint arXiv:1504.00325, 2015. 6
+[4] Bowen Cheng, Alex Schwing, and Alexander Kirillov. Per-
+pixel classification is not all you need for semantic segmen-
+tation. Advances in neural information processing systems ,
+34:17864–17875, 2021. 1
+[5] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-
+seg: Cost aggregation for open-vocabulary semantic seg-
+mentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 4113–
+4123, 2024. 2, 3, 5, 6, 8
+[6] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 11583–11592, 2022. 3, 5, 6, 8
+[7] Zheng Ding, Jieke Wang, and Zhuowen Tu. Open-
+vocabulary universal image segmentation with maskclip.
+arXiv preprint arXiv:2208.08984, 2022. 1, 3
+[8] Alexey Dosovitskiy. An image is worth 16x16 words:
+Transformers for image recognition at scale. arXiv preprint
+arXiv:2010.11929, 2020. 3
+[9] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge. International journal of computer
+vision, 88:303–338, 2010. 2, 5, 6
+[10] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scal-
+ing open-vocabulary image segmentation with image-level
+labels. In European Conference on Computer Vision, pages
+540–557. Springer, 2022. 3, 5, 6
+[11] Cong Han, Yujie Zhong, Dengjie Li, Kai Han, and Lin
+Ma. Open-vocabulary semantic segmentation with decou-
+pled one-pass network. In Proceedings of the IEEE/CVF
+International Conference on Computer Vision, pages 1086–
+1096, 2023. 6
+[12] John A Hartigan and Manchek A Wong. Algorithm as 136:
+A k-means clustering algorithm. Journal of the royal sta-
+tistical society. series c (applied statistics) , 28(1):100–108,
+1979. 4
+[13] Dat Huynh, Jason Kuen, Zhe Lin, Jiuxiang Gu, and Ehsan
+Elhamifar. Open-vocabulary instance segmentation via ro-
+bust cross-modal pseudo-labeling. In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 7020–7031, 2022. 1
+[14] Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc Le, Yun-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representa-
+tion learning with noisy text supervision. In International
+conference on machine learning, pages 4904–4916. PMLR,
+2021. 1
+[15] Siyu Jiao, Yunchao Wei, Yaowei Wang, Yao Zhao, and
+Humphrey Shi. Learning mask-aware clip representations
+for zero-shot segmentation. Advances in Neural Information
+Processing Systems, 36:35631–35653, 2023. 6
+[16] Siyu Jiao, Hongguang Zhu, Jiannan Huang, Yao Zhao, Yun-
+chao Wei, and Humphrey Shi. Collaborative vision-text rep-
+resentation optimizing for open-vocabulary segmentation.
+arXiv preprint arXiv:2408.00744, 2024. 2, 3
+[17] Siyu Jiao, Hongguang Zhu, Jiannan Huang, Yao Zhao, Yun-
+chao Wei, and Humphrey Shi. Collaborative vision-text rep-
+resentation optimizing for open-vocabulary segmentation. In
+European Conference on Computer Vision, pages 399–416.
+Springer, 2025. 6
+[18] Angelos Katharopoulos, Apoorv Vyas, Nikolaos Pappas, and
+Franc ¸ois Fleuret. Transformers are rnns: Fast autoregressive
+transformers with linear attention. In International confer-
+ence on machine learning, pages 5156–5165. PMLR, 2020.
+5
+[19] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. In Proceedings of the IEEE/CVF International Con-
+ference on Computer Vision, pages 4015–4026, 2023. 1, 3,
+4
+[20] Boyi Li, Kilian Q Weinberger, Serge Belongie, Vladlen
+Koltun, and Ren ´e Ranftl. Language-driven semantic seg-
+mentation. arXiv preprint arXiv:2201.03546, 2022. 3, 6
+[21] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+7061–7070, 2023. 1, 3, 6, 8
+[22] Yong Liu, Sule Bai, Guanbin Li, Yitong Wang, and Yansong
+Tang. Open-vocabulary segmentation with semantic-assisted
+calibration. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 3491–
+3500, 2024. 6
+[23] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng
+Zhang, Stephen Lin, and Baining Guo. Swin transformer:
+Hierarchical vision transformer using shifted windows. In
+Proceedings of the IEEE/CVF international conference on
+computer vision, pages 10012–10022, 2021. 5
+[24] I Loshchilov. Decoupled weight decay regularization. arXiv
+preprint arXiv:1711.05101, 2017. 5
+[25] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and
+semantic segmentation in the wild. In Proceedings of the
+IEEE conference on computer vision and pattern recogni-
+tion, pages 891–898, 2014. 2, 5, 6
+[26] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer,
+James Bradbury, Gregory Chanan, Trevor Killeen, Zeming
+Lin, Natalia Gimelshein, Luca Antiga, et al. Pytorch: An im-
+perative style, high-performance deep learning library. Ad-
+vances in neural information processing systems , 32, 2019.
+5
+[27] Jordi Pont-Tuset, Jasper Uijlings, Soravit Changpinyo, Radu
+Soricut, and Vittorio Ferrari. Connecting vision and lan-
+guage with localized narratives. In Computer Vision–ECCV
+2020: 16th European Conference, Glasgow, UK, August 23–
+26089
+
+
+=== PAGE 10 ===
+28, 2020, Proceedings, Part V 16, pages 647–664. Springer,
+2020. 6
+[28] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. In International conference on machine learning, pages
+8748–8763. PMLR, 2021. 1
+[29] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-
+net: Convolutional networks for biomedical image segmen-
+tation. In Medical image computing and computer-assisted
+intervention–MICCAI 2015: 18th international conference,
+Munich, Germany, October 5-9, 2015, proceedings, part III
+18, pages 234–241. Springer, 2015. 5
+[30] Xiangheng Shan, Dongyue Wu, Guilin Zhu, Yuanjie Shao,
+Nong Sang, and Changxin Gao. Open-vocabulary semantic
+segmentation with image embedding balancing. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 28412–28421, 2024. 6
+[31] Xiaoqi Wang, Wenbin He, Xiwei Xuan, Clint Sebastian,
+Jorge Piazentin Ono, Xin Li, Sima Behpour, Thang Doan,
+Liang Gou, Han-Wei Shen, et al. Use: Universal segment
+embeddings for open-vocabulary image segmentation. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition , pages 4187–4196, 2024. 1,
+6
+[32] Yongqin Xian, Subhabrata Choudhury, Yang He, Bernt
+Schiele, and Zeynep Akata. Semantic projection network
+for zero-and few-label semantic segmentation. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 8256–8265, 2019. 2, 6
+[33] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. Sed: A simple encoder-decoder for open-
+vocabulary semantic segmentation. In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 3426–3436, 2024. 2, 6
+[34] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition , pages 2955–2966, 2023. 3,
+6
+[35] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. In European Conference on Computer Vi-
+sion, pages 736–753. Springer, 2022. 1, 3, 5, 6, 8
+[36] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 2945–
+2954, 2023. 3, 6
+[37] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip. Advances
+in Neural Information Processing Systems, 36:32215–32234,
+2023. 6
+[38] Hang Zhao, Xavier Puig, Bolei Zhou, Sanja Fidler, and An-
+tonio Torralba. Open vocabulary scene parsing. In Proceed-
+ings of the IEEE International Conference on Computer Vi-
+sion, pages 2002–2010, 2017. 2
+[39] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset. International
+Journal of Computer Vision, 127:302–321, 2019. 2, 5, 6
+[40] Ziqin Zhou, Yinjie Lei, Bowen Zhang, Lingqiao Liu, and
+Yifan Liu. Zegclip: Towards adapting clip for zero-shot se-
+mantic segmentation. In Proceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+11175–11185, 2023. 3, 6
+26090

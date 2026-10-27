@@ -1,0 +1,993 @@
+=== PAGE 1 ===
+Convex Combination Star Shape Prior for Data-driven Image Semantic
+Segmentation
+Xinyu Zhao
+Beijing Normal University
+Beijing, China
+202321130115@mail.bnu.edu.cn
+Jun Xie
+Beijing Normal University
+Beijing, China
+xiej@mail.bnu.edu.cn
+Shengzhe Chen
+Arizona State University
+Phoenix, USA
+schen415@asu.edu
+Jun Liu *
+Beijing Normal University
+Beijing, China
+jliu@bnu.edu.cn
+Abstract
+Multi-center star shape is a prevalent object shape feature,
+which has proven effective in model-based image segmen-
+tation methods. However, the shape field function induced
+by the multi-center star shape is non-smooth, and directly
+applying it to the data-driven image segmentation network
+architecture design may lead to instability in backpropaga-
+tion. This paper proposes a convex combination star (CCS)
+shape, possessing multi-center star shape properties, and
+has the advantage of effectively controlling the shape of the
+region through a smooth field function. The sufficient con-
+dition of the proposed CCS shape can be combined into the
+image segmentation neural network structure design through
+the bridge between the variational segmentation model and
+the activation function of the data-driven method. Taking
+Segment Anything Model (SAM) and its improved version as
+backbone networks, we have shown that the segmentation
+network architecture with CCS shape properties can greatly
+improve the accuracy of segmentation results.
+1. Introduction
+Image segmentation is essential in medical and remote sens-
+ing fields. Unlike natural images, objects in medical and
+remote sensing images exhibit distinct geometric shape, so a
+satisfactory segmentation result should maintain these char-
+acteristics. Some task-specific traditional methods, such
+as graph cuts and active contours [ 1, 3, 20, 27], improve
+segmentation accuracy by incorporating shape and other
+priors [2, 13, 30, 31, 33, 35]. The star-shaped prior, in partic-
+ular, has shown effective in various studies [ 14, 24, 36].
+*Corresponding author
+Vicente [36] introduced a single-center star-shaped con-
+straint within an interactive graph-cut framework, and later
+extended by Gulshan et al. [14] and Isack et al. [18] to multi-
+center and hedgehog shape models, respectively. However,
+the interactive graph-cut framework restricts parallel process-
+ing, posing efficiency challenges. Additionally, traditional
+methods typically rely on manually selected low-level fea-
+tures, such as edges, textures, and colors, making it difficult
+to capture high-level semantic information in complex im-
+ages. In contrast, deep learning methods [29, 32, 34, 39] can
+learn more complex and abstract features from large-scale
+annotated data in an end-to-end manner.
+Currently, many studies have integrated shape, bound-
+ary, and other priors into neural networks [5, 6, 11, 15, 23],
+generally falling into two categories: one is adding regular-
+ization terms to the loss function [9, 15, 17, 23], while the
+other is integrating prior information directly into the net-
+work architecture via specialized sub-networks [5, 37, 38].
+However, regularized-loss-function methods only enforce
+shape priors during training, with no theoretical guarantee
+that the network’s output retains desired shape properties
+during prediction. Thus, methods integrating prior informa-
+tion directly into the architecture deserve more attention. For
+instance, Chen et al. [5] refined segmentation predictions
+by learning directional maps, while works [6, 37] used pre-
+dicted vertices or contour points to improve segmentation.
+Other approaches [11, 38] combine boundary information
+to enhance model performance. However, such methods
+are often directly implemented by adding network layers
+based on engineering experience, lacking mathematical in-
+terpretability.
+Unlike traditional variational models, data-driven meth-
+ods require backpropagation of gradients during training. It
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+14068
+
+
+=== PAGE 2 ===
+is necessary to make modifications to classical variational im-
+age segmentation models (especially non-smooth variational
+models) to incorporate data-driven methods. For instance,
+variational models with star shape constraints [22], can gen-
+erate star shapes via a shape field function [18, 22]. Using the
+smooth field function of the original single-center star shape
+constraint [36], this constraint can be seamlessly integrated
+into the segmentation network design in [ 22]. However,
+many objects lack a single-center star shape, and imposing
+such strong priors may lead to undesired star-shaped segmen-
+tations. In contrast, multi-center star shapes have a property
+possessed by the vast majority of objects. Unfortunately, due
+to the multi-center, the field function that controls the shape
+is discontinuous and difficult to implement.
+To integrate multi-center shape priors into data-driven im-
+age segmentation approaches, we develop a novel star shape
+called the convex combination star (CCS) shape, possess-
+ing multi-center star shape properties, and controllable by a
+smooth flow field. Thus, it can be seamlessly incorporated
+into variational models and data-driven method. By dual
+algorithm and unrolling technique, we propose a novel vari-
+ational network module, termed the CCS module or more
+specifically the CCS softmax/sigmoid module, as the solu-
+tion of the dual algorithm takes the form of softmax/sigmoid
+functions. This allows multi-center star-shaped prior to be
+directly embedded in segmentation networks through the
+proposed network module. Different from the existing sub-
+network structures designed based on experience, our pro-
+posed CCS module fundamentally optimizes a variational
+problem incorporating the CCS shape constraint. This en-
+ables the network to explicitly solve the variational problem
+through this module during forward propagation, thereby
+achieving an interpretable fusion of the shape prior field with
+the segmentation output. Furthermore, we design a novel
+shape loss function based on CCS shape constraint, which
+can be directly integrated into the network’s loss function to
+enhance segmentation performance.
+To evaluate our methods, we adopt the Segment Any-
+thing Model (SAM) [21] and its improved version [28] as
+backbone networks. Experimental results demonstrate the
+effectiveness of our CCS prior, shape loss, and CCS mod-
+ule, particularly on medical imaging datasets. We present
+a segmentation result comparison produced by SAM [ 21]
+without and with our CCS module in Fig. 1, showing that the
+dice accuracy improves by more than 10% with the proposed
+CCS shape prior incorporating with SAM. Our contributions
+are summarized as follows:
+• We propose a smooth field to constrain the object shape
+to an convex combination star (CCS), a shape prior pos-
+sessed by majority of objects. The smoothness of the
+field theoretically guarantees that after incorporating the
+CCS shape into the image segmentation network structure
+design, backpropagation can be executed stably.
+• We present a variational model and its dual algorithm
+based on the constraint of a smooth field for CCS shapes,
+which allows the multi-center star shape prior to be de-
+signed into the image segmentation network structure.
+• Through the mathematical connection between the activa-
+tion function and the variational segmentation model, we
+propose a CCS softmax/sigmoid network module (Fig. 3),
+which can be incorporated into any segmentation network
+with softmax or sigmoid activation.
+Learned Feature
+Learned Shape Field
+Dice:0.77
+Dice:0.91
+Image
+CCS module
+without CCS
+with CCS
+Figure 1. Comparison of segmentation results from SAM without
+and with the proposed CCS shape knowledge. The blue and yellow
+lines denote the ground truth and segmentation result contours,
+respectively. The vector field is learnt by the proposed method.
+2. Related work
+2.1. Segment anything model
+The Segment Anything Model (SAM) [ 21] is a powerful,
+general-purpose model for image segmentation, which com-
+posed of an image encoder E1, a prompt encoder E2 and a
+mask decoder D. Let I : Ω → Rd be an image over the
+pixel domain Ω, where d = 1 for grayscale and d = 3 for
+color images. The image encoder, a Vision Transformer
+(ViT) [12], maps I into an image embedding ˜I. The mask
+decoder D fuses the learnable mask tokens Tm with prompt
+embeddings ˜P and ˜I to produce segmentation features o,
+which are subsequently processed by the threshold function
+F to generate the final mask u : Ω → {0, 1}. In summary,
+SAM [21] can be formulated by the following equation:
+
+
+
+˜I = E1(I; ΘI), ˜P = E2(P ; ΘP ),
+o = D(˜I, ˜P ; Tm, ΘM),
+u = F(o).
+(1)
+Here, Θ = (ΘI , ΘP , ΘM) is the parameters of the network.
+F is a Heaviside step function, which can be equivalently
+formulated as the following optimization problem Eq. (2).
+F(o) = arg min
+u∈{0,1}
+{⟨−o, u⟩}. (2)
+14069
+
+
+=== PAGE 3 ===
+While SAM exhibits strong segmentation performance,
+its prompt embedding mainly provides target object po-
+sitional information, and studies [ 41] indicate a tendency
+to prioritize texture over shape. Recently, Meta released
+SAM2 [28] for image and video segmentation tasks. When
+applied to image segmentation, SAM2 adopts a similar ar-
+chitecture to SAM but with a Hiera-based image encoder
+pre-trained using MAE, enhancing multi-scale feature cap-
+ture. There are also some variants of SAM designed for
+specific tasks [4, 7, 8, 37, 40]. However, these modifications
+lack clear mathematical theoretical foundations. Compared
+to these methods, we introduce a convex combination star
+(CCS) shape prior into the model using variational theory.
+2.2. Star shape
+The concept of star-shaped regions was first introduced by
+Veksler [36], defining a region as star-shaped with respect to
+a center c if any ray originating from c intersects the bound-
+ary exactly once. To ensure consistency in expression, we
+write the star shape in the following mathematical definition:
+Definition 1 (star shape [36]) Let S ⊆ R2 be a bounded
+closed region. Given a center c ∈ S, the region S is called
+star shape w.r.tc if the line segment {y | y = (1 − λ)x +
+λc, λ ∈ (0, 1)} ⊆ S for all x ∈ S.
+In [36], the star-shaped prior was expressed as a discrete
+energy function which can be optimized using graph cut
+methods. In [22], the authors extended this star-shaped con-
+straint to a continuous formulation. For a smooth indicator
+function u : Ω → [0, 1], they constrained u to the following
+set Pc, enforcing a continuous star-shaped condition:
+Pc = {u : ⟨∇u(x), c − x⟩ ⩾ 0, a.e.∀x ∈ Ω}. (3)
+This star-shaped constraint, however, relies on a single-
+center point, while objects in real images often do not follow
+a single-center star shape. A natural extension is to use
+multiple points to define a more general star-shaped region.
+Gulshan et al. [14] extended the definition of single-center
+star-shaped to multi-center star-shaped, defined as follows:
+Definition 2 (multi-center star shape [14]) Let S ⊆ R2
+be a bounded closed region. Given a closed set of star cen-
+ters C ⊆ S, the region S is called multi-center star shape
+w.r.tC if ∀x ∈ S, ∃c(x) ∈ arg min
+z∈C
+∥x − z∥2, such that the
+line segment {y | y = (1 − λ)x + λc(x), λ ∈ (0, 1)} ⊆ S.
+The point setC can be finite or infinite. Gulshanet al. [14]
+incorporated this multi-center star-shaped constraint into in-
+teractive segmentation via graph cuts. However, the center
+point c(x) in Definition 2 may not be unique, potentially
+resulting the corresponding multi-center shape field being
+non-smooth when using continuous field conditions to con-
+trol the shape. This non-smooth field further leads to issues
+in the backpropagation. Therefore, in the next section, we
+introduce a new star shape, allowing the multi-center star
+shape prior constraint to be integrated into neural networks.
+3. Method
+3.1. Convex combination star shape
+In order to obtain a smooth field constraint condition for a
+multi-center star shape, we first give the definition of the
+proposed convex combination star shape. In most cases, the
+point set C is discrete. Therefore, we employ summation in
+our formulation. However, this approach can be naturally
+extended to integration for more general scenarios.
+Definition 3 (CCS shape) Let S ⊆ R2 be a bounded closed
+region. Given a closed set of multi-point C ⊆ S, let the
+convex combination center set of C be
+Cε =
+(
+cε(x), ∀x ∈ S : cε(x) =
+X
+z∈C
+w∗
+ε(z)z
+)
+. (4)
+where
+w∗
+ε(z) := e
+−∥x−z∥2
+ε
+P
+z′ ∈C
+e
+−∥x−z′ ∥2
+ε
+. (5)
+The region S is called convex combination star (CCS) shape
+w.r.tC if the line segment {y | y = (1 − λ)x+ λcε(x), λ ∈
+(0, 1)} ⊆ S holds for all x ∈ S.
+Next, we provide the main mathematical derivation frame-
+work and the motivation of CCS construction. We first
+present the following duality and smooth approximation
+propositions for the min function:
+Proposition 1 (duality of min) For the concave function
+min, we have
+min
+z∈C
+∥x − z∥2 = min
+w∈W
+X
+z∈C
+∥x − z∥2w(z), (6)
+where W = {w(z) ∈ [0, 1] : P
+z∈C
+w(z) = 1}. Furthermore,
+if there is a unique minimizer ofmin
+z∈C
+∥x − z∥2, denote w∗ =
+arg min
+w∈W
+P
+z∈C
+∥x − z∥2w(z), we have c(x) = P
+z∈C
+w∗(z)z.
+We use the following smooth technique for min function
+appeared in Definition 2.
+Proposition 2 (smooth min) The ε-smooth min is defined
+as:
+minε
+z∈C
+(∥x − z∥2) := −ε ln
+ X
+z∈C
+e− ∥x−z∥2
+ε
+!
+. (7)
+Then we have lim
+ε→0+
+minε
+z∈C
+(∥x − z∥2) = min
+z∈C
+∥x − z∥2.
+14070
+
+
+=== PAGE 4 ===
+Proposition 3 (duality of minε) minε is concave and its
+duality
+minε
+z∈C
+(∥x − z∥2) = min
+w∈W
+
+
+
+X
+z∈C
+∥x − z∥2w(z)
++ ε
+X
+z∈C
+w(z) lnw(z)
+
+
+
+.
+(8)
+Here W is the same as Proposition 1. Furthermore, let w∗
+ε
+represent the minimizer of the right optimization problem,
+then
+w∗
+ε(z) := e
+−∥x−z∥2
+ε
+P
+z′ ∈C
+e
+−∥x−z′ ∥2
+ε
+. (9)
+Proofs of these propositions are provided in Appendix A.
+In Proposition 3, we cannot obtain the analytical expres-
+sion of the minimizercε(x) in terms of the dual variablesw∗
+ε.
+However, compared to Proposition 1, when ε is sufficiently
+small, we still use cε(x) = P
+z∈C
+w∗
+ε(z)z as the minimizer,
+yielding cε(x) as defined in Definition 3.
+These propositions show that CCS is essentially obtained
+by smoothing the min function. Compared to the non-strict
+concavity and non-smoothness of the min function, minε is
+strictly concave and smooth, which ensures the uniqueness
+of cε(x). However, in Definition 2, c(x) is not necessarily
+unique. This property is very important for us to define the
+shape field using cε(x) later.
+In the above Definition 3, it is noted that Cε is the convex
+combination of points in C, so Cε is a subset of the convex
+hull of C. The parameter ε controls the size of the set Cε.
+When ε approaches 0, the Definition 3 is equivalent to the
+multi-point centered star shape (Definition 2). When ε ap-
+proaches positive infinity, the Definition 3 is equivalent to
+the star shape (Definition 1) centered at the centroid of C.
+Therefore, the CCS shape we defined is a special star shape
+between single-centered and multi-centered star shapes. It
+has the advantages of both types of star shapes. These facts
+can be summarized as the following mathematical proposi-
+tion, which can be directly obtained by Proposition 1 and
+Proposition 3.
+Proposition 4 (the essence of CCS) Let cε(x) be defined
+in Definition 3, c(x) be defined in Definition 2 and is unique,
+then lim
+ε→0+
+cε(x) = c(x), lim
+ε→+∞
+cε(x) = ˆc, where ˆc is the
+centroid of C.
+To visualize this property of CCS, we show the variation
+of the center point set Cε with different ε values in Fig. 2.
+To emphasize the variations in the vector fieldc(x) − x, we
+highlight the small square region in the center. As shown
+in Fig. 2, we can observe that the vector field corresponding
+to the multi-center star shape is discontinuous along the
+perpendicular bisector, while cε(x) − x is smooth.
+(a) ε → 0+
+ (b) ε = 1
+ (c) ε = 10
+ (d) ε = 100
+Figure 2. Illustration of the vector field cε(x) − x and center point
+set Cε with different ε.
+3.2. Convex combination star shape constraint
+From the definition of the CCS shape, it can be seen that
+most objects and segmentation tasks conform to this shape.
+We detail this property as Theorem 1.
+Theorem 1 (universal shape prior) Let S ⊆ R2 be a
+bounded closed region, and let ∂S denote its boundary
+set. Then, S is a CCS shape region with respect to ∂S
+when ε → 0+.
+Theorem 1 states that all objects are star-shaped with mul-
+tiple centers at their boundaries, and when ε is sufficiently
+small, they are also CCS shapes.
+Directly applying the definition to enforce the CCS shape
+constraint requires calculating the line segment from each
+foreground pixel to its corresponding center point. Inspired
+by [22], we present in Theorem 2 a sufficient condition for
+CCS shapes, which makes the constraint more computation-
+ally efficient to handle.
+Theorem 2 (sufficient condition) Let u ∈ C1(Ω), and as-
+sume superlevel set u−1[γ, +∞) is closed with a simple,
+closed boundary curve. Further, assume the closed set
+C ⊆ u−1[γ, +∞). Define the set P as :
+P = {u : ⟨∇u(x), s(x)⟩ ⩾ 0, a.e.∀x ∈ Ω}. (10)
+where s(x) = cε(x) − x. If u ∈ P, then any superlevel
+set u−1[γ, +∞) is a CCS shape region with respect to set C
+when ε → 0+.
+Proofs of the theorems could be found in Appendix B.
+3.3. Convex combination star shape prior with vari-
+ational formula
+With the sufficient condition from Theorem 2, we can con-
+struct an image segmentation model incorporating the CCS
+prior as follows:
+min
+u∈[0,1]∩P
+{⟨−o, u⟩ + H(u)} . (11)
+14071
+
+
+=== PAGE 5 ===
+Here o is the segmentation feature func-
+tion and the set P is given by Eq. (10).
+H(u) = ξ (⟨u, ln u⟩ + ⟨1 − u, ln (1 − u)⟩) is the en-
+tropy term to ensure smoothness of segmentation function u.
+In fact, the solution to this optimization problem without
+the restriction u ∈ P is exactly the sigmoid activation
+function in neural networks. This explains these activation
+functions with classification functions from the perspective
+of variational theory. For simplicity of notation, we refer to
+this model as CCS model.
+By introducing a dual variable q : Ω → R, the Eq. (11)
+can be represented by the following dual problem:
+min
+u∈[0,1]
+max
+q⩾0
+{⟨−o, u⟩ + H(u) − ⟨q, s · ∇u⟩} . (12)
+We update the dual variable q using projected gradient
+descent. Once qt+1 is obtained, we then minimize the sub-
+problem with respect to u to get ut+1. The iterative process
+is given by:
+
+
+
+qt+1 = ReLU (qt − τqs · ∇ut) .
+ut+1 = arg min
+u∈[0,1]
+
+⟨−o + div(qt+1s), u⟩ + H(u)
+	
+.
+= sigmoid
+ o − div(qt+1s)
+ξ
+
+.
+(13)
+Here, div refers to the divergence operator, τq represents the
+step size. More details for calculating ut+1 can be found
+in Appendix C. Since we need to compute the divergence
+of the vector field s, the smoothing we introduced earlier is
+essential.
+The solution steps for the original problem Eq. (11) are
+summarized in Algorithm 1.
+Algorithm 1
+Input: Feature function o, and the set C.
+Output: Soft segmentation function u.
+1: Initialize u0 = sigmoid(o), q0 = 0, and calculate the
+vector field s.
+2: for t = 1, 2, . . . , T do
+3: Update the dual variable qt+1 by the first equation of
+(13).
+4: Update ut+1 by the second equation of (13).
+5: if it is converged then
+6: Break the loop.
+7: end if
+8: end for
+9: return Final solution u.
+3.4. Convex combination star shape prior for deep
+learning
+In this section, we use the SAM [21] model as an example to
+introduce two methods for incorporating our proposed CCS
+prior: (1) adding a shape loss term to the loss function, and
+(2) integrating the shape prior through a variational approach.
+Both methods are applicable to any segmentation network.
+3.4.1. Convex combination star shape loss
+In image segmentation networks, the cross-entropy lossLCE
+is widely adopted. However, it is primarily computed on a
+pixel-wise basis and fails to leverage more global informa-
+tion. To address this, we propose the following CCS loss LS
+based on the proposed constraint:
+LS(u, sg) =
+X
+x∈Ω
+ReLU
+ −∇u(x) · sg(x)
+∥∇u(x)∥∥sg(x)∥
+
+. (14)
+where sg denotes the CCS shape field derived from the
+ground truth and its computation is elaborated in the Sec. 4.2.
+As LS(u) → 0, u lies in the set P defined in Eq. (10).
+We use Eq. (15) as the loss function and validate its effec-
+tiveness on several datasets.
+Lseg = α1LCE + α2LS. (15)
+3.4.2. Convex combination star shape sigmoid (CCS-
+Sigmoid) module
+Different from the existing sub-network structures designed
+based on experience, we unroll Algorithm 1 into a network
+module, termed the CCS-Sigmoid module, where each layer
+operation corresponds to a single iteration.
+Given the feature o and vector field s, Algorithm 1 pro-
+duces a segmentation result that preserves the convex com-
+bination star shape. Since s is computed from the ground
+truth, we introduce an learnable token Tf in the decoder to
+predict the CCS shape field s.
+Notably, the output u from Algorithm 1 is sigmoid-
+shaped. Since the iterative process consists of simple mathe-
+matical operations, unrolling this algorithm into a network
+module ensures stable backpropagation. Given that our prior
+incorporates spatial information, we omit the prompt en-
+coder of SAM. The complete network is illustrated in Fig. 3,
+with the computation process formalized by the following
+equation:
+
+
+
+˜I = E1(I; ΘI),
+o, s = D(˜I; Tm, Tf , ΘM),
+u = arg min
+u∈[0,1]∩P
+{⟨−o, u⟩ + H(u)} .
+(16)
+Compared to the original decoder Eq. (1), the new model
+integrates the learned shape field information with segmen-
+tation features o through variational model-based (the u
+subproblem) network layers.
+4. Numerical experiments
+To validate the effectiveness of the CCS constraint, we com-
+pare the following methods: fine-tuning the SAM [ 21]/
+14072
+
+
+=== PAGE 6 ===
+Basic Network
+SAM
+Encoder Decoder
+feature
+CCS-
+Softmax/Sigmoid
+mask
+mask token
+Decoder
+Transformer
+blocks
+&
+Transposed
+Convs
+   image     
+  embedding
+field token
+MLPs
+Norm
+input image
+...
+field
+CCS-Softmax/Sigmoid
+Figure 3. Architecture of the CCS softmax/sigmoid network.
+SAM2 [28] with and without CCS loss Eq. (15) and CCS
+module Fig. 3, respectively.
+4.1. Training protocol and experimental setup
+While SAM [ 21] provides three image encoder sizes, we
+select ViT-B for its balanced performance and computational
+efficiency. During training, we freeze the image encoder
+weights, fine-tune them using LoRA [ 16], and fully train
+the mask decoder. For SAM2 [28], we selecte Hiera-Base
+as the decoder and update all parameters used for image
+segmentation in SAM2.
+In CCS module, the CCS-Sigmoid layer count T is set to
+10, while the parameters ξ and τq are both set to 1. Details
+can be found in Appendix E. Gradients and divergences are
+computed via convolutional layers with fixed kernels. As
+shown in Fig. 3, the loss function of this network consists
+of two components. The first term optimizes the network’s
+prediction of the CCS field s. Given the image region Ω
+and ground truth field sg, we measure this loss using cosine
+similarity:
+Lf ield(s, sg) = 1 −
+X
+x∈Ω
+⟨s(x), sg(x)⟩
+|Ω| . (17)
+The second term of the loss measures the discrepancy be-
+tween the segmentation outputu and the ground truthg using
+cross-entropy loss LCE . Overall, the loss function of our
+network integrated CCS module is expressed as follows:
+L = β1Lf ield + β2LCE . (18)
+4.2. Datasets and preprocessing
+We evaluate our method and model on the following three
+medical imaging datasets and one remote sensing dataset.
+ISIC 2018 dataset [10]: This dataset contains 2,594 high-
+resolution skin lesion images with segmentation annotations.
+We use 1,868 images for training, 467 for validation, and the
+remaining 259 for testing. All images are padded to a square
+format and resized to 512×512.
+Refuge dataset [25]: This dataset consists of 1,200 im-
+ages, evenly divided into training, validation, and test sets
+for optic cup and optic disc segmentation. Here, we focus
+only on optic cup segmentation, with all images cropped to
+512×512 around the ROI region.
+Kvasir dataset [26]: The Kvasir dataset includes 1,000
+endoscopy images with polyp segmentation annotations. We
+divide it into 800 images for training, 100 for validation, and
+100 for testing. All images are resized to 512×512.
+WHU Building dataset [19]: This dataset contains 8,189
+images at 512×512 resolution, captured from Christchurch,
+New Zealand. It is split into 4,736 images for training, 1,036
+for validation, and 2,416 for testing.
+The vector field sg is computed from the set of center
+points C in the ground truth, and we propose two straight-
+forward methods to obtain C. For relatively simple-shaped
+medical images, we uniformly sample 30 points along the
+boundary. For remote sensing images with more complex
+shapes, we employ morphological methods to extract points
+from the convex and concave regions of the image.
+14073
+
+
+=== PAGE 7 ===
+Table 1. Results on medical image datasets. The best result is bold
+backbone model ISIC Refuge Kvasir
+DICE ↑ IOU ↑ ACC ↑ DICE ↑ IOU ↑ ACC ↑ DICE ↑ IOU ↑ ACC ↑
+SAM
+Finetuned[21] 88.81 81.62 97.40 77.73 64.74 97.93 84.82 77.58 95.62
+CCS loss 89.43 82.16 97.44 79.39 66.87 98.13 85.30 77.99 95.81
+CCS module 89.67 82.45 97.52 80.82 68.96 98.31 86.91 80.51 96.15
+SAM2
+Finetuned[28] 87.33 79.37 96.95 79.05 66.30 98.13 80.24 70.71 94.31
+CCS loss 88.32 80.58 97.28 81.63 70.07 98.49 81.27 71.98 94.87
+CCS module 88.30 80.59 97.08 81.15 69.39 98.38 82.05 73.47 94.77
+(a) Image
+ (b) Ground Truth
+ (c) SAM Finetuned
+ (d) SAM CCSloss
+ (e) SAM CCSmodule
+ (f) SAM2 Finetuned
+ (g) SAM2 CCSloss
+ (h) SAM2 CCSmodule
+Figure 4. Visual results of medical datasets.
+4.3. Results
+4.3.1. Inference efficiency
+We evaluate the inference efficiency in terms of frames
+per second (FPS) and floating point operations per second
+(FLOPs) of SAM2. With the integration of the CCS module,
+the FPS slightly decreases from 16.55 to 14.42, while the
+FLOPs remain nearly unchanged (651.34G → 651.38G),
+demonstrating that the CCS module introduces negligible
+overhead to inference speed and computational cost.
+4.3.2. Medical image segmentation
+In Tab. 1, we report the experimental results across three
+medical image datasets, showing that both approaches en-
+hance the segmentation performance. Fig. 4 visualizes ex-
+amples, highlighting significant improvements for images
+with ambiguous boundaries and irregular shapes.
+4.3.3. Remote sensing image segmentation
+Tab. 2 presents the segmentation results of models on the
+WHU Building dataset. As shown in Fig. 5, in the pres-
+ence of tree canopy obstruction or strong light reflection,
+Table 2. Result on the WHU dataset. The best result is bold.
+backbone model DICE↑ IOU↑ ACC↑
+SAM
+Finetuned[21] 91.60 86.31 98.42
+CCS loss 92.08 86.81 98.39
+CCS module 92.27 87.04 98.40
+SAM2
+Finetuned[28] 92.33 87.38 98.45
+CCS loss 93.26 88.58 98.59
+CCS module 93.32 88.56 98.59
+the building segmentation results are prone to partial omis-
+sions, which can disrupt the connectivity of the structures. In
+contrast, the proposed CCS method can alleviate this issue
+to some extent, thereby better preserving the shape of the
+buildings.
+4.4. Ablation
+To explore the optimal integration of the CCS module with
+the model, we conduct ablation experiments in this section.
+For more ablation studies, please refer to the Appendix F.
+Ablation Study on the Number of CCS Layers : To
+14074
+
+
+=== PAGE 8 ===
+(a) Image& GT
+ (b) Finetuned
+ (c) CCS loss
+ (d) CCS module
+Figure 5. Visual result of WHU dataset. The first and second
+rows of (a) show the image and its ground truth segmentation,
+respectively. The first and second rows of (b), (c), and (d) show
+the segmentation results of three variants of SAM and SAM2,
+respectively.
+Table 3. Ablation Study on the Number of CCS Layers
+ISIC
+DICE↑ IOU↑ ACC↑
+T = 5 89.31 82.15 97.48
+T = 10 89.67 82.45 97.52
+T = 20 89.14 81.82 97.48
+T = 30 89.08 81.82 97.24
+assess the impact of the number of layers T on performance,
+we trained the SAM [21] added varying CCS layers on the
+ISIC dataset. As shown in Tab. 3, the optimal T is 10, which
+we applied across all prior experiments. The CCS layer,
+derived from the dual algorithm of a variational problem,
+effectively performs one iteration per layer. Theoretically,
+the value of T directly influences algorithm convergence.
+In fact, for T ≤ 10, the quality of the segmentation results
+could be improved. While T > 10, segmentation result
+changes are minimal and the model complexity increases,
+potentially destabilizing backpropagation. Based on this, we
+recommend setting T within the range of 5–15.
+CCS Module as Post-Processing, as Fixed Parameter
+Layers, or with Learnable Parameters: Our proposed CCS
+module can be directly used as a post-processing method
+for segmentation results. Additionally, in our CCS module,
+the gradient and divergence calculations are implemented
+using fixed, simple first-order difference convolution kernels,
+which can alternatively be made learnable. We conduct
+ablation experiments on these three different configurations.
+For the first type, we use the CCS module as a post-
+processing component for the fine-tuned SAM2 [28], with
+the prior field provided by the ground-truth field. During the
+experiments, we found that a higher number of layers T is
+required to significantly improve the segmentation results.
+In the post-processing experiments, we set T = 100, while
+Table 4. Ablation Study on different Configurations of CCS module
+Dataset SAM2 [28] with CCS module DICE↑ IOU↑ ACC↑
+Post Fixed Learnable
+Refuge
+✓ 79.11 66.40 98.14
+✓ 81.15 69.39 98.38
+✓ 83.76 72.82 98.65
+WHU
+✓ 93.16 88.43 98.58
+✓ 93.32 88.56 98.59
+✓ 93.44 88.81 98.62
+in the other two settings, T = 10.
+For the third setting, we set the first two layers as fixed,
+with the following eight convolutional layers being trainable.
+Results are shown in Tab. 4. In fact, learnable convolutional
+layers can adaptively adjust their weights during training,
+enhancing the flexibility of the CCS module and improving
+the overall segmentation performance.
+5. Conclusion
+In this work, we introduce the convex combination star
+(CCS) shape and demonstrate the generality of this shape.
+To incorporate this shape prior into image segmentation mod-
+els, we propose the sufficient condition for preserving CCS
+shape. Additionally, we develop a solution algorithm for
+the model integrating CCS prior. Since the solution of the
+Algorithm 1 takes the form of a sigmoid function, we unroll
+the algorithm into network modules, replacing the conven-
+tional sigmoid activation function in neural networks. Thus,
+the shape information can be effectively integrated with im-
+age features via the CCS module. In this paper, we take
+SAM and SAM2 as an example to show that the proposed
+methods are very effective. Please refer to the appendix for
+experimental results on other convolutional networks.
+Our approach could be further improved. Theoretically,
+whether the field conditions can still maintain the CCS when
+ε does not tend to 0 remains unproven mathematically. In
+practice, the accurate prediction of the CCS field can be
+achieved by better designing the predictive network template.
+We believe that this common shape prior is highly beneficial
+for precise segmentation in medical, remote sensing, and
+natural images. It can guide the network to quickly learn the
+properties of objects.
+6. Acknowledgements
+This work was supported by the National Natural Science
+Foundation of China (No. 42293272, No. 12371527) and
+the Beijing Natural Science Foundation (No. 1232011).This
+research was also supported by Super Computing Center of
+Beijing Normal University, user name is liujun.
+14075
+
+
+=== PAGE 9 ===
+References
+[1] Y . Y . Boykov and M.-P. Jolly. Interactive graph cuts for
+optimal boundary & region segmentation of objects in N-D
+images. In ICCV, pages 105–112, 2001. 1
+[2] T. Chan and Wei Zhu. Level set based shape prior segmenta-
+tion. In CVPR, pages 1164–1170 vol. 2, 2005. 1
+[3] T. F. Chan and L. A. Vese. Active contours without edges.
+IEEE TIP, 10(2):266–277, 2001. 1
+[4] Keyan Chen et al. RSPrompter: Learning to prompt for
+remote sensing instance segmentation based on visual foun-
+dation model. IEEE Trans. Geosci. Remote Sens., 62:1–17,
+2024. 3
+[5] Liang-Chieh Chen, Alexander Hermans, George Papandreou,
+Florian Schroff, Peng Wang, and Hartwig Adam. Masklab:
+Instance segmentation by refining object detection with se-
+mantic and direction features. In CVPR, pages 4013–4022,
+2018. 1
+[6] Qi Chen, Lei Wang, Steven L Waslander, and Xiuguo Liu. An
+end-to-end shape modeling framework for vectorized building
+outline generation from aerial images. ISPRS J. Photogramm.
+Remote Sens., 170:114–126, 2020. 1
+[7] Tianrun Chen, Lanyun Zhu, Chaotao Ding, Runlong Cao, Yan
+Wang, Shangzhan Zhang, Zejian Li, Lingyun Sun, Ying Zang,
+and Papa Mao. SAM-Adapter: Adapting Segment Anything
+in Underperformed Scenes. In ICCVW, pages 3359–3367,
+Paris, France, 2023. IEEE. 3
+[8] Junlong Cheng, Jin Ye, Zhongying Deng, Jianpin Chen, Tian-
+bin Li, Haoyu Wang, Yanzhou Su, Ziyan Huang, Jilong Chen,
+Lei Jiang, Hui Sun, Junjun He, Shaoting Zhang, Min Zhu,
+and Yu Qiao. Sam-med2d. arXiv preprint arXiv:2308.16184,
+2023. 3
+[9] James R. Clough, Nicholas Byrne, Ilkay Oksuz, Veronika A.
+Zimmer, Julia A. Schnabel, and Andrew P. King. A topologi-
+cal loss function for deep-learning based image segmentation
+using persistent homology. IEEE TPAMI, 44(12):8766–8778,
+2022. 1
+[10] Noel C. F. Codella, David Gutman, M. Emre Celebi, Brian
+Helba, Michael A. Marchetti, Stephen W. Dusza, Aadi Kalloo,
+Konstantinos Liopyris, Nabin Mishra, Harald Kittler, and Al-
+lan Halpern. Skin lesion analysis toward melanoma detection:
+A challenge at the 2017 international symposium on biomedi-
+cal imaging (isbi), hosted by the international skin imaging
+collaboration (isic). In ISBI, pages 168–172, 2018. 6
+[11] Henghui Ding, Xudong Jiang, Ai Qun Liu, Nadia Magnenat
+Thalmann, and Gang Wang. Boundary-aware feature propa-
+gation for scene segmentation. In ICCV, pages 6819–6829,
+2019. 1
+[12] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An Image is
+Worth 16x16 Words: Transformers for Image Recognition at
+Scale. In ICLR, 2021. 2
+[13] Lena Gorelick, Olga Veksler, Yuri Boykov, and Claudia
+Nieuwenhuis. Convexity shape prior for binary segmentation.
+IEEE TPAMI, 39(2):258–271, 2017. 1
+[14] Varun Gulshan, Carsten Rother, Antonio Criminisi, Andrew
+Blake, and Andrew Zisserman. Geodesic star convexity for
+interactive image segmentation. In CVPR, pages 3129–3136,
+San Francisco, CA, USA, 2010. IEEE. 1, 3
+[15] Sang Yoon Han, Hyuk Jin Kwon, Yoonsik Kim, and Nam Ik
+Cho. Noise-robust pupil center detection through cnn-based
+segmentation with shape-prior loss. IEEE Access, 8:64739–
+64749, 2020. 1
+[16] Edward J Hu, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li,
+Shean Wang, Lu Wang, Weizhu Chen, et al. Lora: Low-rank
+adaptation of large language models. In ICLR, 2022. 6
+[17] Xiaoling Hu, Fuxin Li, Dimitris Samaras, and Chao Chen.
+Topology-preserving deep image segmentation. NeurIPS, 32,
+2019. 1
+[18] Hossam Isack, Olga Veksler, Milan Sonka, and Yuri Boykov.
+Hedgehog shape priors for multi-object segmentation. In
+CVPR, pages 2434–2442, 2016. 1, 2
+[19] Shunping Ji, Shiqing Wei, and Meng Lu. Fully convolutional
+networks for multisource building extraction from an open
+aerial and satellite imagery data set. IEEE Trans. Geosci.
+Remote Sens., 57(1):574–586, 2018. 6
+[20] Michael Kass, Andrew Witkin, and Demetri Terzopoulos.
+Snakes: Active contour models. IJCV, 1(4):321–331, 1987. 1
+[21] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. In ICCV, pages 4015–4026, 2023. 2, 5, 6, 7, 8
+[22] Jun Liu, Xiangyue Wang, and Xue-Cheng Tai. Deep Convolu-
+tional Neural Networks with Spatial Regularization, V olume
+and Star-Shape Priors for Image Segmentation.J. Math. Imag-
+ing Vis., 64(6):625–645, 2022. 2, 3, 4
+[23] Zahra Mirikharaji and Ghassan Hamarneh. Star Shape Prior
+in Fully Convolutional Networks for Skin Lesion Segmen-
+tation. In MICCAI, pages 737–745. Springer International
+Publishing, 2018. 1
+[24] Masoud S. Nosrati and Ghassan Hamarneh. Segmentation
+of overlapping cervical cells: A variational method with star-
+shape prior. In ISBI, pages 186–189, 2015. ISSN: 1945-8452.
+1
+[25] Jos´e Ignacio Orlando, Huazhu Fu, Jo˜ao Barbosa Breda, Karel
+van Keer, Deepti R. Bathula, Andr´es Diaz-Pinto, Ruogu Fang,
+Pheng-Ann Heng, Jeyoung Kim, JoonHo Lee, Joonseok Lee,
+Xiaoxiao Li, Peng Liu, Shuai Lu, Balamurali Murugesan,
+Valery Naranjo, Sai Samarth R. Phaye, Sharath M. Shankara-
+narayana, Apoorva Sikka, Jaemin Son, Anton van den Hengel,
+Shujun Wang, Junyan Wu, Zifeng Wu, Guanghui Xu, Yongli
+Xu, Pengshuai Yin, Fei Li, Xiulan Zhang, Yanwu Xu, and
+Hrvoje Bogunovi´c. Refuge challenge: A unified framework
+for evaluating automated methods for glaucoma assessment
+from fundus photographs. Med. Image Anal. , 59:101570,
+2020. 6
+[26] Konstantin Pogorelov, Kristin Ranheim Randel, Carsten Gri-
+wodz, Sigrun Losada Eskeland, Thomas de Lange, Dag
+Johansen, Concetto Spampinato, Duc-Tien Dang-Nguyen,
+Mathias Lux, Peter Thelin Schmidt, et al. Kvasir: A multi-
+class image dataset for computer aided gastrointestinal dis-
+ease detection. In ACM MMSys, pages 164–169, 2017. 6
+14076
+
+
+=== PAGE 10 ===
+[27] R. B. Potts. Some generalized order-disorder transformations.
+Math. Proc. Cambridge Philos. Soc., 48(1):106–109, 1952. 1
+[28] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang Hu,
+Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman R¨adle,
+Chloe Rolland, Laura Gustafson, et al. Sam 2: Segment any-
+thing in images and videos. arXiv preprint arXiv:2408.00714,
+2024. 2, 3, 6, 7, 8
+[29] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-Net:
+Convolutional networks for biomedical image segmentation.
+In MICCAI, pages 234–241, 2015. 1, 14
+[30] Mika¨el Rousson and Nikos Paragios. Prior knowledge, level
+set representations & visual grouping. IJCV, 76:231–243,
+2008. 1
+[31] Loic A. Royer, David L. Richmond, Carsten Rother, Bjoern
+Andres, and Dagmar Kainmueller. Convexity shape con-
+straints for image segmentation. In CVPR, pages 402–410,
+2016. 1
+[32] Evan Shelhamer, Jonathan Long, and Trevor Darrell. Fully
+convolutional networks for semantic segmentation. IEEE
+TPAMI, 39(4):640–651, 2017. 1
+[33] G. Slabaugh and G. Unal. Graph cuts segmentation using an
+elliptical shape prior. In ICIP, pages 1222–1225, 2005. 1
+[34] Robin Strudel, Ricardo Garcia, Ivan Laptev, and Cordelia
+Schmid. Segmenter: Transformer for Semantic Segmentation.
+In ICCV, pages 7242–7252, New York, 2021. IEEE. 1
+[35] A. Tsai, A. Yezzi, W. Wells, C. Tempany, D. Tucker, A. Fan,
+W.E. Grimson, and A. Willsky. A shape-based approach to
+the segmentation of medical imagery using level sets. IEEE
+Trans. Med. Imaging, 22(2):137–154, 2003. 1
+[36] Olga Veksler. Star Shape Prior for Graph-Cut Image Segmen-
+tation. In ECCV, pages 454–467. Springer, Berlin, Heidelberg,
+2008. 1, 2, 3
+[37] Chenhao Wang, Jingbo Chen, Yu Meng, Yupeng Deng, Kai
+Li, and Yunlong Kong. Sampolybuild: Adapting the segment
+anything model for polygonal building extraction. ISPRS J.
+Photogramm. Remote Sens., 218:707–720, 2024. 1, 3
+[38] Jiacheng Wang, Lan Wei, Liansheng Wang, Qichao Zhou,
+Lei Zhu, and Jing Qin. Boundary-aware transformers for
+skin lesion segmentation. In MICCAI, pages 206–216, Cham,
+2021. Springer International Publishing. 1
+[39] Enze Xie, Wenhai Wang, Zhiding Yu, Anima Anandkumar,
+Jose M. Alvarez, and Ping Luo. SegFormer: Simple and
+Efficient Design for Semantic Segmentation with Transform-
+ers. In NeurIPS, pages 12077–12090. Curran Associates, Inc.,
+2021. 1
+[40] Wenxi Yue, Jing Zhang, Kun Hu, Yong Xia, Jiebo Luo, and
+Zhiyong Wang. Surgicalsam: Efficient class promptable
+surgical instrument segmentation. In AAAI, pages 6890–6898,
+2024. 3
+[41] Chaoning Zhang, Yu Qiao, Shehbaz Tariq, Sheng Zheng,
+Chenshuang Zhang, Chenghao Li, Hyundong Shin, and
+Choong Seon Hong. Understanding segment anything model:
+SAM is biased towards texture rather than shape. arXiv
+preprint arXiv:2311.11465, 2023. 3
+14077

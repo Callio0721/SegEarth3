@@ -1,0 +1,470 @@
+[
+  {
+    "id": "C01",
+    "short": "SegEarth-OV",
+    "year": 2025,
+    "title": [
+      "SegEarth-OV: Towards Training-Free Open-Vocabulary Segmentation for Remote Sensing Images"
+    ],
+    "authors": [
+      "Li, Kaiyu",
+      "Liu, Ruixun",
+      "Cao, Xiangyong",
+      "Bai, Xueru",
+      "Zhou, Feng",
+      "Meng, Deyu",
+      "Wang, Zhi"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Li_SegEarth-OV_Towards_Training-Free_Open-Vocabulary_Segmentation_for_Remote_Sensing_Images_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Li_SegEarth-OV_Towards_Training-Free_Open-Vocabulary_Segmentation_for_Remote_Sensing_Images_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/08_遥感域专门化与泛化/SegEarth-OV_2410.01768.pdf",
+    "pages": 15,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C01,\n    author    = {Li, Kaiyu and Liu, Ruixun and Cao, Xiangyong and Bai, Xueru and Zhou, Feng and Meng, Deyu and Wang, Zhi},\n    title     = {SegEarth-OV: Towards Training-Free Open-Vocabulary Segmentation for Remote Sensing Images},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {10545-10556}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C02",
+    "short": "TMPA",
+    "year": 2026,
+    "title": [
+      "Test-Time Multi-Prompt Adaptation for Open-Vocabulary Remote Sensing Image Segmentation"
+    ],
+    "authors": [
+      "Yang, Ting",
+      "Wang, Qilong",
+      "Hou, Qibin",
+      "Hu, Qinghua"
+    ],
+    "venue": "CVPR 2026 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2026/html/Yang_Test-Time_Multi-Prompt_Adaptation_for_Open-Vocabulary_Remote_Sensing_Image_Segmentation_CVPR_2026_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2026/papers/Yang_Test-Time_Multi-Prompt_Adaptation_for_Open-Vocabulary_Remote_Sensing_Image_Segmentation_CVPR_2026_paper.pdf",
+    "local_pdf": "参考论文/07_测试时适应校准与可靠性诊断/TMPA_CVPR2026.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C02,\n    author    = {Yang, Ting and Wang, Qilong and Hou, Qibin and Hu, Qinghua},\n    title     = {Test-Time Multi-Prompt Adaptation for Open-Vocabulary Remote Sensing Image Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2026},\n    pages     = {10699-10709}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C03",
+    "short": "ReAttnCLIP",
+    "year": 2026,
+    "title": [
+      "ReAttnCLIP: Training-Free Open-Vocabulary Remote Sensing Image Segmentation via Re-defined Attention in CLIP"
+    ],
+    "authors": [
+      "Niu, Xin",
+      "Zhao, Manqi",
+      "Jiang, Dongsheng",
+      "Wu, Yingying",
+      "Su, Bing"
+    ],
+    "venue": "CVPR 2026 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2026/html/Niu_ReAttnCLIP_Training-Free_Open-Vocabulary_Remote_Sensing_Image_Segmentation_via_Re-defined_Attention_CVPR_2026_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2026/papers/Niu_ReAttnCLIP_Training-Free_Open-Vocabulary_Remote_Sensing_Image_Segmentation_via_Re-defined_Attention_CVPR_2026_paper.pdf",
+    "local_pdf": "参考论文/03_视觉语言对齐与稠密表征/ReAttnCLIP_CVPR2026.pdf",
+    "pages": 10,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C03,\n    author    = {Niu, Xin and Zhao, Manqi and Jiang, Dongsheng and Wu, Yingying and Su, Bing},\n    title     = {ReAttnCLIP: Training-Free Open-Vocabulary Remote Sensing Image Segmentation via Re-defined Attention in CLIP},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2026},\n    pages     = {24980-24989}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C04",
+    "short": "SkySense-O",
+    "year": 2025,
+    "title": [
+      "SkySense-O: Towards Open-World Remote Sensing Interpretation with Vision-Centric Visual-Language Modeling"
+    ],
+    "authors": [
+      "Zhu, Qi",
+      "Lao, Jiangwei",
+      "Ji, Deyi",
+      "Luo, Junwei",
+      "Wu, Kang",
+      "Zhang, Yingying",
+      "Ru, Lixiang",
+      "Wang, Jian",
+      "Chen, Jingdong",
+      "Yang, Ming",
+      "Liu, Dong",
+      "Zhao, Feng"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Zhu_SkySense-O_Towards_Open-World_Remote_Sensing_Interpretation_with_Vision-Centric_Visual-Language_Modeling_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Zhu_SkySense-O_Towards_Open-World_Remote_Sensing_Interpretation_with_Vision-Centric_Visual-Language_Modeling_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/08_遥感域专门化与泛化/SkySense-O_CVPR2025.pdf",
+    "pages": 12,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C04,\n    author    = {Zhu, Qi and Lao, Jiangwei and Ji, Deyi and Luo, Junwei and Wu, Kang and Zhang, Yingying and Ru, Lixiang and Wang, Jian and Chen, Jingdong and Yang, Ming and Liu, Dong and Zhao, Feng},\n    title     = {SkySense-O: Towards Open-World Remote Sensing Interpretation with Vision-Centric Visual-Language Modeling},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {14733-14744}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C05",
+    "short": "AVION",
+    "year": 2026,
+    "title": [
+      "AVION: Aerial Vision-Language Instruction from Offline Teacher to Prompt-Tuned Network"
+    ],
+    "authors": [
+      "Hu, Yu",
+      "Gu, Jianyang",
+      "Liu, Hao",
+      "Cao, Yue",
+      "Hamari, Jozsef",
+      "Liu, Zheng",
+      "Zardadi, Mohsen"
+    ],
+    "venue": "CVPR 2026 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2026/html/Hu_AVION_Aerial_Vision-Language_Instruction_from_Offline_Teacher_to_Prompt-Tuned_Network_CVPR_2026_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2026/papers/Hu_AVION_Aerial_Vision-Language_Instruction_from_Offline_Teacher_to_Prompt-Tuned_Network_CVPR_2026_paper.pdf",
+    "local_pdf": "参考论文/02_文本概念表示与Prompt适配/AVION_CVPR2026.pdf",
+    "pages": 10,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C05,\n    author    = {Hu, Yu and Gu, Jianyang and Liu, Hao and Cao, Yue and Hamari, Jozsef and Liu, Zheng and Zardadi, Mohsen},\n    title     = {AVION: Aerial Vision-Language Instruction from Offline Teacher to Prompt-Tuned Network},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2026},\n    pages     = {10106-10115}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C06",
+    "short": "HyperCLIP",
+    "year": 2025,
+    "title": [
+      "Understanding Fine-tuning CLIP for Open-vocabulary Semantic Segmentation in Hyperbolic Space"
+    ],
+    "authors": [
+      "Peng, Zelin",
+      "Xu, Zhengqin",
+      "Zeng, Zhilin",
+      "Wen, Changsong",
+      "Huang, Yu",
+      "Yang, Menglin",
+      "Tang, Feilong",
+      "Shen, Wei"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Peng_Understanding_Fine-tuning_CLIP_for_Open-vocabulary_Semantic_Segmentation_in_Hyperbolic_Space_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Peng_Understanding_Fine-tuning_CLIP_for_Open-vocabulary_Semantic_Segmentation_in_Hyperbolic_Space_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/03_视觉语言对齐与稠密表征/HyperCLIP_CVPR2025.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C06,\n    author    = {Peng, Zelin and Xu, Zhengqin and Zeng, Zhilin and Wen, Changsong and Huang, Yu and Yang, Menglin and Tang, Feilong and Shen, Wei},\n    title     = {Understanding Fine-tuning CLIP for Open-vocabulary Semantic Segmentation in Hyperbolic Space},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {4562-4572}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C07",
+    "short": "S-Seg",
+    "year": 2025,
+    "title": [
+      "Exploring Simple Open-Vocabulary Semantic Segmentation"
+    ],
+    "authors": [
+      "Lai, Zihang"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Lai_Exploring_Simple_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Lai_Exploring_Simple_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/03_视觉语言对齐与稠密表征/S-Seg_CVPR2025.pdf",
+    "pages": 10,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C07,\n    author    = {Lai, Zihang},\n    title     = {Exploring Simple Open-Vocabulary Semantic Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {30221-30230}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C08",
+    "short": "Mask-Adapter",
+    "year": 2025,
+    "title": [
+      "Mask-Adapter: The Devil is in the Masks for Open-Vocabulary Segmentation"
+    ],
+    "authors": [
+      "Li, Yongkang",
+      "Cheng, Tianheng",
+      "Feng, Bin",
+      "Liu, Wenyu",
+      "Wang, Xinggang"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Li_Mask-Adapter_The_Devil_is_in_the_Masks_for_Open-Vocabulary_Segmentation_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Li_Mask-Adapter_The_Devil_is_in_the_Masks_for_Open-Vocabulary_Segmentation_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/04_查询解码与多分支证据融合/Mask-Adapter_CVPR2025.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C08,\n    author    = {Li, Yongkang and Cheng, Tianheng and Feng, Bin and Liu, Wenyu and Wang, Xinggang},\n    title     = {Mask-Adapter: The Devil is in the Masks for Open-Vocabulary Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {14998-15008}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C09",
+    "short": "Dual Semantic Guidance",
+    "year": 2025,
+    "title": [
+      "Dual Semantic Guidance for Open Vocabulary Semantic Segmentation"
+    ],
+    "authors": [
+      "Wang, Zhengyang",
+      "Feng, Tingliang",
+      "Lyu, Fan",
+      "Shang, Fanhua",
+      "Feng, Wei",
+      "Wan, Liang"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Wang_Dual_Semantic_Guidance_for_Open_Vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Wang_Dual_Semantic_Guidance_for_Open_Vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/04_查询解码与多分支证据融合/DualSemanticGuidance_CVPR2025.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C09,\n    author    = {Wang, Zhengyang and Feng, Tingliang and Lyu, Fan and Shang, Fanhua and Feng, Wei and Wan, Liang},\n    title     = {Dual Semantic Guidance for Open Vocabulary Semantic Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {20212-20222}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C10",
+    "short": "Scaling up Image Segmentation",
+    "year": 2025,
+    "title": [
+      "Scaling up Image Segmentation across Data and Tasks"
+    ],
+    "authors": [
+      "Wang, Pei",
+      "Cai, Zhaowei",
+      "Yang, Hao",
+      "Swaminathan, Ashwin",
+      "Manmatha, R.",
+      "Soatto, Stefano"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Wang_Scaling_up_Image_Segmentation_across_Data_and_Tasks_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Wang_Scaling_up_Image_Segmentation_across_Data_and_Tasks_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/04_查询解码与多分支证据融合/QueryMeldNet_CVPR2025.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C10,\n    author    = {Wang, Pei and Cai, Zhaowei and Yang, Hao and Swaminathan, Ashwin and Manmatha, R. and Soatto, Stefano},\n    title     = {Scaling up Image Segmentation across Data and Tasks},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {4573-4583}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C11",
+    "short": "Power of Prior",
+    "year": 2026,
+    "title": [
+      "The Power of Prior: Training-Free Open-Vocabulary Semantic Segmentation with LLaVA"
+    ],
+    "authors": [
+      "Zhang, Bingfeng",
+      "Yu, Siyue",
+      "Li, Hui",
+      "Lin, Jiahua",
+      "Wang, Wenwu",
+      "Xiao, Jimin"
+    ],
+    "venue": "CVPR 2026 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2026/html/Zhang_The_Power_of_Prior_Training-Free_Open-Vocabulary_Semantic_Segmentation_with_LLaVA_CVPR_2026_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2026/papers/Zhang_The_Power_of_Prior_Training-Free_Open-Vocabulary_Semantic_Segmentation_with_LLaVA_CVPR_2026_paper.pdf",
+    "local_pdf": "参考论文/02_文本概念表示与Prompt适配/Power-of-Prior_CVPR2026.pdf",
+    "pages": 10,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C11,\n    author    = {Zhang, Bingfeng and Yu, Siyue and Li, Hui and Lin, Jiahua and Wang, Wenwu and Xiao, Jimin},\n    title     = {The Power of Prior: Training-Free Open-Vocabulary Semantic Segmentation with LLaVA},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2026},\n    pages     = {6336-6345}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C12",
+    "short": "Direct Segmentation",
+    "year": 2026,
+    "title": [
+      "Direct Segmentation without Logits Optimization for Training-Free Open-Vocabulary Semantic Segmentation"
+    ],
+    "authors": [
+      "Li, Jiahao",
+      "Lu, Yang",
+      "Zhang, Yachao",
+      "Wang, Fangyong",
+      "Xie, Yuan",
+      "Qu, Yanyun"
+    ],
+    "venue": "CVPR 2026 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2026/html/Li_Direct_Segmentation_without_Logits_Optimization_for_Training-Free_Open-Vocabulary_Semantic_Segmentation_CVPR_2026_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2026/papers/Li_Direct_Segmentation_without_Logits_Optimization_for_Training-Free_Open-Vocabulary_Semantic_Segmentation_CVPR_2026_paper.pdf",
+    "local_pdf": "参考论文/07_测试时适应校准与可靠性诊断/Direct-Segmentation_CVPR2026.pdf",
+    "pages": 11,
+    "downloaded_this_turn": true,
+    "bibtex": "@InProceedings{C12,\n    author    = {Li, Jiahao and Lu, Yang and Zhang, Yachao and Wang, Fangyong and Xie, Yuan and Qu, Yanyun},\n    title     = {Direct Segmentation without Logits Optimization for Training-Free Open-Vocabulary Semantic Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2026},\n    pages     = {13168-13178}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C13",
+    "short": "CCI",
+    "year": 2026,
+    "title": [
+      "Concept Regions Matter: Benchmarking CLIP with a New Cluster-Importance Approach"
+    ],
+    "authors": [
+      "Agarwal, Aishwarya",
+      "Karanam, Srikrishna",
+      "Gandhi, Vineet"
+    ],
+    "venue": "CVPR 2026 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2026/html/Agarwal_Concept_Regions_Matter_Benchmarking_CLIP_with_a_New_Cluster-Importance_Approach_CVPR_2026_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2026/papers/Agarwal_Concept_Regions_Matter_Benchmarking_CLIP_with_a_New_Cluster-Importance_Approach_CVPR_2026_paper.pdf",
+    "local_pdf": "参考论文/07_测试时适应校准与可靠性诊断/CCI_Concept-Regions-Matter_CVPR2026.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C13,\n    author    = {Agarwal, Aishwarya and Karanam, Srikrishna and Gandhi, Vineet},\n    title     = {Concept Regions Matter: Benchmarking CLIP with a New Cluster-Importance Approach},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2026},\n    pages     = {2864-2874}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C14",
+    "short": "ResCLIP",
+    "year": 2025,
+    "title": [
+      "ResCLIP: Residual Attention for Training-free Dense Vision-language Inference"
+    ],
+    "authors": [
+      "Yang, Yuhang",
+      "Deng, Jinhong",
+      "Li, Wen",
+      "Duan, Lixin"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Yang_ResCLIP_Residual_Attention_for_Training-free_Dense_Vision-language_Inference_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Yang_ResCLIP_Residual_Attention_for_Training-free_Dense_Vision-language_Inference_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/03_视觉语言对齐与稠密表征/ResCLIP_CVPR2025.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C14,\n    author    = {Yang, Yuhang and Deng, Jinhong and Li, Wen and Duan, Lixin},\n    title     = {ResCLIP: Residual Attention for Training-free Dense Vision-language Inference},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {29968-29978}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C15",
+    "short": "Hybrid Global-Local",
+    "year": 2025,
+    "title": [
+      "Hybrid Global-Local Representation with Augmented Spatial Guidance for Zero-Shot Referring Image Segmentation"
+    ],
+    "authors": [
+      "Liu, Ting",
+      "Li, Siyuan"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Liu_Hybrid_Global-Local_Representation_with_Augmented_Spatial_Guidance_for_Zero-Shot_Referring_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Liu_Hybrid_Global-Local_Representation_with_Augmented_Spatial_Guidance_for_Zero-Shot_Referring_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/05_场景上下文多视野与跨图证据/Hybrid-Global-Local_CVPR2025.pdf",
+    "pages": 10,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C15,\n    author    = {Liu, Ting and Li, Siyuan},\n    title     = {Hybrid Global-Local Representation with Augmented Spatial Guidance for Zero-Shot Referring Image Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {29634-29643}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C16",
+    "short": "Spectral Object-Context",
+    "year": 2025,
+    "title": [
+      "Distilling Spectral Graph for Object-Context Aware Open-Vocabulary Semantic Segmentation"
+    ],
+    "authors": [
+      "Kim, Chanyoung",
+      "Ju, Dayun",
+      "Han, Woojung",
+      "Yang, Ming-Hsuan",
+      "Hwang, Seong Jae"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Kim_Distilling_Spectral_Graph_for_Object-Context_Aware_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Kim_Distilling_Spectral_Graph_for_Object-Context_Aware_Open-Vocabulary_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/05_场景上下文多视野与跨图证据/Spectral-Object-Context_CVPR2025.pdf",
+    "pages": 10,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C16,\n    author    = {Kim, Chanyoung and Ju, Dayun and Han, Woojung and Yang, Ming-Hsuan and Hwang, Seong Jae},\n    title     = {Distilling Spectral Graph for Object-Context Aware Open-Vocabulary Semantic Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {15033-15042}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C17",
+    "short": "VidSeg",
+    "year": 2025,
+    "title": [
+      "VidSeg: Training-free Video Semantic Segmentation based on Diffusion Models"
+    ],
+    "authors": [
+      "Wang, Qian",
+      "Eldesokey, Abdelrahman",
+      "Mendiratta, Mohit",
+      "Zhan, Fangneng",
+      "Kortylewski, Adam",
+      "Theobalt, Christian",
+      "Wonka, Peter"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Wang_VidSeg_Training-free_Video_Semantic_Segmentation_based_on_Diffusion_Models_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Wang_VidSeg_Training-free_Video_Semantic_Segmentation_based_on_Diffusion_Models_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/05_场景上下文多视野与跨图证据/VidSeg_CVPR2025.pdf",
+    "pages": 10,
+    "downloaded_this_turn": true,
+    "bibtex": "@InProceedings{C17,\n    author    = {Wang, Qian and Eldesokey, Abdelrahman and Mendiratta, Mohit and Zhan, Fangneng and Kortylewski, Adam and Theobalt, Christian and Wonka, Peter},\n    title     = {VidSeg: Training-free Video Semantic Segmentation based on Diffusion Models},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {22985-22994}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C18",
+    "short": "Markov diffusion segmentation",
+    "year": 2025,
+    "title": [
+      "Repurposing Stable Diffusion Attention for Training-Free Unsupervised Interactive Segmentation"
+    ],
+    "authors": [
+      "Karmann, Markus",
+      "Urfalioglu, Onay"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Karmann_Repurposing_Stable_Diffusion_Attention_for_Training-Free_Unsupervised_Interactive_Segmentation_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Karmann_Repurposing_Stable_Diffusion_Attention_for_Training-Free_Unsupervised_Interactive_Segmentation_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/03_视觉语言对齐与稠密表征/Diffusion-Markov-Segmentation_CVPR2025.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C18,\n    author    = {Karmann, Markus and Urfalioglu, Onay},\n    title     = {Repurposing Stable Diffusion Attention for Training-Free Unsupervised Interactive Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {24518-24528}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C19",
+    "short": "Open-Vocabulary Domain Generalization",
+    "year": 2026,
+    "title": [
+      "Open-Vocabulary Domain Generalization in Urban-Scene Segmentation"
+    ],
+    "authors": [
+      "Zhao, Dong",
+      "Zang, Qi",
+      "Pu, Nan",
+      "Li, Wenjing",
+      "Sebe, Nicu",
+      "Zhong, Zhun"
+    ],
+    "venue": "CVPR 2026 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2026/html/Zhao_Open-Vocabulary_Domain_Generalization_in_Urban-Scene_Segmentation_CVPR_2026_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2026/papers/Zhao_Open-Vocabulary_Domain_Generalization_in_Urban-Scene_Segmentation_CVPR_2026_paper.pdf",
+    "local_pdf": "参考论文/08_遥感域专门化与泛化/OVDG_Urban_CVPR2026.pdf",
+    "pages": 11,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C19,\n    author    = {Zhao, Dong and Zang, Qi and Pu, Nan and Li, Wenjing and Sebe, Nicu and Zhong, Zhun},\n    title     = {Open-Vocabulary Domain Generalization in Urban-Scene Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2026},\n    pages     = {20388-20398}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  },
+  {
+    "id": "C20",
+    "short": "ExCEL",
+    "year": 2025,
+    "title": [
+      "Exploring CLIP's Dense Knowledge for Weakly Supervised Semantic Segmentation"
+    ],
+    "authors": [
+      "Yang, Zhiwei",
+      "Meng, Yucong",
+      "Fu, Kexue",
+      "Tang, Feilong",
+      "Wang, Shuo",
+      "Song, Zhijian"
+    ],
+    "venue": "CVPR 2025 main conference",
+    "official": "https://openaccess.thecvf.com/content/CVPR2025/html/Yang_Exploring_CLIPs_Dense_Knowledge_for_Weakly_Supervised_Semantic_Segmentation_CVPR_2025_paper.html",
+    "official_pdf": "https://openaccess.thecvf.com/content/CVPR2025/papers/Yang_Exploring_CLIPs_Dense_Knowledge_for_Weakly_Supervised_Semantic_Segmentation_CVPR_2025_paper.pdf",
+    "local_pdf": "参考论文/03_视觉语言对齐与稠密表征/ExCEL_CVPR2025.pdf",
+    "pages": 10,
+    "downloaded_this_turn": false,
+    "bibtex": "@InProceedings{C20,\n    author    = {Yang, Zhiwei and Meng, Yucong and Fu, Kexue and Tang, Feilong and Wang, Shuo and Song, Zhijian},\n    title     = {Exploring CLIP's Dense Knowledge for Weakly Supervised Semantic Segmentation},\n    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n    month     = {June},\n    year      = {2025},\n    pages     = {20223-20232}\n}",
+    "verified_scope": "CVF metadata + local PDF structure/method/figures"
+  }
+]

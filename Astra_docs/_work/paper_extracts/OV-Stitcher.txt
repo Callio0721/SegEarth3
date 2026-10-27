@@ -1,0 +1,1149 @@
+=== PDF PAGE 1 ===
+OV-Stitcher: A Global Context-Aware Framework
+for Training-Free Open-Vocabulary Semantic Segmentation
+Seungjae Moon Seunghyun Oh Youngmin Ro *
+Machine Intelligence Laboratory, University of Seoul, Korea
+{msj0243, osh1795, youngmin.ro}@uos.ac.kr
+https://github.com/atw617/OV-Stitcher
+Abstract
+Training-free open-vocabulary semantic segmentation (TF-
+OVSS) has recently attracted attention for its ability to per-
+form dense prediction by leveraging the pretrained knowl-
+edge of large vision and vision–language models, without
+requiring additional training. However, due to the limited
+input resolution of these pretrained encoders, existing TF-
+OVSS methods commonly adopt a sliding-window strategy
+that processes cropped sub-images independently. While
+effective for managing high-resolution inputs, this approach
+prevents global attention over the full image, leading to
+fragmented feature representations and limited contextual
+reasoning. We propose OV-Stitcher, a training-free frame-
+work that addresses this limitation by stitching fragmented
+sub-image features directly within the final encoder block.
+By reconstructing attention representations from fragmented
+sub-image features, OV-Stitcher enables global attention
+within the final encoder block, producing coherent context
+aggregation and spatially consistent, semantically aligned
+segmentation maps. Extensive evaluations across eight
+benchmarks demonstrate that OV-Stitcher establishes a scal-
+able and effective solution for open-vocabulary segmenta-
+tion, achieving a notable improvement in mean Intersection
+over Union (mIoU) from 48.7 to 50.7 compared with prior
+training-free baselines.
+1. Introduction
+Open-vocabulary semantic segmentation (OVSS) seeks to
+assign pixel-level semantic labels guided by arbitrary text
+descriptions, rather than being limited to a fixed set of pre-
+defined categories. By leveraging the strong generalization
+ability of large-scale vision–language models (VLMs) such
+as CLIP [40], OVSS enables recognition and segmentation
+of novel concepts, reducing dependence on costly pixel-level
+human annotations while still benefiting from knowledge
+learned during large-scale pretraining, thereby allowing flexi-
+*Corresponding author.
+Feature
+Extractor
+1:(L-1)
+Feature
+Extractor
+1:(L-1)
+Crop
+Sliding Window Process
+Feature
+Extractor
+1:(L-1)
+Feature
+Extractor
+1:(L-1)
+Crop
+Sliding Window Process Feature Extractor (Lth layer)
+“Stitch”
+Feature Extractor (Lth layer) 
+Figure 1.Top: Prior works process cropped sub-images indepen-
+dently, preventing attention across different sub-image features.
+Bottom: We introduce a Stitch Attention mechanism that enables
+global attention across all cropped regions, yielding more coherent
+and contextually consistent feature integration.
+ble adaptation across diverse domains. Within this paradigm,
+training-free OVSS (TF-OVSS) represents a particularly at-
+tractive direction: instead of requiring additional fine-tuning
+or task-specific supervision, TF-OVSS directly exploits the
+pretrained knowledge and strong generalization capacity of
+VLMs to perform dense prediction. This allows segmenta-
+tion to be achieved purely from pretrained representations,
+demonstrating the full potential of vision–language align-
+ment without the need for further training.
+However, CLIP, as a vision–language model, is trained
+with an image-level contrastive objective, which encourages
+strong alignment between image-level representations and
+corresponding text descriptions. While this enables effective
+recognition of diverse concepts, it does not explicitly provide
+pixel-level supervision, which poses challenges for directly
+applying CLIP for dense prediction tasks such as TF-OVSS.
+To address this issue, several training-free methods [4, 19,
+24, 32, 50, 66] have been proposed to extract spatially variant
+features that better capture local semantics by modifying
+This CVPR Findings paper is the Open Access version, provided by the Computer Vision
+Foundation. Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+7357
+
+
+=== PDF PAGE 2 ===
+(a) (b) (c)
+Figure 2. Illustration of the attention maps and patch-interactions for prior methods and our Stitch Attention. (a) presents prior methods, and
+(c) presents our approach.
+CLIP’s self-attention mechanism to yield more localized
+feature interactions.
+Moreover, ProxyCLIP [31] utilizes spatial affinity infor-
+mation derived from vision foundation models (VFMs) [6,
+20, 28, 39], which provides localization cues to enhance
+the correspondence between visual patches and text embed-
+dings without directly modifying the text alignment. These
+approaches generally focus on producing high-quality atten-
+tion maps that can more accurately localize image regions,
+thereby strengthening patch-level semantics and improving
+overall segmentation performance. More recently, several
+training-free approaches [ 54, 61] have actively leveraged the
+Segment Anything Model (SAM) [ 28, 41] to enhance open-
+vocabulary segmentation. The methods utilize SAM’s mask-
+generation capability either to refine attention maps or for
+post-processing, producing more coherent and semantically
+consistent patch representations. These approaches enhance
+the spatial precision of predictions and overall segmenta-
+tion quality, highlighting the advantage of complementing
+vision–language models with both segmentation-oriented
+and representation-level vision foundation models.
+Despite these advances, current TF-OVSS approaches
+remain fundamentally constrained by the limited input reso-
+lution of CLIP. To handle higher resolution inputs, existing
+methods typically adopt asliding-windowstrategy, where
+the source image is divided into multiple overlapping sub-
+images that are processed independently, and the resulting
+logits are subsequently stitched together to form the final
+prediction map. While this approach effectively mitigates
+the resolution constraint, processing each sub-image inde-
+pendently limits interactions between them, which can lead
+to fragmented feature representations and the loss of global
+contextual information. This phenomenon is reflected in
+the attention maps produced by existing sliding-window
+methods, where the lack of interaction between sub-images
+becomes apparent. As shown in Fig. 2 (a), each sub-image
+attends only to its own patches, without interacting with
+patches from other sub-images. The resulting attention maps
+are fragmented, with regions remaining confined within each
+sub-image, failing to capture long-range dependencies and
+global context. This fragmentation reveals the restricted re-
+ceptive field inherent to sub-image processing and provides
+clear empirical evidence of the challenges associated with
+the sliding-window paradigm. Consequently, the model’s
+ability to reason about relationships between distant regions
+is limited, which can lead to inconsistent segmentation pre-
+dictions and reduced coherence across the image (see §. 3.2
+for a detailed discussion). This limitation is especially no-
+ticeable in scenes that are large-scale or complex, where
+the lack of global attention can hinder accurate alignment
+between visual patches and their corresponding semantic
+labels. The inability to aggregate information across the
+entire image underscores the need for approaches capable of
+reconstructing global feature interactions while preserving
+the fine-grained information within each sub-image. Mo-
+tivated by these observations, we propose OV-Stitcher, a
+training-free, global context-aware framework that recon-
+structs feature interactions across sub-images.
+At the core of OV-Stitcher lies Stitch Attention, a mech-
+anism designed to overcome the fragmentation resulting
+from sliding-window processing. In Fig. 1, we briefly show
+how conventional sliding-window methods and OV-Stitcher
+process the image, allowing their differences to be clearly
+observed. Stitch Attention operates within the encoder block,
+stitching features across sub-images immediately before the
+attention computations. This design enables information ex-
+change beyond local patch boundaries, bridging fragmented
+regions into unified representations. As a result, this design
+enables the model to capture long-range dependencies and
+global context, leading to more coherent and semantically
+consistent feature representations. In addition to Stitch At-
+tention, to mitigate class ambiguities in large and coherent
+regions, OV-Stitcher incorporates class-biased text prompts.
+These prompts ensure a more reliable mapping between pre-
+dicted segments and their corresponding text embeddings,
+reinforcing semantic alignment across sub-images. The syn-
+ergistic design of these components enables OV-Stitcher to
+achieve state-of-the-art average performance across eight
+benchmarks.
+Our contributions can be summarized as:
+• We identify the challenges of applying sliding-window
+TF-OVSS approaches, highlighting the lack of attention
+7358
+
+
+=== PDF PAGE 3 ===
+between sub-images and the loss of global context caused
+by the sliding-window based processing.
+• Motivated by this analysis, we propose OV-Stitcher, a
+training-free framework that reconstructs global feature
+interactions via Stitch Attention and incorporates class-
+biased text prompts to enhance semantic alignment.
+• OV-Stitcher achieves state-of-the-art average performance
+across eight benchmarks, demonstrating the effectiveness
+of its synergistic design in improving open-vocabulary
+segmentation.
+2. Related Works
+2.1. Vision Language and Foundation Models
+Vision-Language Models (VLMs)[ 17, 21, 36, 40, 60] are
+multimodal architectures trained to align visual and textual
+representations in a unified embedding space. CLIP [ 40],
+a representative VLM, learns the rich correspondence be-
+tween images and text through contrastive pre-training. This
+enables remarkable generalization performance on various
+downstream tasks, such as zero-shot classification, providing
+a crucial foundation for open-vocabulary capabilities.
+Vision Foundation Models (VFMs)[ 2, 6, 14, 20, 39, 48,
+56] learn general and transferable visual representations
+from large-scale, diverse data. Their representations jointly
+capture semantic information and spatial details, remaining
+robust across scales and contexts. Therefore, VFMs deliver
+consistent gains across a broad range of downstream tasks,
+including classification [26], detection [18] and segmenta-
+tion [44, 64]. Self-supervised VFMs learn the intrinsic struc-
+ture and patterns of images without labels, yielding highly
+generalizable feature spaces. Notably, DINO [6, 14, 39, 48]
+produces semantically organized embeddings and exhibits
+strong cross-domain generalization. In addition, the Segment
+Anything Model (SAM) [28, 41] enables prompt-based zero-
+shot segmentation and produces precise masks irrespective
+of class. SAM’s rich spatial representations are effectively
+leveraged in a variety of dense prediction scenarios [22, 23].
+2.2. Open-Vocabulary Semantic Segmentation
+Open-V ocabulary Semantic Segmentation (OVSS) aims to
+perform pixel-level semantic segmentation for arbitrary
+concepts described by natural language, beyond a pre-
+defined set of categories. Training-based methods typi-
+cally build upon CLIP and fine-tune the model using ad-
+ditional mask [ 8, 33, 34, 37, 51, 55, 59], textual descrip-
+tions [7, 35, 52, 57, 62], or knowledge distillation proce-
+dures [53] to achieve dataset-specific optimization. How-
+ever, these approaches depend on large-scale labeled data
+and can partially compromise the inherent open-vocabulary
+generalization capability of CLIP [47, 61].
+In contrast, training-free approaches [ 4, 24, 25, 30, 32,
+45, 50, 61, 66] enable dense prediction without additional
+training by modifying CLIP’s architecture or integrating ex-
+ternal representations. These approaches primarily focus
+on mitigating the localization limitations of CLIP, namely
+the lack of patch-level spatial alignment resulting from its
+image-level supervision [53, 63]. For instance, studies have
+proposed enhancing local semantic consistency by trans-
+forming CLIP’s query-key attention into forms of self-self
+attention (e.g., value-value, key-key) [3, 4, 30, 32, 50].
+Furthermore, ProxyCLIP [ 31] enhances both semantic
+coherence and spatial consistency by combining CLIP with
+VFM representations, using DINO to strengthen local patch-
+level alignment. Building on this foundation, several stud-
+ies [54, 61] have incorporated SAM [ 28, 41], leveraging
+its mask-generation capability to provide spatial cues and
+post-processing, achieving more precise localization and co-
+herent segmentation boundaries. These methods typically
+handle high-resolution inputs by segmenting each sub-image
+individually using a sliding-window strategy. Our method
+further enables interactions across sub-images within the
+encoder layers, producing globally context-aware features
+that yield more coherent and consistent segmentations.
+3. Method
+3.1. Preliminaries
+Similarity-Based Segmentation with Sliding-Window In-
+ference.In TF-OVSS, the limited input resolution of frozen
+backbones requires processing the image in a sliding-window
+manner. An input image I is divided into C overlapping
+crops { ˜Ii}C
+i=1, and each crop is independently encoded by
+the vision encoder to obtain a local image feature map ˜F i,L
+img
+from last layerL. For each window, the segmentation log-
+its are computed by measuring the similarity between the
+projected image features and the text embeddings of target
+categories:
+˜Zi =Proj( ˜F i,L
+img )F ⊤
+text,(1)
+where Proj(·) aligns the visual features with the text feature
+space. The local logits { ˜Zi}C
+i=1 are then spatially stitched
+through a stitching function G(·) (implicitly followed by
+upsampling to the full image resolution) to reconstruct a
+full-resolution logit map:
+Z=G({ ˜Zi}C
+i=1).(2)
+Finally, the semantic segmentation prediction is obtained by
+taking the class-wise maximum over the aggregated logits:
+pred= arg max
+c
+(Z).(3)
+This formulation enables dense, training-free segmentation
+by integrating similarity-based predictions from local sliding
+windows into a high-resolution prediction.
+7359
+
+
+=== PDF PAGE 4 ===
+However, since logits are computed independently for
+each crop, the sliding-window approach limits global in-
+teractions. Stitch Attention addresses this by integrating
+information across all crops at the last layer, producing more
+coherent features.
+Attention Map via Feature Affinity.Recent approaches
+[31, 46, 61] leveraging Vision Foundation Models (VFMs)
+have shown that high-quality visual features can effectively
+guide CLIP-based attention mechanisms. Following this
+line of work, the attention map can be formulated based
+on feature similarity. Given a feature map Fimg, a normal-
+ized self-similarity matrix, referred to as the affinity map, is
+computed as:
+S= Fimg
+∥Fimg∥
+ Fimg
+∥Fimg∥
+⊤
+,(4)
+which captures the pairwise similarity between spatial fea-
+tures. The attention mapAis then defined as:
+A=Softmax(S+M),(5)
+where M is a mask highlighting relevant feature correlations.
+This attention map A can then be applied to other feature
+representations, such as the value features from a CLIP en-
+coder, via matrix multiplication. When applying spatially
+rich, high-quality features to construct the affinity map, this
+attention formulation can enhance the correspondence be-
+tween spatial regions and downstream embeddings.
+In our method, the affinity map is constructed from the
+features produced by our proposed Stitch Attention mecha-
+nism, with the mask M provided by SAM2 [41], following
+the implementation approach proposed in CorrCLIP [61].
+3.2. Analysis for Existing Approach
+Recent training-free open-vocabulary segmentation methods
+have significantly enhanced the local perception capability of
+CLIP-based models, often employing a sliding-window strat-
+egy to handle higher-resolution images. While this approach
+effectively increases local recognition accuracy, it introduces
+an inherent limitation: each sub-image is encoded indepen-
+dently, so attention is applied only among tokens within the
+same sub-image, ignoring relationships across sub-images.
+Fig. 2 (a) shows this limitation, highlighting how tokens
+from different sub-images do not interact. As a result, the
+global semantic coherence of objects throughout the image
+can be disrupted.
+To investigate this issue, we visualize the feature map
+obtained from each independently encoded sub-image. Af-
+ter reconstructing the global feature map by stitching these
+sub-image features, we apply PCA for qualitative analysis.
+As shown in Fig. 3 (top, a), the visualization reveals a frag-
+mented feature structure, where even regions belonging to
+the same object show inconsistent representations, indicat-
+ing that the encoding varies across sub-image boundaries.
+(b)
+(a)
+Original Image / GT
+Figure 3.Visualization of feature representations and segmenta-
+tion results.(a) and (b) show the image feature maps and segmen-
+tation results obtained from the baseline and the proposed Stitch
+Attention, respectively. The top row shows the feature maps after
+applying PCA, and the bottom row presents the corresponding seg-
+mentation results.
+The predicted segmentation result in Fig. 3 (bottom, a) re-
+flects the same inconsistency observed in the feature map.
+These observations indicate that the independent encoding of
+sub-images leads to sub-optimal predictions, corroborating
+the limitations highlighted by the feature visualization in
+Fig. 3 and the attention analysis in Fig. 2. By comparison,
+Fig. 3 (b) shows that the method proposed in §. 3.3 produces
+feature maps that are more structured and coherent across
+sub-image boundaries, which in turn leads to more consistent
+and accurate segmentation predictions.
+3.3. Stitch Attention
+After analyzing the limitations of prior approaches (§. 3.2),
+we introduce our Stitch Attention mechanism, which ex-
+plicitly enhances the consistency of visual features across
+sub-images. Conventional sliding-window inference con-
+fines self-attention to each crop, hindering the modeling of
+dependencies across crop boundaries. Our method over-
+comes this limitation by stitching crop-level features into a
+single global representation before applying attention.
+At the last encoder layer, the model generates query Q,
+key K, and value V∈R C×hw×d embeddings via linear pro-
+jections, where the operation is independently applied to
+each cropped sub-image feature ˜F i,L−1
+img as follows:
+˜Qi =ProjQ(˜Fi,L−1
+img ), ˜Ki =ProjK(˜Fi,L−1
+img ), ˜Vi =ProjV(˜Fi,L−1
+img ) (6)
+whereCis the number of crops,hwis the number of tokens
+in each flattened crop feature map, anddis the feature di-
+mension. We define a stitching operation G(·) that stitches
+these representations into unified global feature spaces:
+Q=G({ ˜Qi}C
+i=1), K=G({ ˜Ki}C
+i=1), V=G({ ˜V i}C
+i=1) (7)
+where Q, K, V∈R 1×HW×d represent the flattened tokens of
+the entire image obtained by stitching all crops into a single
+7360
+
+
+=== PDF PAGE 5 ===
+V
+Stitched Value
+MatMul
+Stitched Feature
+Similarity Matrix
+Feature 
+Extractor
+(1:L-1)
+Stitched Query
+Q
+Stitched Key
+K
+Stitch
+qqq෩Q
+Cropped Query
+kkk෩V
+Cropped Value
+kkk෩K
+Cropped Key
+𝐿𝑃𝑣
+𝐿𝑃𝑞
+𝐿𝑃𝑘
+Softmax
+CLIP Image 
+Encoder
+(1:L-1)
+MatMul
+A
+HW × HW
+Stitch Attention (Attention Computation Field of Last Layer)
+kkk෩V
+Cropped Value Stitched Value
+V
+𝐿𝑃𝑣
+Stitch
+Crop
+Mask 
+Generator
+Animal, Tree, Grass, Mountain, Sky
+CLIP Text
+Encoder
+Final Feature
+𝐿𝑃
+Post-processing
+Segment
+LN, FFN
+Class-Biased
+Prompt Generator
+Figure 4. Overview of our methodOV-Stitcher. Our core framework starts from processing each sub-image using a sliding window
+approach. From the final layer of each sub-image, we extract ˜Q, ˜K, and ˜V features, and stitch each type separately across all sub-images to
+form the global Q, K, and V . Self-attention on these stitched features produces a feature map capturing global correlations. The features
+resulting from Stitch Attention provide CLIP with global spatial information, enabling coherent reasoning across the full image. Additionally,
+we addClass-Biased Promptsto the existing prompts to generate text embeddings reducing ambiguity among similar categories.
+global feature map, with HW denoting the total number of
+tokens. The attention is then computed globally as:
+StitchAttention=softmax
+ QK ⊤
+τ
+
+V(8)
+whereτis a temperature parameter.
+By design, Stitch Attention enables attention weights
+to capture relationships across the entire image rather than
+being restricted to isolated sub-images, effectively trans-
+forming the model from crop-level processing into a unified
+global attention mechanism. This promotes global semantic
+coherence and consistent feature interactions, which are cru-
+cial for maintaining object continuity and achieving precise
+segmentation boundaries.
+After obtaining the globally coherent feature map from
+our Stitch Attention module, we follow the attention formula-
+tion described in §. 3.1. The resulting feature affinity-based
+attention map is multiplied with the stitched value features
+from the CLIP visual encoder, producing the final feature
+representation. This step effectively transfers the global con-
+textual relationships captured by Stitch Attention into the
+CLIP feature space, thereby reinforcing semantic consis-
+tency across the entire image.
+3.4. Class-Biased Prompt Generation
+Our Stitch Attention module improves the consistency of
+visual features across sub-images, producing more coherent
+segmentation masks. This ensures that regions belonging to
+the same object are grouped together, significantly enhancing
+segmentation quality. However, a potential drawback arises:
+if an incorrect class label is assigned, the enhanced consis-
+tency propagates the error over a larger region, amplifying
+the misclassification.
+To mitigate this, we incorporate the Class-Biased Prompts
+into the text embedding process. Conventional prompts (e.g.,
+“a photo of {class}”) provide only generic descriptions,
+causing ambiguity among similar categories. We instead
+augment them with about 15 simple, bias-oriented phrases
+per class, generated by a large language model (e.g., “a large
+asphalt road without pedestrians” for road). Despite their
+simplicity, these Class-Biased Prompts emphasize distinctive
+category traits and effectively guide the Stitch Attention
+module toward more accurate class assignments.
+By combining these lightweight prompts with consistent
+visual features from our Stitch Attention module, segmen-
+tation benefits from both stronger regional coherence and
+more reliable class prediction, achieving a substantial im-
+provement even with minimal prompt construction (details
+are provided in supplementary).
+4. Experiments
+4.1. Experimental setup
+Dataset.We evaluate OV-Stitcher on eight open-vocabulary
+semantic segmentation benchmarks derived from six widely
+used datasets:PASCAL VOC 2012[ 16],PASCAL
+Context[ 38],COCO Object[ 49],COCO Stuff[ 5],
+Cityscapes[ 11], andADE20K[ 65]. For PASCAL VOC
+and Context, we follow two settings depending on whether
+background categories are included—VOC20/VOC21 and
+Context59/Context60—resulting in eight benchmarks in to-
+tal. The design of Stitch Attention supports high-resolution
+inputs, allowing flexible image sizes across datasets. The
+shorter side is set to 448 pixels for all datasets except
+Cityscapes (560 pixels). Sliding-window inference uses
+336×336 crops with a stride of 112 pixels, while Cityscapes
+uses 224×224 crops and COCO Stuff a 224-pixel stride.
+7361
+
+
+=== PDF PAGE 6 ===
+Method
+With a background category Without background category Avg.
+VOC21 Context60 Object VOC20 City Context59 ADE20K Stuff
+OpenAI CLIP ViT-B/16
+CLIP [40]ICML’2118.6 7.8 6.5 49.1 6.7 11.2 3.2 5.7 13.6
+MaskCLIP [66]ECCV’2243.4 23.2 20.6 74.9 24.9 26.4 11.9 16.7 30.3
+CLIPtrase [45]ECCV’2450.9 29.9 43.6 81.0 21.3 33.8 16.4 22.8 32.7
+ClearCLIP [30]ECCV’2451.8 32.6 33.0 80.9 30.0 35.9 16.7 23.9 38.1
+SCLIP [50]ECCV’2459.1 30.4 30.5 80.4 32.2 34.2 16.1 22.4 38.2
+NACLIP [19]W ACV’2558.9 32.2 33.2 79.7 35.5 35.2 17.4 23.3 39.4
+ResCLIP [58]CVPR’2561.1 33.5 35.0 86.0 35.9 36.8 18.0 24.7 41.4
+ProxyCLIP [31]ECCV’2461.3 35.3 37.5 80.3 38.1 39.1 20.2 26.5 42.3
+SC-CLIP [3]Arxiv’2464.6 36.8 37.7 84.3 41.0 40.1 20.1 26.6 43.9
+SFP [24]ICCV’2562.9 37.2 37.9 84.5 41.1 39.9 20.8 26.4 44.0
+CASS [27]CVPR’2565.8 36.7 37.8 87.8 39.4 40.2 20.4 26.7 44.4
+Trident [46]ICCV’2567.1 38.6 41.1 84.5 42.9 42.2 21.9 28.3 45.8
+CorrCLIP [61]ICCV’2572.2 41.6 40.7 88.7 44.6 47.1 23.7 30.7 48.7
+⌞ w/o post-processing 69.2 40.0 39.8 87.0 41.6 44.9 22.4 29.6 46.8
+OV-Stitcher Ours 75.7 43.9 42.6 89.8 48.1 48.8 24.7 31.8 50.7
+⌞ w/o post-processing 73.1 42.4 41.4 87.6 45.4 47.1 23.6 30.7 48.9
+OpenAI CLIP ViT-L/14
+CLIP [40]ICML’218.2 4.1 2.7 15.6 4.4 2.5 1.7 2.4 5.2
+MaskCLIP [66]ECCV’2223.3 11.7 7.2 29.4 12.4 11.5 7.2 8.8 13.9
+ResCLIP [58]CVPR’2554.1 30.9 32.5 85.5 33.7 34.5 18.2 23.4 39.1
+ProxyCLIP [31]ECCV’2460.6 34.5 39.2 83.2 40.1 37.7 22.6 25.6 43.0
+SC-CLIP [3]Arxiv’2465.0 36.9 40.5 88.3 41.3 40.6 21.7 26.9 45.2
+Trident [46]ICCV’2562.6 37.3 40.5 85.5 43.0 40.9 24.0 27.1 45.1
+CorrCLIP [61]ICCV’2571.8 42.2 46.2 91.247.9 47.2 27.731.0 50.6
+OV-Stitcher Ours 74.0 43.4 46.5 90.2 50.6 48.6 27.7 31.6 51.6
+MetaCLIP ViT-B/16
+ProxyCLIP [31]ECCV’2463.3 37.5 38.4 81.0 39.9 40.8 22.5 28.1 43.9
+Trident [46]ICCV’2568.4 39.9 41.7 85.4 43.6 46.1 23.7 29.8 47.4
+CorrCLIP [61]ICCV’2574.8 44.2 43.7 88.849.4 48.8 26.9 31.6 51.0
+OV-Stitcher Ours 76.4 43.9 44.6 88.7 52.3 49.1 27.8 32.1 51.9
+Table 1.Quantitative Comparison of Prior Open Vocabulary Segmentation Works.The highest-performing result is highlighted in
+bold, and the second highest in underline for clarity. The“w/o post-processing”rows show the performance without the post-processing
+step, where each SAM-generated mask is assigned the label corresponding to the most frequent raw logit prediction within that mask.
+Baselines and Comparison Methods.We conduct experi-
+ments using OpenAI CLIP [40] with ViT-B/16 and ViT-L/14
+backbones as the primary vision–language models. For the
+feature extractor, we use DINO [6] ViT-B/8 to obtain spatial
+representations. The Class-Biased Prompts Generator is im-
+plemented using LLaMA3 8B [1], where class-specific text
+embeddings are precomputed and utilized during inference.
+To generate class-biased prompts, we prompt LLaMA3 to
+produce 15 general descriptive sentences for each class, cap-
+turing visual attributes such as shape, texture, and other
+salient characteristics.
+Moreover, we compare OV-Stitcher against a broad
+set of recent TF-OVSS approaches, including CLIP [ 40],
+MaskCLIP [66], ClearCLIP [30], SCLIP [50], NaCLIP [19],
+ResCLIP [58], SC-CLIP [ 3], ProxyCLIP [ 31], SFP [ 24],
+CASS [27], Trident [46], and CorrCLIP [61]. Since one of
+the compared methods reports results with MetaCLIP [21],
+we re-evaluate that method using OpenAI CLIP for a fair
+comparison. We also evaluate several baselines, as well as
+our method, using MetaCLIP ViT-B/16 to ensure consistency
+across settings.
+Our method follows the CorrCLIP framework, utilizing
+masks from SAM2 [ 41] with MAE [ 20] pretrained Hiera-
+L [12, 43] to mask the attention map and to perform post-
+processing. We adopt the reference implementation of Cor-
+rCLIP as our baseline setup, which allows us to evaluate
+OV-Stitcher across a variety of experiments in comparison
+to CorrCLIP, providing an intuitive view of our approach’s
+effectiveness. We compare results using mean Intersection
+over Union (mIoU). All experiments are implemented using
+the MMSegmentation [9, 10] framework.
+4.2. Main Results
+Quantitative results.The results, summarized in Tab. 1,
+clearly demonstrate the advantage of OV-Stitcher. With the
+ViT-B/16 backbone, OV-Stitcher achieves state-of-the-art
+performance on every benchmark, surpassing the previously
+best-performing model by about 2.0% mIoU on average.
+When evaluated with ViT-L/14, OV-Stitcher continues to
+deliver top performance on most benchmarks and attains
+7362
+
+
+=== PDF PAGE 7 ===
+Context60 StuffVOC21 CityscapesADE20KObj.
+Image
+SCLIP
+ProxyCLIP
+TridentCorrCLIP
+OV-Stitcher
+G.T.
+Figure 5.Qualitative comparison with previous training-free open vocabulary segmentation methods.
+the highest average score among all methods. As shown in
+the lower part of Tab. 1 for MetaCLIP, OV-Stitcher again
+achieves the highest performance across all datasets, and the
+average score further improves by 1.2% in mIoU compared
+to the OpenAI CLIP results, reflecting the benefit of stronger
+visual representations.
+Overall, a notable observation is that OV-Stitcher achieves
+particularly large gains on the Cityscapes dataset, outper-
+forming previous methods by a substantial margin with in-
+creases of 3.5%, 2.7%, and 2.9% in averaged mIoU across
+the three variants. Since Cityscapes contains a relatively
+large number of cropped sub-images per sample, the Stitch
+Attention mechanism can more effectively integrate cross-
+crop contextual cues, leading to more coherent and consistent
+predictions.
+Taken together, the results indicate that our proposed
+stitching mechanism generalizes effectively across different
+backbones, including larger variants, and that stitching local
+and global contexts is highly effective in alleviating the
+spatial fragmentation problem inherent in prior training-free
+open-vocabulary segmentation frameworks.
+Qualitative results.As shown in Fig. 5, OV-Stitcher pro-
+duces segmentation maps with improved spatial coherence
+and more accurate class alignment compared to previous
+training-free approaches.
+While CorrCLIP may appear to show a comparable level
+of feature consistency across regions, this perceived coher-
+ence mainly results from the post-processing step of the seg-
+mentation map correction module, which refines each mask
+from SAM2 by assigning the most frequent class label within
+it. To highlight the true contribution of Stitch Attention itself,
+we therefore present segmentation results obtained directly
+from the raw logits, without any post-processing. A de-
+tailed discussion of segmentation results obtained without
+post-processing is provided in §. 4.3.
+4.3. Ablation Study
+Since our framework is built upon the reference implemen-
+tation of CorrCLIP, it naturally serves as our baseline. This
+setup allows us to conduct a variety of comparative exper-
+iments between OV-Stitcher and CorrCLIP, providing an
+intuitive understanding of the effectiveness of each proposed
+component.
+Effectiveness of Each Component.We conducted an ab-
+lation study, summarized in Tab. 2, to assess the contri-
+butions of Stitch Attention (StitchAttn) and Class Biased
+Prompts (CBP). The baseline model without StitchAttn or
+CBP achieves reasonable segmentation performance. Intro-
+ducing CBP alone, which augments the standard ImageNet
+templates with CBP to reduce ambiguity in text queries,
+consistently improves the model’s ability to distinguish be-
+tween classes. Applying StitchAttn alone also enhances
+performance, demonstrating that stitching local and global
+contexts contributes to greater semantic consistency in seg-
+mentation predictions. When both StitchAttn and CBP are
+combined, the model achieves the best results, confirming
+that the two components are complementary: StitchAttn im-
+7363
+
+
+=== PDF PAGE 8 ===
+ADE VOC21 Context60 Object Cityscapes
+G
+.
+T
+.
+CorrCLIP
+OV
+-
+Stitche
+r
+Figure 6. Qualitative comparison without post-processing.
+StitchAttn CBP
+V21 C60 Obj. Stf. City ADE
+72.2 41.6 40.7 30.7 44.6 
+23.7
+✓
+73.2 42.7 41.6 31.0 45.9 
+24.3
+✓
+74.7 42.7 42.3 31.2 46.7 
+23.9
+✓ 
+✓
+75.7 43.7 42.7 31.8 48.1 
+24.7
+Table 2.
+Ablation study evaluating the impact of each compo-
+nent in our proposed method.
+proves spatial and semantic coherence, while CBP reduces
+ambiguity in text queries. Together, they lead to the most
+accurate, consistent, and coherent segmentations, validating
+the design choices of OV-Stitcher.
+Evaluation Without Post-processing.
+To better assess OV-
+Stitcher’s effectiveness without post-processing, we evaluate
+the predictions obtained directly from the raw logits. As
+shown in Tab.
+1
+,
+“w/o post-processing”
+rows, OV-Stitcher
+outperforms CorrCLIP even without post-processing, demon-
+strating that the proposed approach produces strong and ac-
+curate predictions at the logit level. Fig.
+6
+illustrates that
+qualitative results further highlight how OV-Stitcher reduces
+fragmentation within regions sharing the same semantic
+meaning, yielding more coherent and consistent segmen-
+tation maps. While post-processing in the main experiments
+smooths differences, this ablation clearly shows that the
+model itself, through the stitching mechanism, achieves bet-
+ter semantic consistency across the image.
+Performance under Varying Resolutions.
+High-resolution
+inputs often lead to a loss of consistency in segmentation
+when each crop is processed independently, as in previous
+approaches. Since our stitching mechanism allows all sub-
+images to attend to each other during feature aggregation, it
+is expected to maintain stronger robustness when processing
+images with a large number of crops at high resolutions. To
+verify this, we conduct an ablation study comparing OV-
+Stitcher with the baseline method CorrCLIP under identical
+settings. As shown in Fig.
+7
+, while performance of OV-
+Stitcher remains stable or even slightly improves as input
+resolution increases, performance of CorrCLIP drops sig-
+nificantly, demonstrating the effectiveness of our stitching
++1.39 +0.02
+-0.96
+-3.94
+-2.28
+-0.53
++0.61
+-0.02
+-0.65
+-0.86
+-1.71
++0.08
++0.62
+-0.72
+-1.37
+-0.64
+-1.73
+-2.42
+-0.11
++0.83
+-0.19
+-0.85
+-1.94
+-1.03
+Figure 7.
+Ablation on resolution robustness.
+Post-processing is
+excluded to clearly show the effect of the proposed framework. The
+x-axis represents the settings in the format
+shorter side
+–
+window
+size – stride.
+ProxyCLIP
+V21 C60 Obj. Stf. City ADE
+X
+61.3 35.3 37.5 26.5 38.1 
+20.2
+✓
+62.9 36.3 38.1 26.7 39.8 
+20.9
+Table 3.
+Effectiveness of Stitch Attention on Other Method.
+“X”
+indicates the original ProxyCLIP; “✓
+” indicates ProxyCLIP with
+Stitch Attention.
+mechanism in maintaining robust segmentation across high-
+resolution inputs (results on other datasets are provided in
+supplementary).
+Effectiveness of Stitch Attention.
+Stitch Attention facili-
+tates the transfer of spatial information from Vision Foun-
+dation Model (VFM) features, such as those from DINO, to
+a CLIP-based representation. In the same vein, this mecha-
+nism can be applied to ProxyCLIP, a baseline method lever-
+aging VFM-derived spatial features. As shown in Tab.
+3
+, we
+apply Stitch Attention to ProxyCLIP and observe consistent
+improvements in segmentation performance, demonstrating
+that the approach effectively enhances spatial coherence and
+can generalize beyond a single framework.
+5. Conclusion
+In this work, we introduced OV-Stitcher, a framework that
+enhances training-free open-vocabulary segmentation by in-
+tegrating global context across sub-images through the Stitch
+Attention mechanism. By allowing cross-crop feature inter-
+actions, OV-Stitcher mitigates the spatial fragmentation in-
+herent in prior training-free approaches, maintaining seman-
+tic coherence and accurate object boundaries even at high
+resolutions. Additionally, the incorporation of Class-Biased
+Prompts further reduces ambiguity in text embeddings, im-
+proving class-level alignment. By combining these design
+choices, our method achieves notable improvements in seg-
+mentation performance, leading to superior results across a
+diverse set of benchmarks.
+7364
+
+
+=== PDF PAGE 9 ===
+6. Acknowledgments
+This work was supported by the National Research Founda-
+tion (NRF) grant funded by the Korea government (MSIT)
+[RS-2025-00562400] and [RS-2022-NR068754].
+References
+[1] Abhinav Jauhri Abhinav Pandey Abhishek Kadian Ahmad Al-
+Dahle Aiesha Letman Akhil Mathur et al. Aaron Grattafiori,
+Abhimanyu Dubey. The llama 3 herd of models.arXiv
+preprint arXiv:2407.21783, 2024. 6
+[2] Mahmoud Assran, Quentin Duval, Ishan Misra, Piotr Bo-
+janowski, Pascal Vincent, Michael Rabbat, Yann LeCun, and
+Nicolas Ballas. Self-supervised learning from images with
+a joint-embedding predictive architecture. InProceedings
+of the International Conference on Computer Vision (ICCV),
+pages 15619–15629, 2023. 3
+[3] Sule Bai, Yong Liu, Yifei Han, Haoji Zhang, and Yansong
+Tang. Self-calibrated clip for training-free open-vocabulary
+segmentation.arXiv preprint arXiv:2411.15869, 2024. 3, 6
+[4] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and Hilde
+Kuehne. Grounding everything: Emerging localization prop-
+erties in vision-language transformers. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 3828–3837, 2024. 1, 3
+[5] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 1209–1218, 2018. 5, 12, 14, 18,
+20
+[6] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. InPro-
+ceedings of the International Conference on Computer Vision
+(ICCV), 2021. 2, 3, 6, 13
+[7] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learn-
+ing to generate text-grounded mask for open-world semantic
+segmentation from only image-text pairs. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), 2023. 3
+[8] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag Arnab,
+Paul Hongsuck Seo, and Seungryong Kim. Cat-seg: Cost ag-
+gregation for open-vocabulary semantic segmentation, 2024.
+3
+[9] MMSegmentation Contributors. MMSegmenta-
+tion: Openmmlab semantic segmentation toolbox
+and benchmark. https : / / github . com / open -
+mmlab/mmsegmentation, 2020. 6
+[10] MMEngine Contributors. MMEngine: Openmmlab foun-
+dational library for training deep learning models. https:
+//github.com/open-mmlab/mmengine, 2022. 6
+[11] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe Franke,
+Stefan Roth, and Bernt Schiele. The cityscapes dataset for
+semantic urban scene understanding. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 3213–3223, 2016. 5, 14, 19
+[12] Judy Hoffman Christoph Feichtenhofer Daniel Bolya, Chai-
+tanya Ryali. Window attention is bugged: How not to inter-
+polate position embeddings. InThe International Conference
+on Learning Representations (ICLR), 2024. 6
+[13] Tri Dao. FlashAttention-2: Faster attention with better paral-
+lelism and work partitioning. InICLR, 2024. 12
+[14] Timoth´ee Darcet, Maxime Oquab, Julien Mairal, and Piotr
+Bojanowski. Vision transformers need registers.The Interna-
+tional Conference on Learning Representations (ICLR), 2023.
+3
+[15] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li
+Fei-Fei. Imagenet: A large-scale hierarchical image database.
+InProceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition (CVPR), pages 248–255, 2009.
+13
+[16] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge.International journal of computer
+vision (IJCV), 88(2):303–338, 2010. 5, 12, 14, 18
+[17] Alex Fang, Albin Madappally Jose, Amit Jain, Ludwig
+Schmidt, Alexander Toshev, and Vaishaal Shankar. Data
+filtering networks.arXiv preprint arXiv:2309.17425, 2023.
+3, 13
+[18] Ser-Nam Lim Guangxing Han. Few-shot object detection with
+foundation models. InProceedings of the IEEE/CVF Confer-
+ence on Computer Vision and Pattern Recognition (CVPR),
+2024. 3
+[19] Sina Hajimiri, Ismail Ben Ayed, and Jose Dolz. Pay attention
+to your neighbours: Training-free open-vocabulary semantic
+segmentation. InProceedings of the IEEE/CVF Winter Con-
+ference on Applications of Computer Vision (WACV), 2025.
+1, 6
+[20] Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr
+Doll´ar, and Ross Girshick. Masked autoencoders are scalable
+vision learners. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition (CVPR), pages
+16000–16009, 2022. 2, 3, 6
+[21] Xiaoqing Ellen Tan Po-Yao Huang Russell Howes-Vasu
+Sharma Shang-Wen Li Gargi Ghosh Luke Zettlemoyer Hu Xu,
+Saining Xie and Christoph Feichtenhofer. Demystifying clip
+data.The International Conference on Learning Representa-
+tions (ICLR), 2023. 3, 6, 13
+[22] Uehwan Kim Jaewoo Kim. Towards generalizable scene
+change detection. InProceedings of the IEEE/CVF Confer-
+ence on Computer Vision and Pattern Recognition (CVPR),
+2025. 3
+[23] Uehwan Kim Jaewoo Kim. Sam-r1: Leveraging sam for
+reward feedback in multimodal segmentation via reinforce-
+ment learning. InAdvances in Neural Information Processing
+Systems (NIPS), 2025. 3
+[24] Shuo Jin, Siyue Yu, Bingfeng Zhang, Mingjie Sun, Yi Dong,
+and Jimin Xiao. Feature purification matters: Suppressing out-
+lier propagation for training-free open-vocabulary semantic
+segmentation.Proceedings of the International Conference
+on Computer Vision (ICCV), 2025. 1, 3, 6
+[25] Dahyun Kang and Minsu Cho. In defense of lazy visual
+grounding for open-vocabulary semantic segmentation. In
+7365
+
+
+=== PDF PAGE 10 ===
+The European Conference on Computer Vision (ECCV), pages
+143–164. Springer, 2024. 3
+[26] Dahyun Kang, Piotr Koniusz, Minsu Cho, and Naila Mur-
+ray. Distilling self-supervised vision transformers for weakly-
+supervised few-shot classification & segmentation. InPro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition (CVPR), 2023. 3
+[27] Chanyoung Kim, Dayun Ju, Woojung Han, Ming-Hsuan
+Yang, and Seong Jae Hwang. Distilling spectral graph for
+object-context aware open-vocabulary semantic segmentation.
+InProceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition (CVPR), 2025. 6
+[28] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C. Berg, Wan-Yen Lo, Piotr Doll ´ar, and
+Ross Girshick. Segment anything. InProceedings of the
+International Conference on Computer Vision (ICCV), pages
+3992–4003, 2023. 2, 3
+[29] Alina Kuznetsova, Hassan Rom, Neil Alldrin, Jasper Uijlings,
+Ivan Krasin, Jordi Pont-Tuset, Shahab Kamali, Stefan Popov,
+Matteo Malloci, Alexander Kolesnikov, et al. The open im-
+ages dataset v4: Unified image classification, object detection,
+and visual relationship detection at scale.International Jour-
+nal of Computer Vision (IJCV), 128(7):1956–1981, 2020. 13
+[30] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang Wang,
+Litong Feng, and Wayne Zhang. Clearclip: Decomposing clip
+representations for dense vision-language inference. InThe
+European Conference on Computer Vision (ECCV), pages
+143–160. Springer, 2024. 3, 6
+[31] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang Wang,
+Litong Feng, and Wayne Zhang. Proxyclip: Proxy attention
+improves clip for open-vocabulary segmentation. InThe
+European Conference on Computer Vision (ECCV), pages
+70–88. Springer, 2024. 2, 3, 4, 6, 14
+[32] Yi Li, Hualiang Wang, Yiqun Duan, Jiheng Zhang, and Xi-
+aomeng Li. A closer look at the explainability of contrastive
+language-image pre-training.Pattern Recognition (PR), 162:
+111409, 2025. 1, 3
+[33] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. InProceedings of the IEEE/CVF Confer-
+ence on Computer Vision and Pattern Recognition (CVPR),
+pages 7061–7070, 2023. 3
+[34] Yong Liu, Sule Bai, Guanbin Li, Yitong Wang, and Yansong
+Tang. Open-vocabulary segmentation with semantic-assisted
+calibration.Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition (CVPR), 2023. 3
+[35] Huaishao Luo, Junwei Bao, Youzheng Wu, Xiaodong He,
+and Tianrui Li. SegCLIP: Patch aggregation with learnable
+centers for open-vocabulary semantic segmentation.The
+International Conference on Machine Learning (ICML), 2023.
+3
+[36] Ross Wightman Mitchell Wortsman-Gabriel Ilharco Cade
+Gordon-Christoph Schuhmann Ludwig Schmidt Jenia Jit-
+sev Mehdi Cherti, Romain Beaumont. Reproducible scaling
+laws for contrastive language-image learning.Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 2818–2829, 2023. 3, 13
+[37] Fangyun Wei Han Hu-Xiang Bai Mengde Xu, Zheng Zhang.
+Side adapter network for open-vocabulary semantic segmen-
+tation. InProceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition (CVPR), 2023. 3
+[38] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and
+semantic segmentation in the wild. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 891–898, 2014. 5, 12, 14, 19
+[39] Maxime Oquab, Timoth´ee Darcet, Theo Moutakanni, Huy V .
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, Russell
+Howes, Po-Yao Huang, Hu Xu, Vasu Sharma, Shang-Wen Li,
+Wojciech Galuba, Mike Rabbat, Mido Assran, Nicolas Ballas,
+Gabriel Synnaeve, Ishan Misra, Herve Jegou, Julien Mairal,
+Patrick Labatut, Armand Joulin, and Piotr Bojanowski. Di-
+nov2: Learning robust visual features without supervision.
+Transactions on Machine Learning Research (TMLR), 2023.
+2, 3, 13
+[40] Alec Radford, Jong Wook Kim, Chris Hallacy, A. Ramesh,
+Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda
+Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and
+Ilya Sutskever. Learning transferable visual models from nat-
+ural language supervision. InThe International Conference
+on Machine Learning (ICML), 2021. 1, 3, 6
+[41] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang Hu,
+Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman R¨adle,
+Chloe Rolland, Laura Gustafson, et al. Sam 2: Segment
+anything in images and videos.The International Conference
+on Learning Representations (ICLR), 2024. 2, 3, 4, 6
+[42] Tal Ridnik, Emanuel Ben-Baruch, Asaf Noy, and Lihi Zelnik-
+Manor. Imagenet-21k pretraining for the masses.Advances
+in Neural Information Processing Systems (NIPS), 2021. 13
+[43] Chaitanya Ryali, Yuan-Ting Hu, Daniel Bolya, Chen Wei,
+Haoqi Fan, Po-Yao Huang, Vaibhav Aggarwal, Arkabandhu
+Chowdhury, Omid Poursaeed, Judy Hoffman, Jitendra Malik,
+Yanghao Li, and Christoph Feichtenhofer. Hiera: A hierar-
+chical vision transformer without the bells-and-whistles. In
+The International Conference on Machine Learning (ICML),
+2023. 6
+[44] Dongheon Lee Youngmin Ro Seokju Yun, Seunghye Chae.
+Soma: Singular value decomposed minor components adap-
+tation for domain generalizable representation learning. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition (CVPR), 2025. 3
+[45] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. InThe European Conference on Com-
+puter Vision (ECCV). Springer, 2024. 3, 6
+[46] Yuheng Shi, Minjing Dong, and Chang Xu. Harnessing vision
+foundation models for high-performance, training-free open
+vocabulary segmentation.Proceedings of the International
+Conference on Computer Vision (ICCV), 2025. 4, 6, 14
+[47] Philip Torr Xiuye Gu-Siyang Li Shuyang Sun, Runjia Li. Clip
+as rnn: Segment countless visual concepts without training
+7366
+
+
+=== PDF PAGE 11 ===
+endeavor. InProceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition (CVPR), 2024. 3
+[48] Oriane Sim´eoni, Huy V . V o, Maximilian Seitzer, Federico
+Baldassarre, Maxime Oquab, Cijo Jose, Vasil Khalidov, Marc
+Szafraniec, Seungeun Yi, Micha¨el Ramamonjisoa, Francisco
+Massa, Daniel Haziza, Luca Wehrstedt, Jianyuan Wang, Tim-
+oth´ee Darcet, Th ´eo Moutakanni, Leonel Sentana, Claire
+Roberts, Andrea Vedaldi, Jamie Tolan, John Brandt, Camille
+Couprie, Julien Mairal, Herv´e J´egou, Patrick Labatut, and Pi-
+otr Bojanowski. DINOv3.arXiv preprint arXiv: 2508.10104,
+2025. 3
+[49] Serge Belongie James Hays Pietro Perona Deva Ramanan
+Piotr Dollar Tsung-Yi Lin, Michael Maire and C Lawrence
+Zitnick. Microsoft coco: Common objects in context. InThe
+European Conference on Computer Vision (ECCV). Springer,
+2014. 5, 12, 14
+[50] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethinking
+self-attention for dense vision-language inference. InThe
+European Conference on Computer Vision (ECCV), pages
+315–332. Springer, 2024. 1, 3, 6, 14
+[51] Xiaoqi Wang, Wenbin He, Xiwei Xuan, Clint Sebastian,
+Jorge Piazentin Ono, Xin Li, Sima Behpour, Thang Doan,
+Liang Gou, Han Wei Shen, and Liu Ren. Use: Universal seg-
+ment embeddings for open-vocabulary image segmentation,
+2024. 3
+[52] Ji-Jia Wu, Andy Chia-Hao Chang, Chieh-Yu Chuang, Chun-
+Pei Chen, Yu-Lun Liu, Min-Hung Chen, Hou-Ning Hu, Yung-
+Yu Chuang, and Yen-Yu Lin. Image-text co-decomposition
+for text-supervised semantic segmentation.Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), 2024. 3
+[53] Monika Wysocza´nska, Oriane Sim´eoni, Micha¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzci´nski, and Patrick P ´erez.
+Clip-dinoiser: Teaching clip a few dino tricks for open-
+vocabulary semantic segmentation. InThe European Confer-
+ence on Computer Vision (ECCV), pages 320–337. Springer,
+2024. 3
+[54] Yao Xiao, Qiqian Fu, Heyi Tao, Yuqun Wu, Zhen Zhu, and
+Derek Hoiem. Textregion: Text-aligned region tokens from
+frozen image-text models.Transactions on Machine Learning
+Research (TMLR), 2025. J2C Certification. 2, 3
+[55] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and Yanwei
+Pang. Sed: A simple encoder-decoder for open-vocabulary
+semantic segmentation. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition (CVPR),
+2024. 3
+[56] Zhenda Xie, Zheng Zhang, Yue Cao, Yutong Lin, Jianmin
+Bao, Zhuliang Yao, Qi Dai, and Han Hu. Simmim: A simple
+framework for masked image modeling. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 9653–9663, 2022. 3
+[57] Yun Xing, Jian Kang, Aoran Xiao, Jiahao Nie, Shao Ling,
+and Shijian Lu. Rewrite caption semantics: Bridging seman-
+tic gaps for language-supervised semantic segmentation. In
+Advances in Neural Information Processing Systems (NIPS),
+2023. 3
+[58] Yuhang Yang, Jinhong Deng, Wen Li, and Lixin Duan.
+Resclip: Residual attention for training-free dense vision-
+language inference. InProceedings of the IEEE/CVF Confer-
+ence on Computer Vision and Pattern Recognition (CVPR),
+pages 29968–29978, 2025. 6
+[59] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip. InAdvances
+in Neural Information Processing Systems (NIPS), 2023. 3
+[60] Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and
+Lucas Beyer. Sigmoid loss for language image pre-training.
+InProceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition (CVPR), pages 11975–11986,
+2023. 3
+[61] Dengke Zhang, Fagui Liu, and Quan Tang. Corrclip: Re-
+constructing patch correlations in clip for open-vocabulary
+semantic segmentation.Proceedings of the International Con-
+ference on Computer Vision (ICCV), 2025. 2, 3, 4, 6, 12,
+14
+[62] Fei Zhang, Tianfei Zhou, Boyang Li, Hao He, Chaofan
+Ma, Tianjiao Zhang, Jiangchao Yao, Ya Zhang, and Yan-
+feng Wang. Uncovering prototypical knowledge for weakly
+open-vocabulary semantic segmentation.Advances in Neural
+Information Processing Systems (NIPS), 2023. 3
+[63] Xin Zhang and Robby T Tan. Mamba as a bridge: Where
+vision foundation models meet vision language models for
+domain-generalized semantic segmentation. InProceedings
+of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), pages 14527–14537, 2025. 3
+[64] Yi Jin Xiaoxiao Ma Tianle Liu Pengyang Ling Ben Wang
+Huaian Chen Jinjin Zheng Zhixiang Wei, Lin Chen. Stronger,
+fewer, superior: Harnessing vision foundation models for
+domain generalized semantic segmentation. InProceedings
+of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition (CVPR), 2024. 3
+[65] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela Bar-
+riuso, and Antonio Torralba. Scene parsing through ade20k
+dataset. InProceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition (CVPR), pages 633–641,
+2017. 5, 12, 14, 20
+[66] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. InThe European Conference on
+Computer Vision (ECCV). Springer, 2022. 1, 3, 6
+7367

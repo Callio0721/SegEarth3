@@ -1,0 +1,1071 @@
+=== PAGE 1 ===
+HySeg: Learning Generative Priors for Structure-Aware Remote Sensing
+Segmentation
+Jie Qiu1, Xin Li2, Fan Yang2, Yan Wang1, Dong Yu3, Changying Wang1,
+Linwei Dai4, Yongxiang Chen1, Youqin Chen5,∗, Jianzhang Chen1,*
+1Fujian Agriculture and Forestry University 2Alpaca AI Lab
+3Beijing Jiaotong University 4iFLYTEK 5Fujian University of Technology
+Abstract
+High-resolution remote sensing imagery exhibits complex
+spatial regularities where topology, continuity, and region
+adjacency govern semantic organization. However, existing
+remote sensing image semantic segmentation (RSISS) net-
+works, being predominantly discriminative, estimate strong
+posteriors from data while lacking generative priors that
+encode such structural dependencies. This imbalance leads
+to fragmented boundaries, texture overfitting, and poor
+cross-dataset generalization. We address this challenge
+by reformulating RSISS as posterior inference grounded
+in generative structural priors, introducingHySeg, a hy-
+brid generative–discriminative segmentation paradigm that
+learns structure-consistent priors through generative mod-
+eling and guides posterior inference for remote sensing
+segmentation. At its core, the MeanStruct module, a
+MeanFlow-based generative prior learner, models semantic
+topology as a continuous stochastic field, while the Prior-
+to-Affinity Projection (P2A) dynamically transforms this
+field into topology-aware, class-conditional affinities that
+guide posterior inference in the Dynamic Affinity-driven
+Segmentation (DAS) head. Our approach is model-agnostic
+and seamlessly integrates with diverse backbones, consis-
+tently improving structural coherence and generalization.
+Across four challenging RSISS benchmarks, HySeg achieves
+state-of-the-art performance and advances remote sensing
+segmentation from appearance-based perception to struc-
+tural reasoning. Our code is available athttps://
+github.com/HeryJie/HySeg.
+1. Introduction
+Remote sensing image semantic segmentation (RSISS) lies
+at the heart of large-scale Earth observation, converting
+satellite and aerial imagery into pixel-level maps that reveal
+land-cover patterns and human activity. As a foundation
+*Corresponding authors: chenyouqin@fjut.edu.cn, jchen@fafu.edu.cn
+Figure 1.Idea illustration.(a) Conventional discriminative
+RSISS models estimate posteriors without modeling structural pri-
+ors, resulting in fragmented boundaries and class confusion. (b)
+Our HySeg couples image-conditioned generative priors with dis-
+criminative inference, enforcing topology-aware coherence and
+globally consistent segmentation. Best viewed in colors.
+for urban infrastructure mapping, environmental surveil-
+lance, and disaster assessment [13, 37, 49], RSISS trans-
+forms raw pixels into structured spatial knowledge. Yet
+the task is uniquely challenging: unlike natural images, re-
+mote sensing scenes exhibit strong spatial heterogeneity, in-
+tricate topological interconnections, and context-dependent
+semantics shaped by geographic continuity and region ad-
+jacency.
+Recent advances in RSISS have been driven by in-
+creasingly sophisticated discriminative architectures. CNN-
+based models such as DeepLab [4, 5, 58], HRNet [54],
+and PSPNet [63] capture multi-scale context through atrous
+convolution and pyramid pooling, forming the backbone of
+most high-resolution RS pipelines. Transformer-based ar-
+chitectures (e.g., SegFormer [60], Swin-Unet [2], and scale-
+adaptive designs [29]) further enhance global context mod-
+eling and long-range spatial reasoning, achieving remark-
+able performance across diverse RS benchmarks. Beyond
+traditional closed-set settings, language-guided and open-
+vocabulary segmentation methods [3, 21, 26] extend se-
+mantic generalization across heterogeneous domains, while
+semi- and self-supervised strategies [41, 53, 67] improve
+robustness under sparse supervision. Related scene pars-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+6410
+
+
+=== PAGE 2 ===
+ing studies also explore mining supportive knowledge to
+enhance robustness and generalization [34]. However, de-
+spite architectural sophistication, existing approaches re-
+main fundamentally appearance-driven, adept at delineating
+textures and boundaries but limited in capturing the rela-
+tional structures that govern spatial organization. This im-
+balance between perception and reasoning exposes a fun-
+damental gap in existing RSISS methodologies: while the
+progress has been made inseeingbut not inunderstanding,
+the shift from recognition to structural reasoning remains
+unfinished.
+To close this gap, we move beyond appearance-
+driven learning and recast RSISS as posterior inference
+constrained by structural priors (see Fig. 1). Build-
+ing on this insight, we introduceHySeg, a hybrid
+generative–discriminative paradigm that learns structure-
+consistent priors via generative modeling and integrates
+them into posterior inference. This design explicitly cou-
+ples generative priors with discriminative posteriors, turn-
+ing remote sensing segmentation into a structured reasoning
+process that unifies local appearance cues with global spa-
+tial organization, thereby yielding predictions that are spa-
+tially coherent and topologically consistent. Yet a central
+question remains: how can structural priors be learned so
+that they reflect the continuous geography and inter-region
+relations that shape remote sensing scenes?
+We pursue this question from a generative perspective
+and introduce MeanStruct, a MeanFlow-based [12, 14] prior
+learner that models structure as a continuous transport pro-
+cess in label space. It estimates a mean-transport (average-
+velocity) field that maps simple structural prototypes to the
+empirical distribution of segmentation maps under supervi-
+sion. By modellinghowsemantic topology evolves, rather
+than merelywhichlabels appear, MeanStruct learns a prob-
+abilistic structural prior that can better capture the intrin-
+sic geometry of real-world layouts. While MeanStruct pro-
+vides a rich probabilistic description of structural topol-
+ogy, the learned prior remains abstract and must be trans-
+lated into a form that can guide pixel-level reasoning. To
+this end, we propose the Prior-to-Affinity Projection (P2A),
+which operationalizes the generative prior by translating
+it into topology-aware, class-conditional affinity kernels
+that regulate pixel interactions and enforce structural coher-
+ence across regions. Acting as a structural translator, P2A
+bridges generative reasoning and discriminative inference,
+transforming the implicit topology encoded by the prior
+into an explicit spatial mechanism through which structural
+knowledge governs semantic organization.
+To integrate these cues into posterior inference, we intro-
+duce a Dynamic Affinity-driven Segmentation (DAS) head
+that leverages the projected affinities to guide message pass-
+ing among pixels, aligning appearance with structural topol-
+ogy. Built as a generative–discriminative hybrid, ourHy-
+Segis backbone-agnostic and can be combined with diverse
+backbones, consistently improving structural coherence and
+generalization. Our maincontributionsare threefold:
+•Paradigm Shift.We reformulate remote sensing im-
+age semantic segmentation (RSISS) as posterior infer-
+ence constrained by generative structural priors, bridg-
+ing perception and reasoning through a unified genera-
+tive–discriminative paradigm.
+•Hybrid Approach.We proposeHySeg, a novel hybrid
+generative–discriminative framework that unifies gener-
+ative prior learning (MeanStruct) and discriminative in-
+ference through Prior-to-Affinity Projection (P2A) and
+Dynamic Affinity-driven Segmentation (DAS), enabling
+structure-aware posterior reasoning in segmentation.
+•SOTA Performance.Evaluated across four challenging
+RSISS benchmarks, ourHySegachieves state-of-the-art
+(SOTA) performance, consistently improving structural
+coherence, spatial consistency, and cross-dataset gener-
+alization over existing methods.
+2. Related Work
+Remote Sensing Image Semantic Segmentation.RSISS
+is a core task in geospatial vision that converts aerial or
+satellite imagery into dense land-cover maps [43]. CNN-
+based models such as DeepLab [4, 5, 58], HRNet [54],
+PSPNet [63], EFRNet [23], and EKENet [33] leverage
+atrous convolution, feature reconstruction, and knowl-
+edge enhancement to capture multi-scale context, form-
+ing the foundation of modern high-resolution semantic
+segmentation pipelines. Transformer-based designs (e.g.,
+SegFormer [60], Swin-Unet [2], RSSFormer [61], scale-
+adaptive models [29], and RS-vHeat [16]) further improve
+global context modeling and long-range reasoning, achiev-
+ing state-of-the-art results on diverse benchmarks. Be-
+yond closed-set settings, recent vision–language models
+such as RMSIN [26], SegEarth-OV [21], and related formu-
+lations [18, 48, 62] enable category-agnostic understanding.
+Complementary research in domain adaptation and general-
+ization [7, 27, 52] mitigates cross-sensor and regional shifts,
+while self- and weakly supervised methods [1, 19, 66] re-
+duce annotation demands by exploiting structural cues in
+unlabeled data. Generative paradigms, including diffusion-
+based methods [42, 65, 68], further advance RSISS by
+learning data distributions and representation alignment. In
+contrast, our approach unifies generative and discriminative
+paradigms within a single inference framework that learns
+structural priors through generation and refines them via
+discrimination.
+MeanFlow and Generative Transport Modeling.Gen-
+erative transport modeling views data generation as learn-
+ing continuous velocity fields that move samples from a
+prior to the data manifold, offering a physically inter-
+pretable alternative to stochastic diffusion. Flow Match-
+6411
+
+
+=== PAGE 3 ===
+Prior vector Dynamic Gaussian
+Kernel
+Softmax
+Affinity
+Message Messege vector
+Self Attn
+Seg Head
+Output
+Backbone
+Multiplication
+Addition
+DropPath
+Feature map
+Gaussian noise
+Condition
+MeanStruct 
+Average-velocity Field
+Prediction Network
+1-NFE
+Average-velocity Field
+Prediction Network
+Dynamic Affinity-driven Segmentation (DAS)
+1-NFE
+Average-velocity Field
+Prediction Network
+M'
+Prior-to-Affinity Projection (P2A)
+Figure 2.Overview of HySeg.Our framework formulates RSISS as posterior inference constrained by generative structural priors. Stage
+I (MeanStruct) learns structure-consistent priors via MeanFlow; Stage II (DAS+P2A) leverages these priors for topology-aware message
+passing and segmentation. See Sec. 3 for details.
+ing [10, 20, 25] directly regresses time-dependent veloc-
+ity fields, while Rectified Flow [28] enforces nearly linear
+transport for stable and efficient sampling. These formu-
+lations replace stochastic noise with structured, geometry-
+preserving trajectories. Building on this foundation, Mean-
+Flow [12] extends flow matching to model the expected
+(mean-field) dynamics, describing how distributions evolve
+on average rather than through individual stochastic paths.
+The resulting smooth and efficient transport makes Mean-
+Flow well suited for learning structural priors [64] that en-
+code spatial topology in a geometry-aware manner. Sim-
+ilar generative formulations have also shown effectiveness
+in dense visual prediction tasks such as optical flow estima-
+tion [35, 36]. Building on this property, our method models
+structural evolution generatively and fuses it into discrimi-
+native inference for topology-aware segmentation.
+3. Method
+Existing RSISS models are mainly discriminative, focus-
+ing on appearance cues while ignoring structural depen-
+dencies. We instead formulate segmentation as posterior
+inference constrained by generative structural priors. Our
+approach couples a generative prior learner with a dis-
+criminative segmentor guided by learned dynamic affini-
+ties (Fig. 2). Specifically, Stage I (MeanStruct) mod-
+els semantic topology as a continuous flow field, learning
+structure-consistent priors through a one-step MeanFlow
+update. Stage II translates the learned priors into topology-
+aware affinities throughP2A, which regulate prior-guided
+message passing inDAS. The overall design is backbone-
+agnostic and generalizes well across architectures.
+3.1. MeanStruct Module
+Given an RGB imageI 0 ∈R H×W×3 and its ground-
+truth maskM 0 ∈ {0, . . . , C 0−1}H×W (usedonlyduring
+training), we learn a dense structural priorf e ∈R h×w×d,
+wheresdenotes the spatial downsampling rate,h=H/s
+andw=W/sdenote the downsampled resolution, anddde-
+notes the embedding dimension. The priorexplicitlyen-
+codes topological continuity and regional adjacency, serv-
+ing as a generative constraint that regularizes posterior in-
+ference. We formulate this as an image-conditioned gen-
+eration task and employ a MeanFlow-based single-step (1-
+NFE) learner, where a conditional vector field transports a
+perturbed embedding to a structure-consistent prior in one
+update, balancing structural fidelity and efficiency.
+Encoders and Path Construction.We extract two em-
+beddings: an image-conditioned contextc e =E(I 0)∈
+Rh×w×d and a target prior embeddingm e0 =E(M 0)∈
+Rh×w×d, whereM 0 (usedonlyduring training) provides
+the ground-truth mask, andc e serves as aguidance signal
+conditioning the transport field. We then define a linear path
+in the prior space:
+xt = (1−t)m e0 +t e,(1)
+wheret∈[0,1]ande∼ N(0,I)denotes standard Gaussian
+noise.
+MeanFlow-based Averaged Velocity Learning.We fol-
+low MeanFlow [12] to learn a continuous transport field
+that links noisy embeddings to structure-consistent priors.
+A learnable vector fieldu θ(xt, τ, t)models theinterval-
+averaged velocitybetween two latent statesx τ andx t:
+u(xt, τ, t) = 1
+t−τ
+Z t
+τ
+v(xη, η)dη.(2)
+For the linear interpolation pathx t = (1−t)m e0 +t e,
+the instantaneous velocity is constant,v(x t, t) = d
+dt xt =
+e−m e0.
+(1) MeanFlow identity.The MeanFlow identity relates the av-
+eraged and instantaneous velocities:
+u(xt, τ, t) =v(x t, t)−(t−τ) d
+dt u(xt, τ, t),(3)
+6412
+
+
+=== PAGE 4 ===
+where
+d
+dt u(xt, τ, t) =∂ xu(xt, τ, t)·v(x t, t) +∂ tu(xt, τ, t).
+(2) Training objective.Using Eq. (3), the target velocity is
+utgt =v(x t, t)
+−(t−τ)
+
+∂xuθ(xt, τ, t)·v(x t, t) +∂ tuθ(xt, τ, t)
+
+,
+(4)
+where∂ xuθ ·vand∂ tuθ are computed via automatic differ-
+entiation (JVP) [12]. The training loss is:
+LMeanStruct =E t,τ
+
+∥uθ(xt, τ, t)−sg(u tgt)∥2
+2
+
+,(5)
+wheresg(·)denotes stop-gradient. This formulation en-
+couragesu θ to approximate the mean transport dynamics
+that preserve structural topology. Geometrically, the learned
+MeanFlow field induces a smooth, low-divergence vector
+transport on the semantic manifold, which tends to pre-
+serve adjacency relationships and local connectivity under
+mild smoothness and Lipschitz assumptions on the velocity
+field [12, 25]. Experimentally, we observe that such contin-
+uous flows produce priorsf e that encode spatial continuity
+and region adjacency more reliably than purely discrimina-
+tive features, providing a generative structural bias for sub-
+sequent posterior inference rather than a strict topological
+guarantee.
+Efficient 1-NFE Prior Generation.During inference,
+the MeanFlow field performs a deterministic rollback that
+transports a random latent toward the structural manifold
+in a single function evaluation. From Eq. (2), the rollback
+trajectory is expressed as
+xτ =x t −(t−τ)u(x t, τ, t),(6)
+and setting(τ, t) = (0,1)withe∼ N(0,I)yields
+fe =e−u θ(e,0,1).(7)
+This single-step transformation (1-NFE) produces a struc-
+turally coherent prior that encourages spatial continuity and
+regional adjacency while remaining computationally mini-
+mal. The resulting prior acts as a generative structural con-
+straint that nudges posterior inference toward more geomet-
+rically consistent solutions, without imposing an explicit
+topological guarantee.
+Spatial Decoder and Feature Alignment.To couple
+the generative prior with the discriminative backbone, a
+lightweight spatial decoderD s hierarchically projects the
+global priorf e into a multi-scale structural pyramidS=
+{si}3
+i=1:
+si =D (i)
+s (fe)∈R ci×hi×wi .(8)
+Each prior scales i is aligned with the corresponding back-
+bone featurey i in spatial resolution—and, when necessary,
+in channel dimension through a1×1projection. These
+aligned priors act as conditional structural fields, embed-
+ding the learned topology into the feature hierarchy.
+Gaussian
+kernel 
+Piror-to-Affinity Projection (P2A) 
+Patches
+Compute distancesfrom the center toneighbors
+SoftmaxAffinity
+Prior features
+Figure 3.Prior-to-Affinity Projection.P2A converts learned pri-
+ors into topology-aware affinities for DAS. It unfolds localK×K
+neighborhoods, measures channel-wise center–neighbor discrep-
+ancies, converts them into similarity weights via a learnable Gaus-
+sian kernel, and normalizes them using masked softmax.
+3.2. Prior-to-Affinity Projection (P2A)
+MeanStruct generates image-conditioned priors that cap-
+ture spatial continuity and regional adjacency but remain
+implicit. To make them usable,P2A(Fig. 3) converts
+these learned prior features into pixel-wise, topology-aware
+affinities by projecting localK×Kneighborhoods into
+an affinity field for message passing. This transforma-
+tion turns generative priors into explicit structural weights
+that constrain the discriminative head, improving bound-
+ary accuracy and intra-region consistency while remaining
+lightweight and backbone-agnostic.
+For a prior feature maps i ∈R C×h×w at scalei, let
+P∈R C×L×K 2
+denote the unfolded local neighborhood
+tensor, whereL=h×wandKis the neighborhood size
+(see details in theSupplementary Material). For each site
+j, letp (c)
+j =P(c, j, k ctr)denote the center feature at chan-
+nelc, and letx (c,k)
+j =P(c, j, k)denote itsk-th neighboring
+feature. Their discrepancy is defined as
+D(c,k)
+j =
+ 
+p(c)
+j −x (c,k)
+j
+2
+.(9)
+We then aggregate channel-wise discrepancies and convert
+them into normalized affinity weights:
+A(k)
+j = Softmax k
+ 
+−
+PC
+c=1 D(c,k)
+j
+2σ2 +ξ
+!
+,(10)
+whereσis a learnable bandwidth andξis a small stability
+constant. This yields the affinity field
+A={A (k)
+j } ∈R L×K 2
+,
+K2
+X
+k=1
+A(k)
+j = 1.(11)
+The resulting affinity field provides structurally informed
+weights for local message passing in the DAS head. De-
+tailed definitions of neighborhood unfolding, spatial in-
+dex mapping, boundary handling, and masked normaliza-
+tion are given in theSupplementary Material. Unlike self-
+attention, P2A derives affinities from the learned structural
+6413
+
+
+=== PAGE 5 ===
+prior rather than from pairwise similarities among segmen-
+tation features.
+3.3. Dynamic Affinity-driven Segmentation (DAS)
+Within the posterior inference stage, the Dynamic Affinity-
+driven Segmentation (DAS) head performs discriminative
+reasoning under the guidance of generative priors. The
+topology-aware affinitiesAderived from P2A serve as
+structural constraints that modulate feature propagation, en-
+suring that local evidence aggregation respects the continu-
+ity and adjacency encoded in the prior. In this formulation,
+DAS realizes posterior inference regularized by the gener-
+ative prior fieldf e, aligning discriminative decoding with
+structural consistency.
+Message Projection and Aggregation.Given backbone
+featuresy i ∈R N×h×w aligned with the prior scales i, a
+1×1projectionϕ feat :R N →R D produces latent represen-
+tationsM=ϕ feat(yi). UnfoldingMintoK×Kneigh-
+borhoods yields local evidenceM v ∈R D×L×K 2
+, which is
+aggregated via affinity-guided weighting:
+M ′(d′, j) =
+K2
+X
+k=1
+A(k)
+j Mv(d′, j, k),(12)
+whereA (k)
+j encodes the structural prior probability of in-
+formation exchange between pixels. This process approx-
+imates a single update step of the posterior field, where
+each pixel refines its latent representation by marginalizing
+over structurally correlated neighbors. The result is fused
+through a lightweight MLPϕfuse :R D →R N , producing the
+prior-regularized latent mapM f =ϕ fuse(M ′)∈R N×h×w .
+Global Contextualization and Decoding.To extend pos-
+terior reasoning beyond local neighborhoods, DAS adopts
+a dual-residual design that integrates prior-guided aggrega-
+tion and self-attention refinement:
+y′
+i =y i +D p(Mf ), y out =y ′
+i +D p
+ 
+SA(y′
+i)
+
+,(13)
+whereSAdenotes multi-head self-attention over spatial to-
+kens andD p (DropPath) regularizes the residual updates.
+Finally,y out is decoded into per-pixel logits, yielding a pos-
+terior estimate constrained by the learned structural pri-
+ors. The segmentation branch is optimized using a stan-
+dard lossL s =L RSISS [24], completing the genera-
+tive–discriminative inference loop.
+4. Experiments
+4.1. Experimental Setup
+Datasets and Evaluation Metrics.We evaluate on four
+benchmarks: LoveDA [55], UA Vid [38], ISPRS Potsdam,
+and ISPRS Vaihingen [44]. LoveDA, with a ground sam-
+pling distance (GSD) of 30 cm, covers seven land-cover
+classes from urban and rural scenes. UA Vid provides 420
+high-resolution UA V images (3840×2160or4096×2160)
+across eight urban categories, following the splits in [57].
+Vaihingen (9 cm GSD) and Potsdam (5 cm GSD) each con-
+tain six classes, following the splits in Wang et al. [57].
+We adopt standard metrics including overall accuracy (OA),
+mean intersection-over-union (mIoU), and mean F1-score
+(mF1) to measure pixel accuracy, class-wise balance, and
+region overlap [8, 9, 32].
+Implementation Details.To validate the generality of
+HySeg, we integrate it into multiple state-of-the-art
+segmentation frameworks, including UNetFormer [57]
+(ResNet18/34/50 [15]), LSKNet [24] (LSKNet T/S), DC-
+Swin [56] (Swin T/B/S [30]), and D2LS [69] (Con-
+vNeXt B [31]). This setup ensures coverage of both
+CNN- and Transformer-based paradigms, from lightweight
+to large-scale backbones. All experiments are implemented
+in PyTorch and trained on a single NVIDIA A800 GPU
+using AdamW. We follow the original training settings of
+each backbone [24, 57] for fair comparison across datasets
+(LoveDA, UA Vid, Potsdam, Vaihingen). During inference,
+multi-scale testing and horizontal flipping are applied to en-
+hance robustness.
+4.2. Main Results
+Quantitative Evaluation.Results summarized in Tab. 1
+show consistent improvements on LoveDA, UA Vid,
+and ISPRS Potsdam/Vaihingen across multiple back-
+bones, including UNetFormer (ResNet18/34/50), DCSwin
+(Swin T/S/B), LSKNet (LSKNet T/S), and D2LS (Con-
+vNeXt B). Incorporating HySeg consistently boosts mIoU
+relative to purely discriminative counterparts. On LoveDA,
+nearly all categories benefit, with notable gains of +5.0
+mIoU onBarren(Swin B) and +3.2 onAgriculture
+(LSKNet S). Similar improvements are observed on ISPRS
+Vaihingen, Potsdam, and UA Vid, where HySeg increases
+mIoU by +2.2, +1.7, and +1.6, respectively. The largest
+gains occur in structure-dominated categories (Building,
+Barren,Forest), reflecting improved boundary precision
+and intra-region coherence. These findings validate that
+converting generative structural priors (MeanStruct) into
+topology- and class-aware affinities via P2A, and propagat-
+ing them through DAS, effectively injects structural rea-
+soning into discriminative segmentation, yielding robust,
+cross-architecture, and cross-dataset gains. Beyond region-
+overlap metrics, we further evaluate structural fidelity using
+topology-related measures, including clDice [46] and Betti-
+based topology errors [17, 51]. As shown in Tab. 2, Hy-
+Seg consistently improves clDice and reduces bothβ 0- and
+β1-Errors across representative backbone-matched settings,
+indicating better preservation of connectivity and region-
+level topology. Such topology-related metrics have also
+been used in prior topology-preserving segmentation stud-
+6414
+
+
+=== PAGE 6 ===
+Table 1.Comparison with SOTA methodson the LoveDA, Vaihingen, Potsdam and UA Vid datasets (partial).△denotes the performance
+improvement achieved by enhancing the base model with HySeg. The best results are highlighted inbold.
+Method LoveDA Vaihingen Potsdam UA Vid
+Backbone Bkg Bld Rd Wat Bar For Agr mIoU↑mF1↑OA↑mIoU↑mF1↑OA↑mIoU↑mIoU↑
+Segmenter[50] ViT-B 38.0 50.7 48.7 77.4 13.3 43.5 58.2 47.1 81.9 85.3 76.1 82.5 82.2 80.6 66.0MANet[22] ResNet50 38.7 51.7 42.6 72.0 15.3 42.1 57.7 45.7 90.8 91.3 83.3 92.5 91.1 86.3 62.6DeepLabV3+[6] ResNet50 43.0 50.9 52.0 74.4 10.4 44.2 58.5 47.6 81.2 86.2 79.6 87.9 86.2 78.7 60.6CTMFNet[47] ResNet50 46.8 59.4 54.8 74.4 22.6 45.2 60.8 52.0 91.1 91.6 83.9 93.0 91.5 87.1 67.4DANet[11] ResNet50 46.4 56.8 57.0 79.3 14.6 46.6 64.6 52.2 85.9 89.2 76.0 90.4 89.8 82.7 60.6SAMRS[39] ResNet18 46.3 60.4 54.5 77.8 20.2 47.1 61.2 52.5 90.1 91.2 82.9 92.2 90.4 85.9 63.8LOGCAN++[40] ResNet50 47.4 58.4 56.5 80.1 18.4 48.0 64.8 53.4 91.4 91.8 84.3 92.9 91.5 87.0 68.8In2NeCT[45] ResNet18 46.1 60.8 57.5 80.5 24.0 47.7 63.8 54.3 91.3 91.5 84.5 93.2 91.8 87.9 /ResNet18 44.7 58.8 54.9 79.6 20.1 46.0 62.5 52.4 90.0 90.9 82.0 92.2 90.7 85.7 67.8UNetFormer[57] ResNet34 44.8 57.8 54.9 79.1 18.5 46.4 62.4 52.0 90.3 91.1 82.5 92.4 91.0 86.1 68.0ResNet50 45.8 58.5 57.1 79.3 17.0 46.3 63.7 52.5 90.6 91.3 83.1 92.6 91.0 86.4 68.5ResNet18 47.5 61.1 56.5 81.5 22.3 47.3 65.0 54.5 90.7 91.5 82.8 92.7 91.3 86.5 68.7△ +2.8 +2.3 +1.6 +1.9 +2.2 +1.3 +2.5 +2.1 +0.7 +0.6 +0.8 +0.5 +0.6 +0.8 +0.9Ours ResNet34 46.8 59.1 57.2 81.1 19.3 47.4 64.1 53.6 91.0 91.8 83.2 92.8 91.3 86.7 68.8△ +2.0 +1.3 +2.3 +2.0 +0.8 +1.0 +1.7 +1.6 +0.7 +0.7 +0.7 +0.4 +0.3 +0.6 +0.8ResNet5048.660.8 59.3 82.0 20.1 46.5 64.9 54.7 91.6 92.1 84.4 93.0 91.5 86.9 69.5△ +2.8 +2.3 +2.2 +2.7 +3.1 +0.2 +1.2 +2.2 +1.0 +0.8 +1.3 +0.4 +0.5 +0.5 +1.0SwinT 44.8 59.9 57.9 81.0 17.5 47.8 61.6 52.9 90.0 91.2 82.1 92.0 90.1 85.3 68.0DCSwin[56] Swin S 45.1 60.8 57.7 82.1 18.2 48.5 61.5 53.4 90.6 91.6 83.1 92.7 91.2 87.1 68.4SwinB 44.7 61.6 57.4 81.4 17.1 48.2 59.9 52.9 90.5 91.7 83.4 92.9 91.3 86.9 68.1SwinT 46.8 60.0 57.0 81.6 19.8 48.0 64.3 53.9 90.5 92.2 82.9 93.3 91.9 87.7 68.9△ +2.0 +0.1 -0.9 +0.6 +2.3 +0.2 +2.7 +1.0 +0.5 +1.0 +0.8 +1.3 +1.8 +2.4 +0.9Ours Swin S 45.8 61.5 57.382.720.6 48.8 61.3 54.0 91.3 93.1 84.3 93.6 92.2 88.1 69.4△ +0.7 +0.7 -0.4 +0.6 +2.4 +0.3 -0.2 +0.6 +0.7 +1.5 +1.2 +0.9 +1.0 +1.0 +1.0SwinB 46.361.957.7 81.5 22.1 48.7 63.0 54.5 92.0 93.5 85.4 93.6 92.2 88.1 69.7△ +1.6 +0.3 +0.3 +0.1 +5.0 +0.5 +3.1 +1.6 +1.5 +1.8 +2.0 +0.7 +0.9 +1.2 +1.6LSKNetT 46.4 59.5 57.1 79.9 21.8 46.6 61.4 53.2 90.9 91.5 83.6 92.3 91.1 86.1 69.3LSKNet[24] LSKNetS 46.7 59.9 58.3 80.224.646.4 61.8 54.0 91.0 91.7 83.7 93.1 92.0 87.2 70.0LSKNetT 47.0 60.2 59.4 81.5 23.9 48.4 63.2 54.8 91.5 92.9 84.6 93.4 91.9 87.2 69.8△ +0.6 +0.7 +2.3 +1.6 +2.1 +1.8 +1.8 +1.6 +0.6 +1.4 +1.0 +1.1 +0.8 +1.1 +0.5Ours LSKNet S 47.9 61.3 59.6 81.6 23.3 49.465.055.492.2 93.8 85.994.3 93.4 88.9 70.9△ +1.2 +1.4 +1.3 +1.4 -1.3 +3.0 +3.2 +1.4 +1.2 +2.1 +2.2 +1.2 +1.4 +1.7 +0.9D2LS[69] ConvNeXtB 47.6 61.2 59.1 81.6 23.8 48.8 64.8 55.3 91.9 / / 94.7 / / 70.9ConvNeXtB 47.8 61.759.781.9 23.849.764.955.692.1 93.6 85.794.8 93.9 89.5 71.4Ours △ +0.2 +0.5 +0.6 +0.3 +0.0 +0.9 +0.1 +0.3 +0.2 / / +0.1 / / +0.5
+ies [59]. Additional results on modern pretrained RS back-
+bones and comparisons with lightweight structural con-
+straints are provided in theSupplementary Material.
+Table 2.Topology-related evaluationon Potsdam. Beyond
+region-overlap metrics, HySeg consistently improves clDice and
+reduces Betti errors across representative backbone-matched set-
+tings, indicating better structural fidelity.
+Method Backbone clDice↑β 0-Error↓β1-Error↓
+UNetFormer ResNet18 0.9168±0.0060 1.6448 4.6806
+HySeg (Ours) ResNet18 0.9236±0.0179 1.2369 3.8405
+DCSwin Swin S 0.9120±0.0041 1.5774 4.8095
+HySeg (Ours) SwinS 0.9291±0.0142 1.0972 3.5726
+LSKNet LSKNet S 0.9174±0.0047 1.2718 3.8988
+HySeg (Ours) LSKNetS 0.9305±0.0106 1.0253 3.0548
+D2LS ConvNeXt B 0.9110±0.0142 2.5218 4.5119
+HySeg (Ours) ConvNeXtB 0.9350±0.0467 1.0033 2.4643
+Qualitative Evaluation.Fig. 4 presents visual compar-
+isons across LoveDA, UA Vid, Potsdam, and Vaihingen,
+using representative backbones (UNetFormer R18, DC-
+Swin S, LSKNet S, and D2LS ConvNeXt B) with and
+without HySeg. Across all settings, HySeg consistently pro-
+duces sharper boundaries, more distinct Forest–Agriculture
+separation, and fewer Tree–Building or Car–Impervious
+Surfaces confusions. On LoveDA, baseline models often
+generate roof overflows on factory complexes and blurred
+Forest–Agriculture transitions, whereas HySeg yields com-
+Table 3.Ablation resultsof HySeg on UNetFormer with
+ResNet18/50, Swin B, LSKNet S, and ConvNeXt B backbones
+on the LoveDA dataset.
+Method/Backbone ResNet18 ResNet50 SwinB LSKNetS ConvNeXtB
+Baseline 52.42 52.52 52.03 54.01 52.77(Backbone+Standard Head)+ DAS(w/o Prior) 52.76 53.00 52.87 54.12 53.26+ Simple Prior Fusion 53.42 53.28 53.41 54.17 54.04+ MeanStruct+DAS 52.01 51.97 52.20 52.00 52.41(w/o P2A)+ MeanStruct+P2A+DAS53.53 53.67 53.67 54.71 54.57(w/o Affinity & Message)+ MeanStruct +P2A+DAS54.02 54.31 54.28 55.13 55.20(w/o Self Attention)HySeg (Full Model) 54.48 54.74 54.46 55.37 55.63
+Table 4.Effect of generative priors vs. discriminative priorson
+MeanStruct performance with ResNet18/50, Swin B, LSKNet S,
+and ConvNeXt B backbones.
+Method/Backbone ResNet18 ResNet50 SwinB LSKNetS ConvNeXtB
+Baseline 52.42 52.52 52.03 54.01 52.77(Backbone+ Standard Head)+ ResNet18 Prior 52.74 52.41 51.88 53.98 50.20+ SwinB Prior 53.18 52.88 53.02 53.29 53.31+ LSKNetS Prior 53.87 54.21 52.71 54.55 53.14+ ConvNeXtB Prior 53.16 53.94 53.35 54.80 54.99+ MeanStruct Prior 54.48 54.74 54.46 55.37 55.63
+pact, closed factory footprints and well-delineated vegeta-
+tion zones by projecting generative priors (MeanStruct) into
+topology-aware affinities via P2A and propagating them
+in DAS. On UA Vid, HySeg preserves large-scale build-
+ing continuity that baselines tend to fragment. On Pots-
+6415
+
+
+=== PAGE 7 ===
+Figure 4.Visual comparisonon LoveDA, UA Vid, Potsdam, and Vaihingen using four backbones—UNetFormer R18, DCSwin S,
+LSKNet S, and D2LS ConvNeXt B. Highlighted regions show that HySeg produces sharper boundaries, clearer Forest–Agriculture sepa-
+ration, and fewer Tree–Building and Car–Impervious Surfaces confusions.
+Table 5.Analysis of P2A affinity computationon HySeg perfor-
+mance with ResNet18/50, Swin B, LSKNet S, and ConvNeXt B
+backbones.
+Method/Backbone ResNet18 ResNet50 SwinB LSKNetS ConvNeXtB
+σ=0.5 53.82 53.90 53.68 54.46 54.20
+σ=1.0 53.28 53.92 54.21 54.47 54.89
+σ=1.5 53.40 53.50 53.35 54.45 55.23
+σ=2.0 52.92 53.97 53.89 54.02 54.87
+σ=learnable 54.48 54.74 54.46 55.37 55.63
+K= 353.94 53.21 53.50 54.11 54.12
+K= 554.44 54.70 54.42 55.19 55.24
+K= 7 54.48 54.74 54.46 55.37 55.63
+K= 954.3554.7754.30 55.26 55.40
+numheads=2 53.92 54.07 54.21 54.49 54.99
+numheads=4 54.03 54.43 54.27 54.36 55.56
+numheads=8 54.48 54.74 54.46 55.37 55.63
+numheads=16 54.4254.7554.39 55.35 55.50
+dam and Vaihingen, it restores clear car contours and
+roof boundaries, effectively reducing Building–Tree and
+Car–Impervious Surfaces misclassifications. Overall, Hy-
+Seg enhances structural integrity, enforces boundary coher-
+ence, and mitigates semantic ambiguity across diverse ur-
+ban and rural scenes. Additional visual analyses are pro-
+vided in theSupplementary Material.
+4.3. Ablation Study
+We conduct ablation experiments on the LoveDA dataset
+to quantify the contribution of each HySeg component.
+Four representative backbones are evaluated—UNetFormer
+(ResNet18/50), LSKNet (LSKNet S), DCSwin (Swin B),
+and D2LS(ConvNeXt B). Results are reported as mIoU (↑)
+on the LoveDAonline testingserver under identical training
+settings as the baselines, ensuring that the observed gains
+originate solely from HySeg’s architecture.
+Component-Wise Analysis.As summarized in Tab. 3,
+the ablation on LoveDA reveals how HySeg components
+complement each other across five backbones (ResNet-
+18/50, Swin B, LSKNet S, ConvNeXt B). The baseline
+performance gradually improves as additional modules are
+introduced. While DAS alone brings only modest gains,
+fusing MeanStruct priors already enhances mIoU, show-
+ing that generative cues are beneficial even without ex-
+plicit affinity modeling. Once P2A is enabled, priors are
+properly translated into class- and topology-aware affinities,
+leading to a substantial leap. Disabling affinity propaga-
+tion (MeanStruct + P2A + DAS w/o Affinity & Message)
+causes a pronounced decline, highlighting the importance
+of message passing for structural reasoning. Removing self-
+attention leads to only mild degradation, implying that local
+propagation guided by priors dominates the learning pro-
+cess. The complete HySeg consistently yields the strongest
+results, underscoring the effectiveness of its unified genera-
+tive–discriminative design.
+Ablation Studies on Key Designs and Hyperparameters.
+Tab. 4 shows ablation results on the LoveDA dataset using
+five backbones, including ResNet18, ResNet50, Swin B,
+LSKNet S, and ConvNeXt B, measured by mIoU. The
+baseline (Backbone + Standard Head) serves as the refer-
+ence. Adding different priors consistently boosts perfor-
+mance; for example, the ResNet18 prior raises its mIoU
+from 52.42 to 52.74, and similar gains are observed for
+Swin B. The MeanStruct prior yields the largest improve-
+ment across all backbones, reaching 54.48 for ResNet18
+and 55.63 for ConvNeXt B. These results highlight the im-
+portance of generative priors, particularly MeanStruct, in
+enhancing structural coherence and segmentation accuracy.
+As shown in Tab. 5, we conduct ablations on key hyper-
+parameters,i.e.,σ,K, and the number of attention heads.
+For the Gaussian bandwidthσ, dynamic learning yields the
+6416
+
+
+=== PAGE 8 ===
+Table 6.Efficiency–accuracy trade-off.Evaluated with batch
+size 1 and 512×512 inputs on an NVIDIA A800 GPU. Both accu-
+racy and computational cost are reported.
+Method/BackboneFPS↑GFlops↓Params(M)↓mIoU↑
+(1) Pure Discriminative Family
+UNetFormerR18 188.12 23.48 11.72 52.42
+UNetFormerR50 124.85 48.36 24.24 52.52
+LSKNetS 84.69 31.46 14.39 54.01
+D2LSConvNeXtB 47.47 186.51 94.03 55.27
+(2) Pure Generative Family
+Conditional Diffusion 5.03 527.14 320.17 /Model (10-NFE)
+Conditional Flow-based10.24 260.33 108.22 /Model (10-NFE)
+UNet2DModel 3.68 714.10 38.83 /+ DPM-Solver (20-NFE)
+UNet2DModel 40.70 49.53 38.83 /+ DPM-Solver (1-NFE)
+(3) Hybrid Family (Ours)
+HySegR18 80.83 29.12 15.32+13.52 54.48
+HySegR50 76.25 57.04 15.32+29.27 54.74
+HySegLSKS 61.06 36.88 15.32+15.97 55.37
+HySegConvNeXtB 50.63 183.36 15.32+90.62 55.63
+largest gain over fixed values (0.5–2.0), demonstrating the
+advantage of adaptive neighborhood sensitivity. Within the
+P2A module,K= 7achieves the best balance between ac-
+curacy and efficiency among tested sizes (3, 5, 7, 9). Vary-
+ing the number of attention heads (2, 4, 8, 16) shows that
+eight heads offer the most favorable trade-off between per-
+formance and computation. These results emphasize the
+importance of tuningσ,K, and attention heads to fully ex-
+ploit HySeg’s segmentation accuracy and efficiency.
+Ablation of Performance–Efficiency Trade-off.As
+summarized in Tab. 6, we compare discriminative, gen-
+erative, and hybrid paradigms in terms of FPS, GFLOPs,
+parameters, and mIoU. Purely discriminative models de-
+liver the highest throughput but at the cost of accu-
+racy: UNetFormer–ResNet18 reaches 188.12 FPS yet only
+52.42 mIoU, while LSKNet S provides a slightly better
+trade-off (54.01 mIoU with 14.39 M parameters). In con-
+trast, conditional diffusion/flow models are used only as
+prior generators; even with 10-NFE sampling they require
+up to 527.14 GFLOPs and 320.17 M parameters and run at
+5.03–10.24 FPS, underscoring the efficiency gap. Even with
+DPM-Solver acceleration, UNet2DModel + DPM-Solver
+(1-NFE) reaches only 40.70 FPS with 49.53 GFLOPs. Our
+hybrid HySeg family reconciles this gap: for instance, Hy-
+Seg–ResNet18 attains 54.48 mIoU at 80.83 FPS, combining
+generative-level accuracy with discriminative-level speed.
+Each variant integrates a lightweight MeanFlow predictor
+(15.32 M parameters, 1 NFE) for fast structural inference,
+introducing negligible latency in the second stage. Beyond
+numeric gains, this design demonstrates that injecting gen-
+erative priors need not compromise real-time performance,
+pointing toward a scalable path for structurally aware seg-
+mentation in resource-constrained settings.
+CNN-PriorSelf-Attention-PriorMeanStruct-Prior
+Scale-32 Scale-16 Scale-8 Output
+Image
+Figure 5.Visual comparisonof segmentation results using dif-
+ferent priors: CNN prior, self-attention prior, and our MeanStruct
+prior. Highlighted regions show that the MeanStruct prior yields
+sharper boundaries and stronger topological coherence, especially
+in complex structures such as the overpass (red box), demonstrat-
+ing its effectiveness in resolving semantic ambiguities and preserv-
+ing structural relationships.
+Qualitative Representation Analysis.Feature represen-
+tations learned under three priors,i.e.,CNN, self-attention,
+and MeanStruct, are compared across spatial scales of 32,
+16, and 8, as illustrated in Fig. 5. Each prior exhibits dis-
+tinct structural behavior. The CNN prior emphasizes fine-
+grained textures but suffers from limited receptive fields, re-
+sulting in fragmented, texture-biased activations. The self-
+attention prior broadens contextual awareness and mod-
+els long-range dependencies, yet its multi-scale fusion re-
+mains coarse with blurred boundaries. In contrast, the
+proposed MeanStruct prior constructs a hierarchical pyra-
+mid that jointly encodes global topology and inter-scale
+coherence, yielding sharper boundaries and more seman-
+tically consistent features. This advantage is especially
+evident in complex regions (e.g., the overpass in the red
+box), where MeanStruct preserves connectivity and accu-
+rately delineates overlapping components. By embedding
+topology-aware relationships across scales, it produces con-
+tinuous and structurally faithful representations that outper-
+form other priors on complex real-world layouts.
+5. Conclusions
+We introduced HySeg, a hybrid generative–discriminative
+framework that reformulates remote sensing segmentation
+as posterior inference guided by generative structural pri-
+ors. By coupling the MeanStruct prior learner with the P2A
+and DAS modules, HySeg bridges appearance perception
+and structural reasoning. This design enables topology-
+aware priors learned via generative transport to guide dis-
+criminative inference, yielding spatially coherent and se-
+mantically consistent predictions. Extensive experiments
+on four benchmarks demonstrate its strong accuracy, robust-
+ness, and efficiency. Overall, HySeg represents a promising
+step toward unifying generative structure learning with dis-
+criminative visual understanding.
+6417
+
+
+=== PAGE 9 ===
+Acknowledgment.This work was supported in part
+by the Natural Science Foundation of Fujian Province
+under Grants 2020J01571 and 2016J01281; in part by
+the Science and Technology Innovation Special Fund of
+Fujian Agriculture and Forestry University under Grant
+KFB25036A; and in part by the Research Fund of Fu-
+jian University of Technology under Grant GY-Z23210.
+References
+[1] Peri Akiva, Matthew Purri, and Matthew Leotta. Self-
+supervised material and texture representation learning for
+remote sensing tasks. InCVPR, 2022. 2
+[2] Hu Cao, Yueyue Wang, Joy Chen, Dongsheng Jiang, Xi-
+aopeng Zhang, Qi Tian, and Manning Wang. Swin-Unet:
+UNet-like pure transformer for medical image segmentation.
+InECCV, 2022. 1, 2
+[3] Qinglong Cao, Yuntian Chen, Chao Ma, and Xiaokang Yang.
+Open-vocabulary remote sensing image semantic segmenta-
+tion.arXiv preprint arXiv:2409.07683, 2024. 1
+[4] Liang-Chieh Chen, George Papandreou, Florian Schroff, and
+Hartwig Adam. Rethinking atrous convolution for seman-
+tic image segmentation.arXiv preprint arXiv:1706.05587,
+2017. 1, 2
+[5] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L. Yuille. DeepLab: Semantic im-
+age segmentation with deep convolutional nets, atrous con-
+volution, and fully connected crfs.IEEE Transactions on
+Pattern Analysis and Machine Intelligence, 40(4):834– 848,
+2018. 1, 2
+[6] Liang-Chieh Chen, Yukuan Zhu, George Papandreou, Flo-
+rian Schroff, and Hartwig Adam. Encoder–decoder with
+atrous separable convolution for semantic image segmenta-
+tion. InECCV, 2018. 6
+[7] Seun-An Choe, Ah-Hyung Shin, Keon-Hee Park, Jinwoo
+Choi, and Gyeong-Moon Park. Open-set domain adaptation
+for semantic segmentation. InCVPR, 2024. 2
+[8] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. InCVPR,
+2016. 5
+[9] Ilke Demir, Krzysztof Koperski, David Lindenbaum, Guan
+Pang, Jing Huang, Saikat Basu, Forest Hughes, Devis Tuia,
+and Ramesh Raskar. DeepGlobe 2018: A challenge to parse
+the earth through satellite images. InCVPRW, 2018. 5
+[10] Ruiqi Feng, Chenglei Yu, Wenhao Deng, Peiyan Hu, and
+Tailin Wu. On the guidance of flow matching. InICML,
+2025. 3
+[11] Jun Fu, Jing Liu, Haijie Tian, Yong Li, Yongjun Bao, Zhiwei
+Fang, and Hanqing Lu. Dual attention network for scene
+segmentation. InCVPR, 2019. 6
+[12] Zhengyang Geng, Mingyang Deng, Xingjian Bai, J. Zico
+Kolter, and Kaiming He. Mean flows for one-step genera-
+tive modeling.arXiv preprint arXiv:2505.13447, 2025. 2, 3,
+4
+[13] David Griffiths and Jan Boehm. Improving public data for
+building segmentation from convolutional neural networks
+CNNs for fused airborne lidar and image data using active
+contours.ISPRS Journal of Photogrammetry and Remote
+Sensing, 154:70–83, 2019. 1
+[14] Yi Guo, Wei Wang, Zhihang Yuan, Rong Cao, Kuan Chen,
+Zhengyang Chen, Yuanyuan Huo, Yang Zhang, Yuping
+Wang, Shouda Liu, and Yuxuan Wang. SplitMeanFlow: In-
+terval splitting consistency in few-step generative modeling.
+arXiv preprint arXiv:2507.16884, 2025. 2
+[15] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+Deep residual learning for image recognition. InCVPR,
+2016. 5
+[16] Huiyang Hu, Peijin Wang, Hanbo Bi, Boyuan Tong, Zhaozhi
+Wang, Wenhui Diao, Hao Chang, Yingchao Feng, Ziqi
+Zhang, Yaowei Wang, Qixiang Ye, Kun Fu, and Xian Sun.
+RS-vHeat: Heat conduction guided efficient remote sensing
+foundation model. InICCV, 2025. 2
+[17] Xiaoling Hu, Fuxin Li, Dimitris Samaras, and Chao Chen.
+Topology-preserving deep image segmentation. InNeurIPS,
+2019. 5
+[18] Shiqi Huang, Shuting He, Huaiyuan Qin, and Bihan Wen.
+SCORE: Scene context matters in open-vocabulary remote
+sensing instance segmentation. InICCV, 2025. 2
+[19] Chanyoung Kim, Woojung Han, Dayun Ju, and Seong Jae
+Hwang. EAGLE: Eigen aggregation learning for object-
+centric unsupervised semantic segmentation. InCVPR,
+2024. 2
+[20] Marcel Kollovieh, Marten Lienen, David L ¨udke, Leo
+Schwinn, and Stephan G ¨unnemann. Flow matching with
+gaussian process priors for probabilistic time series forecast-
+ing. InICLR, 2025. 3
+[21] Kaiyu Li, Ruixun Liu, Xiangyong Cao, Xueru Bai, Feng
+Zhou, Deyu Meng, and Zhi Wang. SegEarth-OV: Towards
+training-free open-vocabulary segmentation for remote sens-
+ing images. InCVPR, 2025. 1, 2
+[22] Rui Li, Shunyi Zheng, Ce Zhang, Chenxi Duan, Jianlin Su,
+Libo Wang, and Peter M. Atkinson. Multiattention network
+for semantic segmentation of fine-resolution remote sensing
+images.IEEE Transactions on Geoscience and Remote Sens-
+ing, 60:5607713, 2021. 6
+[23] Xin Li, Fan Yang, Ao Luo, Zhicheng Jiao, Hong Cheng, and
+Zicheng Liu. EFRNet: Efficient feature reconstructing net-
+work for real-time scene parsing.IEEE Transactions on Mul-
+timedia, 24:2852–2865, 2022. 2
+[24] Yuxuan Li, Xiang Li, Yimain Dai, Qibin Hou, Yongxi-
+ang Liu Li Liu, Ming-Ming Cheng, and Jian Yang. LSKNet:
+A foundation lightweight backbone for remote sensing.
+IJCV, 133:1410–1431, 2025. 5, 6
+[25] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maxim-
+ilian Nickel, and Matthew Le. Flow matching for generative
+modeling. InICLR, 2023. 3, 4
+[26] Sihan Liu, Yiwei Ma, Xiaoqing Zhang, Haowei Wang, Ji-
+ayi Ji, Xiaoshuai Sun, and Rongrong Ji. Rotated multi-scale
+interaction network for referring remote sensing image seg-
+mentation. InCVPR, 2024. 1, 2
+[27] Wang Liu, Puhong Duan, Zhuojun Xie, Xudong Kang, and
+Shutao Li. Learn from segment anything model: Local re-
+gion homogenizing for cross-domain remote sensing image
+segmentation. InIGARSS, 2024. 2
+6418
+
+
+=== PAGE 10 ===
+[28] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow
+straight and fast: Learning to generate and transfer data with
+rectified flow.arXiv preprint arXiv:2209.03003, 2022. 3
+[29] Yinhe Liu, Sunan Shi, Junjue Wang, and Yanfei Zhong. See-
+ing beyond the patch: Scale-adaptive semantic segmentation
+of high-resolution remote sensing imagery based on rein-
+forcement learning. InICCV, 2023. 1, 2
+[30] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng
+Zhang, Stephen Lin, and Baining Guo. Swin transformer:
+Hierarchical vision transformer using shifted windows. In
+ICCV, 2021. 5
+[31] Zhuang Liu, Hanzi Mao, Chao-Yuan Wu, Christoph Feicht-
+enhofer, Trevor Darrell, and Saining Xie. A ConvNet for the
+2020s. InCVPR, 2022. 5
+[32] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully
+convolutional networks for semantic segmentation. In
+CVPR, 2015. 5
+[33] Ao Luo, Fan Yang, Xin Li, Rui Huang, and Hong Cheng.
+EKENet: Efficient knowledge enhanced network for real-
+time scene parsing.Pattern Recognition, 111:107671, 2021.
+2
+[34] Ao Luo, Fan Yang, Xin Li, Yuezun Li, Zhicheng Jiao, Hong
+Cheng, and Siwei Lyu. Robust scene parsing by mining sup-
+portive knowledge from dataset.IEEE Transactions on Neu-
+ral Networks and Learning Systems, 34(5):2633–2646, 2023.
+2
+[35] Ao Luo, Xin Li, Fan Yang, Jiangyu Liu, Haoqiang Fan, and
+Shuaicheng Liu. FlowDiffuser: Advancing optical flow esti-
+mation with diffusion models. InCVPR, 2024. 3
+[36] Ao Luo, Xin Li, Fan Yang, Yuezun Li, Zhaoquan Yuan, Shan
+Zhao, Bing Su, and Xiao Wu. Optical flow matching: Re-
+framing optical flow as continuous transport dynamics. In
+CVPR, 2026. 3
+[37] Zifei Luo, Wenzhu Yang, Yunfeng Yuan, Ruru Gou, and Xi-
+aonan Li. Semantic segmentation of agricultural images: A
+survey.Information Processing in Agriculture, 11(2):172–
+186, 2024. 1
+[38] Ye Lyu, George V osselman, Gui-Song Xia, Alper Yilmaz,
+and Miicheal Ying Yang. UA Vid: A semantic segmentation
+dataset for uav imagery.ISPRS Journal of Photogrammetry
+and Remote Sensing, 165:108–119, 2020. 5
+[39] Xianping Ma, Qianqian Wu, Xingyu Zhao, Xiaokang Zhang,
+Man-On Pun, and Bo Huang. SAM-assisted remote sensing
+imagery semantic segmentation with object and boundary
+constraints.IEEE Transactions on Geoscience and Remote
+Sensing, 62:5636916, 2024. 6
+[40] Xiaowen Ma, Rongrong Lian, Zhenkai Wu, Hongbo Guo,
+Fan Yang, Mengting Ma, Sensen Wu, Zhenhong Du, Wei
+Zhang, and Siyang Song. LOGCAN++: Adaptive local–
+global class-aware network for semantic segmentation of re-
+mote sensing images.IEEE Transactions on Geoscience and
+Remote Sensing, 63:4404216, 2025. 6
+[41] Oscar Manas, Alexandre Lacoste, Xavier Gir ´o i Nieto, David
+Vazquez, and Pau Rodriguez. Seasonal contrast: Unsuper-
+vised pre-training from uncurated remote sensing data. In
+ICCV, 2021. 1
+[42] Ruben Pascual, Christian Ayala, Ruben Sesma, Aranzazu Ju-
+rio, Daniel Paternain, and Mikel Galar. Speeding-up dif-
+fusion models for remote sensing semantic segmentation.
+International Journal of Applied Earth Observation and
+Geoinformation, 142:104636, 2025. 2
+[43] Jie Qiu, Dizuo Cao, Linwei Dai, Xin Li, Fan Yang, Dong
+Yu, Changying Wang, Zongheng Wen, Youqin Chen, and
+Jianzhang Chen. Beyond euclidean assumptions: Geometry-
+aware adaptive routing for remote sensing segmentation. In
+AAAI, 2026. 2
+[44] Franz Rottensteiner, G ¨unter Sohn, J ¨urgen Jung, Markus
+Gerke, Christian Baillard, Sergio Benitez, and Uwe Bre-
+itkopf. International Society for Photogrammetry and Re-
+mote Sensing, 2D semantic labeling contest. Accessed: Mar.
+1, 2024. 5
+[45] Junao Shen, Qiyun Hu, Tian Feng, Xinyu Wang, Hui Cui,
+Sensen Wu, and Wei Zhang. In2nect: Inter-class and intra-
+class neural collapse tuning for semantic segmentation of im-
+balanced remote sensing images. InAAAI, 2025. 6
+[46] Suprosanna Shit, Johannes C. Paetzold, Anjany Sekuboyina,
+Ivan Ezhov, Alexander Unger, Andrey Zhylka, Josien P. W.
+Pluim, Ulrich Bauer, and Bjoern H. Menze. cldice – a novel
+topology-preserving loss function for tubular structure seg-
+mentation. InCVPR, pages 16560–16569, 2021. 5
+[47] Pengfei Song, Jinjiang Li, Zhiyong An, Hui Fan, and Limwei
+Fan. CTMFNet: Cnn and transformer multiscale fusion net-
+work of remote sensing urban scene imagery.IEEE Transac-
+tions on Geoscience and Remote Sensing, 61:5900314, 2022.
+6
+[48] Sagar Soni, Akshay Dudhane, Hiyam Debary, Mustansar
+Fiaz, Muhammad Akhtar Munir, Muhammad Sohail Danish,
+Paolo Fraccaro, Campbell D Watson, Levente J Klein, Fa-
+had Shahbaz Khan, and Salman Khan. EarthDial: Turning
+multi-sensory earth observations to interactive dialogues. In
+CVPR, 2025. 2
+[49] Vlatko Spasev, Ivica Dimitrovski, Ivan Kitanovski, and Ivan
+Chorbev. Semantic segmentation of remote sensing images:
+Definition, methods, datasets and applications. InInterna-
+tional Conference on ICT Innovations, 2024. 1
+[50] Romain Strudel, Ruben Garcia, Ivan Laptev, and Cordelia
+Schmid. Segmenter: Transformer for semantic segmenta-
+tion. InICCV, 2021. 6
+[51] Nico Stucki, Johannes C. Paetzold, Suprosanna Shit, Bjo-
+ern Menze, and Ulrich Bauer. Topologically faithful im-
+age segmentation via induced matching of persistence bar-
+codes. InInternational Conference on Machine Learning,
+pages 32678–32701, 2023. 5
+[52] Sumanth Udupa, Prajwal Gurunath, Aniruddh Sikdar, and
+Suresh Sundaram. MRFP: Learning generalizable semantic
+segmentation from sim-2-real with multi-resolution feature
+perturbation. InCVPR, 2024. 2
+[53] Fengxiang Wang, Hongzhen Wang, Di Wang, Zonghao Guo,
+Zhenyu Zhong, Long Lan, Wenjing Yang, and Jing Zhang.
+Harnessing massive satellite imagery with efficient masked
+image modeling. InICCV, 2025. 1
+[54] Jingdong Wang, Ke Sun, Tianheng Cheng, Borui Jiang,
+Chaorui Deng, Yang Zhao, Dong Liu, Yadong Mu, Mingkui
+6419
+
+
+=== PAGE 11 ===
+Tan, Xinggang Wang, Wenyu Liu, and Bin Xiao. Deep
+high-resolution representation learning for visual recogni-
+tion.IEEE Transactions on Pattern Analysis and Machine
+Intelligence, 43(10):3349–3364, 2020. 1, 2
+[55] Junjue Wang, Zhuo Zheng, Ailong Ma, Xiaoyan Lu, and
+Yanfei Zhong. LoveDA: A remote sensing land-cover dataset
+for domain-adaptive semantic segmentation. InNeurIPS,
+2021. 5
+[56] Libo Wang, Rui Li, Chenxi Duan, Ce Zhang, Xiaoliang
+Meng, and Shenghui Fang. A novel transformer-based se-
+mantic segmentation scheme for fine-resolution remote sens-
+ing images.IEEE Geoscience and Remote Sensing Letters,
+19:6506105, 2022. 5, 6
+[57] Libo Wang, Rui Li, Ce Zhang, Shenghui Fang, Chenxi Duan,
+Xiaoliang Meng, and Peter M. Atkinson. UNetFormer: A
+UNet-like transformer for efficient semantic segmentation of
+remote sensing urban scene imagery.ISPRS Journal of Pho-
+togrammetry and Remote Sensing, 190:196–214, 2022. 5,
+6
+[58] Yanheng Wang, Lianru Gao, Danfeng Hong, Jianjun Sha,
+Lian Liu, Bing Zhang, Xianhui Rong, and Yonggang Zhang.
+Mask DeepLab: End-to-end image segmentation for change
+detection in high-resolution remote sensing images.Interna-
+tional Journal of Applied Earth Observation and Geoinfor-
+mation, 104:102582. 1, 2
+[59] Bo Wen, Haochen Zhang, Dirk-Uwe G. Bartsch, William R.
+Freeman, Truong Q. Nguyen, and Cheolhong An. Topology-
+preserving image segmentation with spatial-aware persistent
+feature matching. InCVPRW, 2025. 6
+[60] Enze Xie, Wenhai Wang, Zhiding Yu, Anima Anandkumar,
+Jose M. Alvarez, and Ping Luo. SegFormer: Simple and
+efficient design for semantic segmentation with transformers.
+InNeurIPS, 2021. 1, 2
+[61] Rongtao Xu, Changwei Wang, Jiguang Zhang, Shibiao Xu,
+Weiliang Meng, and Xiaopeng Zhang. RSSFormer: Fore-
+ground saliency enhancement for remote sensing land-cover
+segmentation.IEEE Transactions on Image Processing, 32:
+1052–1064, 2023. 2
+[62] Yi Zhang, Meng-Hao Guo, Miao Wang, and Shi-Min Hu.
+Exploring regional clues in CLIP for zero-shot semantic seg-
+mentation. InCVPR, 2024. 2
+[63] Hengshuang Zhao, Jianping Shi, Xiaojuan Qi, Xiaogang
+Wang, and Jiaya Jia. Pyramid scene parsing network. In
+CVPR, 2017. 1, 2
+[64] Jianwei Zhao, Fan Yang, Xin Li, Qiang Zhai, Ao luo, Ziqi
+Ren, Zhicheng Jiao, and Hong Cheng. Genevar: Causal
+meanflow for autoregressive gene-to-wsi tile synthesis. In
+CVPR, 2026. 3
+[65] Yu Zhong, Xiao Wu, Zihan Cao, Hong-Xia Dou, and Liang-
+Jian Deng. SSDiff: Spatial–spectral integrated diffusion
+model for remote sensing pansharpening. InNeurIPS, 2024.
+2
+[66] Hao Zhu, Yan Zhu, Jiayu Xiao, Tianxiang Xiao, Yike Ma,
+Yucheng Zhang, and Feng Dai. Exact: Exploring space–
+time perceptive clues for weakly supervised satellite image
+time series semantic segmentation. InCVPR, 2025. 2
+[67] Xiaoqian Zhu, Xiangrong Zhang, Tianyang Zhang, Chaowei
+Fang, Xu Tang, and Licheng Jiao. RegionMatch: Pixel–
+region collaboration for semi-supervised semantic segmen-
+tation in remote sensing. InIJCAI, 2025. 1
+[68] Xuechao Zou, Kai Li, Junliang Xing, Yu Zhang, Shiying
+Wang, Lei Jin, and Pin Tao. DiffCR: A fast conditional
+diffusion framework for cloud removal from optical satel-
+lite images.IEEE Transactions on Geoscience and Remote
+Sensing, 62:1–14, 2024. 2
+[69] Xuechao Zou, Yue Li, Shun Zhang, Kai Li, Shiying Wang,
+Pin Tao, Junliang Xing, and Congyan Lang. Dynamic dic-
+tionary learning for remote sensing image segmentation. In
+ICCV, 2025. 5, 6
+6420

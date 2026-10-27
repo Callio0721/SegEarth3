@@ -1,0 +1,13 @@
+{
+  "baseline": 53.5638544921198,
+  "role_only": 55.817703118519454,
+  "joint": 57.486701978199164,
+  "role_gain": 2.2538486263996518,
+  "joint_over_role": 1.6689988596797107,
+  "total_gain": 3.9228474860793625,
+  "fixed_profile_role": 55.67365519156234,
+  "fixed_profile_view": 54.75078332379639,
+  "matched_interaction": 0.6261179549602303,
+  "shared_text_positive_cases": 7,
+  "shared_text_total_cases": 18
+}

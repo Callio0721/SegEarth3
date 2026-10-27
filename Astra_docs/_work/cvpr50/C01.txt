@@ -1,0 +1,1111 @@
+=== PAGE 1 ===
+Dual Semantic Guidance for Open V ocabulary Semantic Segmentation
+Zhengyang Wang1 Tingliang Feng1 Fan Lyu2 Fanhua Shang1
+Wei Feng1 Liang Wan1*
+1College of Intelligence and Computing, Tianjin University
+2New Laboratory of Pattern Recognition, Institute of Automation, Chinese Academy of Sciences
+{zywang 01, fengtl, fhshang, wfeng, lwan }@tju.edu.cn fan.lyu@cripac.ia.ac.cn
+Abstract
+Open-vocabulary semantic segmentation aims to en-
+able models to segment arbitrary categories. Currently,
+though pre-trained Vision-Language Models (VLMs) like
+CLIP have established a robust foundation for this task
+by learning to match text and image representations from
+large-scale data, their lack of pixel-level recognition neces-
+sitates further ﬁne-tuning. Most existing methods leverage
+text as a guide to achieve pixel-level recognition. How-
+ever , the inherent biases in text semantic descriptions and
+the lack of pixel-level supervisory information make it chal-
+lenging to ﬁne-tune CLIP-based models effectively. This pa-
+per considers leveraging image-text data to simultaneously
+capture the semantic information contained in both image
+and text, thereby constructing Dual Semantic Guidance and
+corresponding pixel-level pseudo annotations. Particularly,
+the visual semantic guidance is enhanced via explicitly ex-
+ploring foreground regions and minimizing the inﬂuence of
+background. The dual semantic guidance is then jointly uti-
+lized to ﬁne-tune CLIP-based segmentation models, achiev-
+ing decent ﬁne-grained recognition capabilities. As the
+comprehensive evaluation shows, our method outperforms
+state-of-art results with large margins, on eight commonly
+used datasets with/without background.
+1. Introduction
+Open-V ocabulary Semantic Segmentation (OVSS) aims to
+segment arbitrary categories in open environments, distin-
+guishing itself from traditional semantic segmentation [ 1–
+3], which operates within a predeﬁned set of categories. Re-
+cently, Visual-Language Models (VLMs) such as CLIP [ 4]
+and Align [5] demonstrate exceptional capabilities in align-
+ing textual descriptions with corresponding images, mak-
+ing them highly suitable for open-vocabulary tasks. How-
+ever, these VLMs with image-level visual-text alignment
+lack ﬁne-grained expressive power, resulting in poor seg-
+mentation precision when directly applied to the OVSS
+*Liang Wan is the corresponding author of this paper.
+task. Currently, several approaches [ 6– 10] train segmen-
+tation models based on VLMs using image-text data which
+is rich in semantic information. This enables the models
+to acquire ﬁne-grained segmentation capabilities while re-
+taining their generalization ability across open-vocabulary
+categories, which provides a promising strategy for tackling
+semantic segmentation tasks in open-vocabulary scenarios.
+Let’s look deeper in open-vocabulary semantic segmen-
+tation tasks utilizing VLMs: the core principle involves
+aligning pixel-level features with text embeddings, and as-
+signing each pixel a category based on these alignments.
+Currently, some methods [ 6, 8] trained on image-text data
+rely on the VLM model’s ability to align part of images
+with the complete texts, establishing weak constraints for
+segmentation training. In contrast to employing complete
+texts, some methods [ 7, 9] attempt to extract nouns from
+texts to obtain category semantic information that matches
+local regions in images. However, nouns lacking detailed
+descriptions can suffer from “Inherent biases”, which arise
+from the semantic disparity between coarse-grained text and
+corresponding images. In image-text data, the nouns in text
+often offers coarse-grained information, where ”cat” and
+”dog” are both labeled as ”animal” (Fig 1.a), yet there are
+substantial differences in image level. Moreover, some ex-
+isting methods [ 6, 9] lack the pixel-level semantic super-
+visory information to ﬁne-tune VLMs. As a result, poorly
+segmented images can still align with the corresponding text
+well, as shown in Fig 1.b.
+In this paper, we denote the semantic information used
+for matching images pixels as semantic guidance .W e
+identify that the crucial factor in improving the model’s
+ﬁne-grained segmentation performance is the establishment
+of granular semantic guidance (at both text and image level)
+and accurate segmentation annotations. To acquire more
+precise semantic guidance and segmentation labels, we ex-
+plore the feasibility of extracting semantic guidance from
+images which are abundant in semantic content. The most
+direct form is the various instances within an image, as these
+instances provide an unbiased semantic representation of
+the corresponding regions. By utilizing foundation models
+such as SAM [11], we can efﬁciently extract a large amount
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+20212
+
+
+=== PAGE 2 ===
+Model ௜
+hand, plant, ground
+Visual Semantic
+Textual Semantic
+Close - up of plants on the 
+ground protected by hands
+(c) Dual Semantic Guidance
+Dual Semantic Guidance Generation
+Dual Semantic Guidance Segmentation
+(a) Inherent biases with Nouns
+a photo of an “Animal”.
+Image encoder
+Pseudo−masksܜۻ
+Pseudo−masks࢜ۻPred ࢜ࡼ
+Pred ࢚ࡼ
+b) Limitations of Image-Text Matching
+0.00
+0.03
+0.97 dog
+person
+bus
+CLIP: Well segmented!!!
+BUT NOT!!!
+Segmenter
+Figure 1. Previous methods shortcomings and overview of Dual Semantic Guidance. (a) Relying solely on nouns leads to the convergence
+of image representations for subcategories, resulting in inherent bias. (b) The rough segmentation, or even the unsegmented dog, is
+semantically closest to the “dog” category, highlighting the limitations of using image-text matching to supervise segmentation. (c) Our
+method captures dual semantic guidance from image-text pairs, collaboratively guiding the model’s training.
+of visual semantic guidance from each image, and without
+the need for manual annotation. However, relying solely
+on visual semantic guidance deviates from the pre-training
+of VLMs and suffers from modality domain gap. To ensure
+inter-modal consistency within the VLM model, we also ex-
+tract nouns from text and match them with the instances to
+form textual semantic guidance. The dual-modality seman-
+tic guidance mechanisms harness the comprehensive infor-
+mation within image-text data, synergistically improving
+ﬁne-grained recognition capability of the VLM model.
+Speciﬁcally, we propose Dual Semantic Guidance to ex-
+tract semantic information from both visual and textual per-
+spectives within image-text data. The pipeline consists of
+Dual Semantic Guidance Generation (DSGG) and Dual Se-
+mantic Guidance Segmentation (DSGS). In DSGG, we uti-
+lize SAM to extract instances from images, and enhance vi-
+sual semantics to focus more on instance through a training-
+free Region Awareness Attention module. Subsequently,
+through clustering and ﬁltering, we attain high-quality, in-
+dependent visual semantic guidance. On the other hand,
+independent nouns are extracted from the text, which are
+then matched with the visual semantic guidance to construct
+textual semantic guidance. In DSGS, we design a training
+strategy for dual semantic guidance to collaboratively en-
+hance the model’s ﬁne-grained representation capabilities.
+Additionally, we develop the Background Screening mod-
+ule, which integrates the image feature map with the se-
+mantic guidance to jointly predict the image background.
+Our method surpasses state-of-the-art results on various test
+datasets, including coco-stuff [ 12], ADE [ 13], etc., achiev-
+ing an average mIoU of 48.3 on three datasets with back-
+ground, and 42.8 on ﬁve datasets without background.
+2. Related Work
+2.1. Vision Foundation Models
+The latest advancements in foundational vision models
+demonstrate that large-scale pre-training techniques have
+facilitated the development of potent and versatile mod-
+els [ 5, 11]. These models exhibit remarkable adaptability
+across various tasks [ 14– 19]. The emergence of highly ex-
+pressive vision-language models, such as Align and CLIP ,
+has been witnessed in the realm of large-scale contrastive
+pre-training of text-image pairs. Furthermore, SAM [ 11]
+has undergone iterative training on billions of weakly an-
+notated images, achieving remarkable segmentation per-
+formance, but it lacks semantic discriminative capabilities.
+Researchers have proposed various integration strategies:
+SAM-CLIP [ 20] constructs a uniﬁed model that skillfully
+integrates the functionalities of SAM and CLIP into a single
+framework. Open-V ocabulary SAM [21] integrates a CLIP
+encoder with a SAM decoder, bridging these two distinct
+components through knowledge distillation. Additionally,
+some methods [ 22– 24] integrate multiple models [ 25– 27]
+to collaboratively form a powerful open-vocabulary seg-
+menter. However, such methods often demand substantial
+computational resources.
+Compared to these workﬂow-based integrated models, our
+approach relies solely on CLIP’s image encoder as the seg-
+menter during the testing phase, achieving open-vocabulary
+segmentation without adding any additional modules.
+2.2. Open-V ocabulary Semantic Segmentation
+The emergence of Vision-Language Models (VLMs) with
+aligned image-language representations has brought new
+perspectives to open-vocabulary tasks. However, these
+VLM models prioritize the alignment between the holis-
+tic image and its textual description, overlooking the ﬁne-
+grained discriminative capabilities of individual pixels.
+Some works [ 28– 30] employ supplementary modules and
+mechanisms to enhance the VLM’s segmentation capabil-
+ities, which entail substantial annotation costs. On the
+other hand, some studies have focused on developing open-
+vocabulary segmentation capabilities from weakly labeled
+or even unlabeled data, categorized into text-supervised se-
+mantic segmentation and additional model-guided semantic
+20213
+
+
+=== PAGE 3 ===
+RA Attention
+Visual - Segment
+…
+Cluster
+Textual - Segment
+Text Encoder
+Lambs rest on 
+the the grass in 
+sunshine
+Text Image
+SAM
+Lambs grass sunshine
+flatten
+binary
+ary
+Ԣ ൅ ૚
+Patch Awareness Matrix ࢖࡭Class Awareness Matrix ࢉ࡭
+Q
+K
+Source Matrix ۯ
+Ԣ ൅ ૚
+ൈԢ0 0 0 0
+0 0 0 0
+Ԣ
+0 0 0 00
+Block
+k 灅૚ Block
+k 灅૛
+ܕۼ
+Visual Semantic Guidance ܄۵۴Textual Semantic Guidancec܂۵۴
+Mask ۻpooling
+Importance Matrix ܇
+Region ܀
+Region Featurerܛ۴
+add
+ܰ
+Match
+Region܀
+Avg
+Region Awareness Attention
+Figure 2. Dual Semantic Guidance Generation (DSGG). We utilize SAM to obtain coarse masks, followed by extracting foreground-
+enhanced features via “Region Awareness Attention”. The features are clustered and ﬁltered to yield visual semantic guidance. We extract
+nouns from the text to identify textual semantic guidance. 𝐻′ and𝑊′ are the input resolutions of the image encoder.
+segmentation based on the differences in training data.
+The text-supervised methods primarily focus on using
+text to establish semantic segmentation objectives, lever-
+aging image-text matching to supervise model training:
+GroupViT [ 7] matches text with clustered image regions.
+SegCLIP [ 31] augments CLIP with an inserted grouping
+module, relying on text to introduce additional supervision;
+PGSeg [10] introduces non-learnable prototype regulariza-
+tion to optimize GroupViT; TCL [ 6] utilizes region-text
+matching as a supervisory signal; CoDe [ 9] decomposes
+text into noun phrases, focusing on matching image re-
+gions with nouns. The model-guided methods employ addi-
+tional models to provide segmentation pseudo-labels, CLIP-
+DINOiser [ 32] utilizes the DINO [ 27] to generate coarse
+masks, enforcing semantic consistency within the masks;
+PixelCLIP relies on SAM [ 11] to provide regional segmen-
+tation results and employs learnable text features as guid-
+ance to supervise model training.
+Most of the aforementioned methods rely on text while
+overlooking the potential of image instances as high-quality
+visual semantic guidance to align model outputs. In case of
+lacking pixel-level annotations, their performances are sub-
+optimal. Our approach focuses on constructing dual seman-
+tic guidance from both image and text, generating pixel-
+level pseudo-labels to jointly facilitate the adaptation of the
+CLIP model to dense visual prediction tasks.
+3. Dual Semantic Guidance
+3.1. Method Overview
+Our method consists of two components: Dual Semantic
+Guidance Generation (DSGG), which produces visual and
+textual semantic guidance as dual semantic guidance for
+model training, and dual Semantic Guidance Segmentation
+(DSGS), which leverages the Dual semantic guidance to
+jointly enhance the model’s segmentation performance, as
+illustrated in Figures 2 and 4, respectively.
+Dual Semantic Guidance Generation We process image-
+text data in two parallel streams. On one hand, we input the
+image I from image-text data into SAM to produce frag-
+mented segment regions. Then we process them through
+Region Awareness Attention and Clustering to generate K
+𝑣
+independent visual semantic guidance F𝐺𝑉∈RK𝑣×𝐶 along
+with their corresponding pseudo-masks M𝑣 ∈R𝐻×𝑊×𝐾𝑣 .
+On the other hand, we extract nouns from the text, process
+them via a text encoder, and subsequently match and ﬁlter
+them against the visual semantic guidance, ultimately gen-
+erating K
+𝑡textual semantic guidance F𝐺𝑇 ∈RK𝑡×𝐶 with
+their corresponding pseudo-masks M𝑡∈R𝐻×𝑊×Kt .
+Dual Semantic Guidance Segmentation During the train-
+ing phase, we obtain the feature map F𝑖of each image via
+image encoder and compute the similarity with textual or vi-
+sual semantic guidance to respectively derive the prediction
+P, while calculating the loss based on pseudo-mask. Con-
+currently, Additionally, we provide supervision for training
+the background screening module. During the inference
+stage, we rely solely on the image encoder 𝐸
+𝑖, and text
+encoder 𝐸𝑡to extract image feature map F𝑖and category
+features. By calculating the similarity, we obtain the ﬁnal
+segmentation results P. Notably, the use of Background
+Screening remains optional.
+Figure 3. Inference ﬂow
+3.2. Dual Semantic Guidance Generation
+We process image and text separately. For image, we em-
+ploy SAM to automatically generate numerous fragmented
+20214
+
+
+=== PAGE 4 ===
+Lambs
+grass
+sunshine
+…
+࢒۱۴ۻ
+ܜ۳۱۰࢒
+…
+…
+Noun
+Image۷
+Reigon܀
+Text Enc. ܜ۳
+Image Enc. ܑ۳
+Mask Attn.
+Pred࢚ࡼ
+Pseudo-masks ܜۻ
+ܞ۳۱۰࢒
+or
+Aggregation
+BG Decoder
+…
+Pseudo-masks ܏܊ۻ
+BG screening
+
+ǡ 
+BG screening
+ܑFeature Map ܑ۴
+Visual Semantic 
+Guidance ܄۵۴
+Textual Semantic Guidance܂۵۴
+nhanced܄۵۴
+Predܞ۾
+Pred܏܊۾
+Pseudo-masks ܑۻ
+B
+background
+tokens ܏܊۳
+………………
+Feature 
+Map ۴ܑ
+Semantic 
+Guid. ۵۴
+܏܊۳۱۰࢒
+Figure 4. Dual Semantic Guidance Segmentation (DSGS). (a) DSGS encodes image to feature map 𝐹𝑖, and calculates its similarity to
+the dual semantic guidance FGV/FGT to ascertain pixel classiﬁcations. Distinct training strategies are employed for different semantic
+guidance. (b) The Background screening jointly assesses the background of the image from both spatial and categorical perspectives using
+the semantic guidance F
+GV/FGT and feature map 𝐹𝑖.
+SAM DSGG
+K=4 K=3
+Figure 5. Demonstrates the aggregation results of the DSGG on
+disorganized SAM segmentation results. Notice that, when K=4,
+it includes all instances from K=3 plus the ”leaf” instance.
+Ours:
+0.65 0.32 0.01
+plane sky runway
+Seg. - (sky)
+Ori. CLIP:
+0.11 0.87 0.01
+Image plane sky runway
+Figure 6. The irregularity and unnatural nature of the background
+cause CLIP to erroneously encode the foreground information,
+whereas Region Awareness Attention can rectify it.
+regions for images I. We initially ﬁlter these regions R
+based on the conﬁdence scores output by SAM, and then
+retain the top N
+𝑚 regions with the largest areas. Using
+the Region Awareness Attention introduced later, we obtain
+the region feature set F
+𝑠∈RN𝑚 ×𝐶 for all regions. Subse-
+quently, we apply K-means clustering to ﬁlter and merge F𝑠
+to generate K clusters. We select K𝑣clusters as the visual
+semantic guidance, denoted as F𝐺𝑉∈R𝐾𝑣×𝐶. The Pseudo-
+masks for F𝐺𝑉denote as M𝑣. Fig. 5 shows the results.
+For text, we use NLTK [33] to identify and extract nouns
+from text, and encode them through a CLIP text encoder
+𝐸𝑡to obtain features F𝑇𝑚. To ensure high semantic match-
+ing, we employ Eq.( 1) to match and ﬁlter F𝑇𝑚with F𝐺𝑉.
+Additionally, to guarantee semantic uniqueness, we utilize
+Eq.(2) for joint ﬁltering, thereby obtaining textual semantic
+guidance F
+𝐺𝑇∈R𝐾𝑡×𝐶, with its Pseudo-masks M𝑡.
+(
+Softmax
+(
+𝐹𝐺𝑉(:, :)· 𝐹𝑇
+𝑇𝑚(𝑗,:)
+))
+𝑖
+>𝑇𝐴, (1)
+(
+𝐹𝐺𝑉(:, :)· 𝐹𝑇
+𝑇𝑚(𝑗,:)
+)
+𝑖
+>𝑇𝐵, (2)
+where thresholds 𝑇𝐴= 0.8 and𝑇𝐵 = 36.
+Region Awareness Attention For each instance seg-
+mented by SAM, the instance region is “foreground” and
+other areas are “background”. CLIP tends to misclassify
+polygon instances due to background interference (mistak-
+ing “sky” for “airplane” in Fig. 6). We introduce RAA to
+focus feature extraction on the foreground. Firstly, we en-
+hance the encoder’s focus on the foreground areas within
+the regions, minimizing the inﬂuence of background and in-
+stance edges. Here, we deﬁne the importance of each patch
+as proportional to the number of foreground pixels it con-
+tains. Given an image region and its corresponding mask
+M, we utilize average pooling to obtain the importance ma-
+trix Y from its binary mask as:
+Y
+𝑖,𝑗= 1
+S2
+S−1/summationdisplay.1
+𝑚=0
+S−1/summationdisplay.1
+𝑛=0
+M[S×𝑖+𝑚, S× 𝑗+𝑛], (3)
+where S = 16 denotes the stride. The importance matrix Y
+is then normalized to the range of [0, 2]. We consider that
+during the early stage of encoding, the model should fo-
+cus on self-awareness among patches to thoroughly explore
+the foreground regions. Furthermore, to guide the model’s
+judgment of regions R towards the foreground areas in the
+later stage, we want to enhance the class token’s attention
+to these regions. For these purposes, we construct two dis-
+tinct matrix, the Patch Awareness Matrix A
+𝑝and the Class
+Awareness Matrix A𝑐as follows:
+A𝑝= concat{[ 0,..., 0], [Avg(Y), Y]repeat(𝐻′×𝑊′)},
+A𝑐= concat{[ Avg(Y), Y], [0,..., 0]repeat(𝐻′×𝑊′)}, (4)
+where 𝐻′ and𝑊′ are the input resolutions of the image en-
+coder. The constructed awareness matrix A(A𝑝, A𝑐) are
+integrated into the attention mechanism as:
+Attention(𝑄,𝐾,𝑉) = Softmax
+( 𝑄𝐾⊤
+√
+𝑑
++ 𝐴
+)
+𝑉, (5)
+Ultimately, we obtain the features F𝑠of all regions R. Fig-
+ure 6 shows the efforts of the Region Awareness Attention.
+20215
+
+
+=== PAGE 5 ===
+3.3. Dual Semantic Guidance Segmentation
+We utilize ViT-based MaskCLIP as the image encoder to ex-
+tract an image feature map F𝑖from the image. Additionally,
+we design the Background Screening module, which com-
+bines semantic information and the feature map to predict
+the background region P
+𝑏𝑔. P𝑏𝑔is subsequently fused with
+the overall prediction results P𝑟∈R𝐻×𝑊×( N+1) , where N
+is the number of semantic guidance. For textual semantic
+guidance, the prediction are derived by calculating the co-
+sine distance with image features map F
+𝑖, and then compute
+the Binary Cross-Entropy (BCE) loss with corresponding
+pseudo masks. However, coarse-grained text features im-
+pair the model’s expression of ﬁne-grained semantic infor-
+mation in images, which leads to Inherent biases. It is not
+the optimal direction for pixel features. Therefore, we intro-
+duce the Masked Feature Contrastive loss (MFC loss) to en-
+sure the average semantic representation within the mask di-
+verges from negative samples, avoiding optimizing towards
+coarse-grained text features solely. We deﬁne MFC loss as:
+L
+MFC(S) =− 1
+2𝐵
+𝐵/summationdisplay.1
+𝑘=1
+log exp(𝑆𝑘,𝑘/𝜏)
+/summationtext.1𝐵
+𝑗=1 exp(𝑆𝑘,𝑗/𝜏)
+− 1
+2𝐵
+𝐵/summationdisplay.1
+𝑘=1
+log exp(𝑆𝑘,𝑘/𝜏)
+/summationtext.1𝐵
+𝑗=1 exp(𝑆𝑗,𝑘/𝜏)
+,
+(6)
+𝑆𝑘,𝑗=
+(
+𝐹𝑖× 𝑀
+/summationtext.1𝐻
+ℎ=0
+/summationtext.1𝑊
+𝑤=0 𝑀(ℎ,𝑤)
+) T
+· 𝐹𝐺𝑇, (7)
+where 𝜏is a learnable temperature, M denotes the 0-1
+pseudo masks, 𝑆𝑘,𝑗stores the cosine similarity between the
+average representation of k-𝑡ℎinstance region and the j-𝑡ℎ
+textual semantic guidance.
+For the visual semantic guidance, it represent ﬁne-
+grained semantic expressions and serve as the optimal direc-
+tion for each pixel feature. In Eq. 8, we perform a weighted
+average based on the similarity between the feature map
+F𝑖and F𝐺𝑉 to obtain the instance semantic representation
+within the mask Mv. It is then fused with the F𝐺𝑉 by av-
+eraging, guiding pixel feature optimizing within the mask.
+This operation is termed as Guidance Enhance. We em-
+ploy BCE loss to penalize the prediction with corresponding
+pseudo masks.
+𝐹
+𝐺𝑉 = 1
+2
+( /summationdisplay.1(𝐹𝑇
+𝑖· 𝐹𝐺𝑉)× 𝑀
+/summationtext.1(𝐹𝑇
+𝑖· 𝐹𝐺𝑉)× 𝑀 · 𝐹𝑖+ 𝐹𝐺𝑉
+)
+. (8)
+Background Screening To better align with the open-
+vocabulary deﬁnition, we designate all regions not belong-
+ing to the semantic guidance (target we not aim to seg-
+ment) as background. The background screening module
+is responsible for background reasoning, fusing semantic
+guidance 𝐹
+𝐺 and contextual information of the image fea-
+ture map F𝑖to jointly predict the background P𝑏𝑔, rather
+than relying on saliency detection [ 34]. During Aggrega-
+tion [35– 37], we calculate the cosine similarity between F𝑖
+and F𝐺 to obtain initial cost map F𝑐𝑣, as shown in:
+F𝑐𝑣(𝑖, 𝑗,𝑛) = F𝑖(𝑖, 𝑗)· F𝐺(𝑛)
+∥F𝑖(𝑖, 𝑗)∥ · ∥F𝐺(𝑛)∥, (9)
+where 𝑖, 𝑗indicate the 2D spatial position, 𝑛represents the
+index of semantic guidance. Then the initial cost map is
+passed through a convolution layer to generate an updated
+cost map F
+𝑐𝑣∈R𝐻′×𝑊′× N×𝐷, where N is the number of
+semantic guidance. To endow the cost map with spatial
+awareness, we input the cost map F𝑐𝑣, fused with guidance
+from F𝑖[38]. Attention is computed across pixels to under-
+stand the spatial correlations in the image data, and F𝑐𝑣is
+updated as the input for the next step:
+F𝑐𝑣(:, :,𝑛,:) = T( F𝑐𝑣(:, :,𝑛,:)), (10)
+where 𝑛represents the index of semantic guidance, T rep-
+resents the transformer block.
+We utilize a decoder to explore the relationships among
+diverse semantic representations of pixels and subsequently
+predict the background. We integrate 𝐹𝑐𝑣, guided by se-
+mantic guidance [ 38], with learnable background tokens
+shared among pixels, through a transformer decoder to ob-
+tain the background prediction P
+𝑏𝑔∈R𝐻′×𝑊′
+:
+Pbg(𝑖, 𝑗) = D (T𝑏𝑔(𝑖, 𝑗,:, :), F𝑐𝑣(𝑖, 𝑗,:, :)), (11)
+where T𝑏𝑔represents the learnable background tokens, D
+represents a decoder.
+3.4. Supervision for Network Training
+The primary loss in our method comprises the binary cross-
+entropy (BCE) loss for two modality semantic guidance, the
+contrastive loss for textual semantic guidance, and the BCE
+loss for the Background screening. We formulate the overall
+training objective L as:
+L = 𝜆
+𝐼LBCE𝑖 +𝜆𝑇LBCE𝑡 +L MFC +L BCEbg, (12)
+where𝜆𝐼= 2.5, 𝜆𝑇 = 2.0 empirically.
+4. Experiments
+4.1. Experimental Datasets
+Training datasets: We use CC3M as training dataset.
+CC3M comprises 3 million image-text pairs and has been
+extensively used for training text-supervised semantic seg-
+mentation methods. We randomly sample 10%(300, 000)
+of the image-text pairs for training.
+Evaluation datasets: We evaluate our model on ﬁve
+commonly used semantic segmentation datasets without
+background, including COCO Stuff [ 12], ADE20K [ 13],
+PASCAL Context59 [ 44], PASCAL VOC20 [ 45], and
+CityScapes [ 46], as well as three semantic segmenta-
+tion datasets with background, including PASCAL Con-
+text60 [44], PASCAL VOC21 [45], COCO Object [12]. The
+20216
+
+
+=== PAGE 6 ===
+Table 1. We tested the performance of our method using mIoU on eight semantic segmentation benchmarks. All the results have no
+post-processing. Our method achieves state-of-the-art performance across various datasets.
+Method Publication w/ background category Avg. w/o background category Avg.VOC21 Ctx60 Object VOC20 Ctx59 Stuff ADE City
+CLIP ICML 2021 18.8 9.9 8.1 12.3 49.4 11.1 6.7 3.1 6.5 15.4
+ViL-Seg [8] ECCV 2022 37.3 18.9 18.1 24.8 -- - - - -
+ViewCo [39] ICLR 2023 52.4 23.0 23.5 33.0 -- - - - -
+SimSeg [40] CVPR 2023 57.4 26.2 29.7 37.8 -- - - - -
+OVSegmentor [41] CVPR 2023 53.8 20.4 25.1 33.1 - - - 5.6 - -
+TCL [6] CVPR 2023 51.2 24.3 30.4 35.3 77.5 30.3 19.6 14.9 23.5 33.2
+SegCLIP [31] ICML 2023 52.6 24.7 26.5 34.6 -- - - - -
+CoCu [42] NeurIPS 2023 40.9 21.2 20.3 27.5 - - 13.6 11.1 15.0 -
+PGSeg [10] NeurIPS 2023 53.2 23.8 28.7 35.2 -- - - - -
+CoDe [9] CVPR 2024 46.0 23.1 25.4 31.5 64.9 28.2 17.6 12.9 24.4 29.6
+CLIP-DINOiser [32] ECCV 2024 62.1 32.4 34.8 43.1 80.9 35.9 24.6 20.0 31.7 38.6
+PixelCLIP(ViT) [43] NeurIPS 2024 -- - 85.9 37.9 23.6 18.7 27.2 38.7
+PixelCLIP(CNN) [43] NeurIPS 2024 -- - 67.2 35.4 21.4 20.3 34.8 35.8
+Ours CVPR 2025 67.7 40.8 36.3 48.3 85.0 46.5 25.7 20.7 36.0 42.8
+mean Intersection over Union (mIoU) is employed as the
+evaluation metric.
+4.2. Implementation Detail
+We generate a vast number of masks via SAM ViT-
+B, and utilize the part-of-speech tagging algorithm from
+NLTK [33] for noun selection. For K-Means [ 47] cluster-
+ing, we set k = 5. For the segmentation model, we employ
+MaskCLIP [48] with ViT-B/16. For Region Awareness At-
+tention, we utilize CLIP with ViT-B/16. During the exper-
+iments, we set total batchsize = 128 with a initial learning
+rate = 6.4e-4, and 30,000 iterations are conducted (we open
+the last 6 layers of image encoder for training). Further-
+more, we ultimately train the model for additional 1,000
+iterations on textual semantic guidance alone to adapt it to
+the textual modality received during inference. The cosine
+schedule [49] is adopted to adjust the learning rate, and the
+weight decay of the AdamW optimizer [ 50] is set to 0.05.
+The model is trained on two RTX 3090 GPUs for ﬁve hours.
+In addition, we solely use image encoder for the datasets
+without background (w/o bg); whereas for datasets with
+background (w/ bg), we additionally activate the Back-
+ground Screening for background prediction.
+4.3. Comparison with SOTA methods
+In Table 1, we summarize and compare our method with
+existing zero-shot semantic segmentation models [ 6, 8–
+10, 31, 32, 39– 43]. For a fair comparison, we do not em-
+ploy any post-processing strategies to reﬁne or smooth seg-
+mentation masks, such as PAMR [ 51] and DenseCRF [ 52].
+Consequently, we re-evaluate CoDe [ 9] without PAMR.
+Our method outperforms the SOTA on three datasets with
+background (VOC21 +5.6%, Ctx60 +8.4%, Object +1.5%),
+achieving an average improvement of +5.2% in mIoU per-
+formance. Furthermore, our method outperforms the SOTA
+on four datasets without background (Ctx59 +8.6%, Stuff
++1.1%, ADE +0.4%, Cityscape +1.2%), with an average
+Table 2. Analysis of each stage of Semantic Guidance Generation
+Method w/ BG w/o BG
+Ours 48.3 42.8
+w/o Initial Filter 11.8 15.4
+w/o Region Awareness Attn. 45.6 39.9
+w/o Cluster 46.7 40.8
+performance improvement of +6.1% mIoU. Also note that
+our performance on VOC20 is second only to the SOTA.
+Figure 7 and 8 show the segmentation results from differ-
+ent methods. Since PixelCLIP [ 43] do not report its perfor-
+mance on datasets with background, we only compared it on
+the dataset with background. It is obvious that our method
+achieves better visual performance in both pixel classiﬁca-
+tion and segmentation boundary, validating the effective-
+ness of Dual Semantic Guidance in segmentation tasks.
+4.4. Ablation Study
+Analysis of Semantic Guidance Generation In Table 2,
+we assess the efﬁcacy of DSGG by conducting an ablation
+study on the three core steps: initial ﬁlter, Region Aware-
+ness Attention, and cluster. The initial ﬁlter stage effec-
+tively eliminates a considerable portion of low-quality in-
+stances that are often fragmented and devoid of meaning-
+ful semantic information, featuring only abrupt color edges.
+Omitting this stage (see “w/o Initially Filter”) would expose
+the model to a signiﬁcant amount of irrelevant noise dur-
+ing training. Region Awareness Attention provides accu-
+rate feature representations for each instance. The absence
+of this module (see “w/o Region Awareness Attn.”) hinders
+the model’s capacity to effectively capture instance features,
+subsequently impacting clustering and the semantic expres-
+sion of visual semantic guidance, ultimately deteriorating
+model performance. The clustering consolidates semanti-
+cally similar instances, shifting the segmentation emphasis
+to semantic categories and purging noisy data, ultimately
+yielding superior training data.
+20217
+
+
+=== PAGE 7 ===
+
+	
+ 
+		 
+Figure 7. Segmentation results with background. We compare ours against TCL [ 6], CoDe [ 9], CLIP-DINOiser [32].
+
+	 
+
+  
+
+!
+Figure 8. Segmentation results w/o background. We compare ours against CoDe [ 9], CLIP-DINOiser [ 32], PixelCLIP [53].
+Table 3. Analysis of Components in Region-Speciﬁc Attention.
+Method w/ BG w/o BG
+Ori. CLIP 45.6 39.9
++ Patch attn. 46.5 40.6
++ Class attn. 47.3 41.8
++ C/P (All Stage) 47.1 42.3
++ C/P (Diff. Stage) 48.3 42.8
+Analysis of Region Awareness Attention In Table 3,w e
+evaluate the individual contributions of the components
+within RAA. Firstly, we use the original CLIP to encode the
+image segment(see “Ori. CLIP”), but because of the inter-
+ference of the background area on the instance feature ex-
+pression, it leads to lower performance. Secondly, we ablate
+the Patch Attention and Class Attention attention separately
+to validate effectiveness (see “+ Patch attn.” and “+ Class
+attn.”). The Patch Attention bolstered the self-awareness
+of regional tokens towards foreground areas, facilitating a
+more thorough capture of instance details. Meanwhile, the
+Class Attention steered the model’s attention towards fore-
+ground regions, thereby enhancing the encoding of instance
+features. Finally, we test the simultaneous activation of
+Class Attention and Patch Attention across all blocks (+
+C/P (All Stage)), resulting in lower performance compared
+to staged method, as the latter can focus on foreground re-
+gions while retaining global information.
+Table 4. Analysis of Dual Semantic Guidance Segmentation.
+Guid. Method w/ BG w/o BG
+Textual
+Baseline 36.8 33.6
++ MFC Loss 38.3 34.7
++ Guid. Enhance 12.3 33.9
+Visual
+Baseline 28.8 39.9
++ MFC Loss 27.7 38.5
++ Guid. Enhance 30.8 42.5
+Dual Ours(Thresh 0.4) 46.5 42.8
+Ours(Bg screening) 48.3 42.8
+Analysis of Dual Semantic Guidance Segmentation In
+table 4, we conduct ablation studies on both the visual
+and textual semantic guidance, as well as two components:
+the Guidance Enhance and Masked Feature Contrastive
+Loss(see in sec.3.3). Firstly, we observe that using only
+textual semantic guidance for training(see “Textual”.) out-
+performs visual semantic guidance on datasets containing
+background classes. This advantage arises because textual
+guidance aligns with the modality of class names used dur-
+ing the testing phase, ensuring consistency in data distri-
+bution, leading to similar mean variances in the cost map
+20218
+
+
+=== PAGE 8 ===
+generated during background prediction. Visual semantic
+guidance outperforms textual semantic guidance on datasets
+without background classes(see “Visual”.). Compared to
+the latter, unbiased and rich visual semantic guidance pro-
+vides a superior description, representing the optimal di-
+rection for training. Our Dual Semantic Guidance effec-
+tively integrates the advantages of both, exhibiting opti-
+mal performance on both types of datasets. Secondly, we
+ﬁnd that applying MFC loss to textual semantic guidance
+yields better results than to visual semantic guidance (see
+“+ MFC Loss”). Compared to visual semantic guidance,
+language often suffers from feature shift due to the lack of
+speciﬁc descriptions. Therefore, it is necessary to construct
+a joint optimization framework with both positive and nega-
+tive samples to constrain the optimization direction. Simul-
+taneously, we observe adverse effects stemming from the
+modal discrepancies between Guidance Enhance and tex-
+tual semantic guidance (see “+ Guid. Enhance”). At last,
+we employ the previous method [ 6, 9] determines back-
+ground areas by comparing similarity to a threshold (see
+“Ours(Thresh 0.4)”). However, its results is less effective
+compared to ours, proving the effectiveness of predicting
+background from both spatial and categorical perspectives
+by fusing feature maps and semantic guidance.
+Table 5. Alternative Ways for Region Awareness Attention.
+CHG Enc. Method w/ BG w/o BG
+ CLIP 45.6 39.9
+Gaussian 45.7 40.2
+
+Mask background 1.3 2.7
+class prompt 15.8 13.9
+mask pooling 44.7 39.2
+Ours 48.3 42.8
+4.5. Discussion
+Alternative Ways for Region Awareness Attention In
+Table 5, we evaluated ﬁve substitution methods to validate
+the efﬁcacy of Region Awareness Attention. Firstly,we in-
+troduced Gaussian noise(see “Gaussian”) to the background
+regions, which resulted in a decline in performance, be-
+cause the addition of Gaussian noise does not ensure that
+the model focuses on the foreground regions. We also at-
+tempt to mask the attention of the patch tokens correspond-
+ing to the background regions(see “mask background”), and
+ﬁnd that this strategy severely impaired the model’s feature
+encoding capabilities. Concurrently, we explore learnable
+strategy: replacing background tokens with class-speciﬁc
+tokens [ 53] (see “class prompt”). This strategy is inferior
+to those of our method, as the lack of training stage pre-
+vent these training based methods from effectively adapt-
+ing. Finally, we refer to the mask pooling strategy of
+MaskCLIP(see “mask pooling”), whose experimental re-
+sults are lower than ours, as the low-resolution feature map
+of CLIP will contain background information and interfere
+with the instance feature expression.
+Table 6. Alternative Ways for Masked Feature Contrastive Loss.
+Contrastive Method w/ BG w/o BG
+ Baseline 45.9 41.2
+MSE loss 38.9 36.7
+
+TCL loss 46.7 41.5
+Ours(Global) 47.7 42.4
+Ours(Avg) 48.3 42.8
+Alternative Ways for Masked Feature Contrastive Loss
+In Table 6, ablation experiments validate the efﬁcacy of our
+designed loss function. The ablation study focuses solely
+on MFC Loss, while other replacement experiments main-
+tain the same BCE Loss. Firstly, we test the MSE Loss (see
+“MSE loss”) which enforces consistency between the over-
+all region embeddings and semantic guidance. The model
+performed poorly under this loss, as it neglects the infor-
+mation from negative samples. Furthermore, we evaluate
+the Feature-level TCL loss [ 6] (see “TCL loss”), which fa-
+cilitates the efﬁcient computation of features for negative
+instances. We ﬁnd that the model’s performance is infe-
+rior to ours, as this loss function compares whole-image
+features rather than instance features with the semantic
+guidance to compute the loss. Additionally, we replace
+the average pooling with similarity-weighted pooling (see
+“Ours(Global)”), but this result in a decline. Because this
+method places greater emphasis on pixel features that are
+closer to the semantic guidance, thereby underestimating
+the importance of hard positive pixels for training.
+Limitation In the Dual Semantic Guidance Generation,
+we rely on SAM to generate a multitude of masks for each
+image, a process that is time-consuming. Furthermore, akin
+to existing methods in OVSS, our visualization results still
+suffer from rough boundaries. To boost computational efﬁ-
+ciency, we opt for K=5 in K-Means due to its superior per-
+formance. Adaptive selection of K is intriguing, which will
+be considered in future work.
+5. Conclusion
+Pre-trained Vision-Language Models (VLMs) establish the
+foundation for recognizing open-vocabulary categories in
+semantic segmentation tasks. Nonetheless, the dearth of
+pixel-level annotations in image-text data hinders the provi-
+sion of thorough and accurate supervisory signals for VLM
+ﬁne-tuning. This paper introduces Semantic Guidance Gen-
+eration, which leverages extensive image-text data from vi-
+sual and textual dimensions, offering comprehensive and
+precise data to enable VLMs to attain pixel-level segmen-
+tation capability. Furthermore, we develop the Dual Se-
+mantic Guidance to facilitate efﬁcient model training. Our
+methodology concurrently and effectively elevates segmen-
+tation performance in open-vocabulary scenarios, both with
+and without the background category.
+20219
+
+
+=== PAGE 9 ===
+Acknowledgments: This work was supported in the
+National Key R&D Program of China under Grants
+2023YFF0906200, the National Natural Science Founda-
+tion of China (No. 62476196, 62276182, 62406323), China
+Postdoctoral Science Foundation (No. 2024M753496),
+and Postdoctoral Fellowship Program of CPSF (No.
+GZC20232993).
+References
+[1] Enze Xie, Wenhai Wang, Zhiding Y u, Anima Anandkumar,
+Jose M Alvarez, and Ping Luo. Segformer: Simple and ef-
+ﬁcient design for semantic segmentation with transformers.
+Neural Information Processing Systems , 34:12077–12090,
+2021. 1
+[2] Robin Strudel, Ricardo Garcia, Ivan Laptev, and Cordelia
+Schmid. Segmenter: Transformer for semantic segmenta-
+tion. In International Conference on Computer Vision, pages
+7262–7272, 2021.
+[3] Liang-Chieh Chen. Rethinking atrous convolution
+for semantic image segmentation. arXiv preprint
+arXiv:1706.05587, 2017. 1
+[4] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. In International conference on machine learning, pages
+8748–8763. PMLR, 2021. 1
+[5] Chao Jia, Yinfei Y ang, Y e Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc Le, Y un-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representa-
+tion learning with noisy text supervision. In International
+conference on machine learning , pages 4904–4916. PMLR,
+2021. 1, 2
+[6] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learn-
+ing to generate text-grounded mask for open-world semantic
+segmentation from only image-text pairs. In Computer Vi-
+sion and Pattern Recognition, pages 11165–11174, 2023. 1,
+3, 6, 7, 8
+[7] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas Breuel, Jan Kautz, and Xiaolong Wang. Groupvit:
+Semantic segmentation emerges from text supervision. In
+Computer Vision and Pattern Recognition , pages 18134–
+18144, 2022. 1, 3
+[8] Quande Liu, Y oupeng Wen, Jianhua Han, Chunjing Xu,
+Hang Xu, and Xiaodan Liang. Open-world semantic seg-
+mentation via contrasting and clustering vision-language
+embedding. In European Conference on Computer Vision ,
+pages 275–292. Springer, 2022. 1, 6
+[9] Ji-Jia Wu, Andy Chia-Hao Chang, Chieh-Y u Chuang,
+Chun-Pei Chen, Y u-Lun Liu, Min-Hung Chen, Hou-Ning
+Hu, Y ung-Y u Chuang, and Y en-Y u Lin. Image-text co-
+decomposition for text-supervised semantic segmentation.
+In Computer Vision and Pattern Recognition , pages 26794–
+26803, 2024. 1, 3, 6, 7, 8
+[10] Fei Zhang, Tianfei Zhou, Boyang Li, Hao He, Chaofan Ma,
+Tianjiao Zhang, Jiangchao Y ao, Y a Zhang, and Y anfeng
+Wang. Uncovering prototypical knowledge for weakly open-
+vocabulary semantic segmentation. Neural Information Pro-
+cessing Systems, 36:73652–73665, 2023. 1, 3, 6
+[11] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C. Berg, Wan-Y en Lo, Piotr Dollar, and
+Ross Girshick. Segment anything. In International Con-
+ference on Computer Vision , pages 4015–4026, 2023. 1, 2,
+3
+[12] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. In Computer Vision
+and Pattern Recognition, pages 1209–1218, 2018. 2, 5
+[13] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset. International
+journal of computer vision , 127:302–321, 2019. 2, 5
+[14] Yiwu Zhong, Jianwei Y ang, Pengchuan Zhang, Chunyuan
+Li, Noel Codella, Liunian Harold Li, Luowei Zhou, Xiyang
+Dai, Lu Y uan, Yin Li, et al. Regionclip: Region-based
+language-image pretraining. In Computer Vision and Pattern
+Recognition, pages 16793–16803, 2022. 2
+[15] Siyuan Li, Tobias Fischer, Lei Ke, Henghui Ding, Martin
+Danelljan, and Fisher Y u. Ovtrack: Open-vocabulary multi-
+ple object tracking. In Computer Vision and Pattern Recog-
+nition, pages 5567–5577, 2023.
+[16] Renrui Zhang, Ziyu Guo, Wei Zhang, Kunchang Li, Xu-
+peng Miao, Bin Cui, Y u Qiao, Peng Gao, and Hongsheng Li.
+Pointclip: Point cloud understanding by clip. In Computer
+Vision and Pattern Recognition, pages 8552–8562, 2022.
+[17] Y uheng Lu, Chenfeng Xu, Xiaobao Wei, Xiaodong Xie,
+Masayoshi Tomizuka, Kurt Keutzer, and Shanghang Zhang.
+Open-vocabulary point-cloud object detection without 3d an-
+notation. In Computer Vision and Pattern Recognition, pages
+1190–1199, 2023.
+[18] Chen Ju, Tengda Han, Kunhao Zheng, Y a Zhang, and Weidi
+Xie. Prompting visual-language models for efﬁcient video
+understanding. In European Conference on Computer Vi-
+sion, pages 105–124. Springer, 2022.
+[19] Runnan Chen, Y ouquan Liu, Lingdong Kong, Xinge Zhu,
+Y uexin Ma, Yikang Li, Y uenan Hou, Y u Qiao, and Wenping
+Wang. Clip2scene: Towards label-efﬁcient 3d scene under-
+standing by clip. In Computer Vision and Pattern Recogni-
+tion, pages 7020–7030, 2023. 2
+[20] Haoxiang Wang, Pavan Kumar Anasosalu V asu, Fartash
+Faghri, Raviteja V emulapalli, Mehrdad Farajtabar, Sachin
+Mehta, Mohammad Rastegari, Oncel Tuzel, and Hadi
+Pouransari. Sam-clip: Merging vision foundation models
+towards semantic and spatial understanding. In Computer
+Vision and Pattern Recognition, pages 3635–3647, 2024. 2
+[21] Haobo Y uan, Xiangtai Li, Chong Zhou, Yining Li, Kai
+Chen, and Chen Change Loy. Open-vocabulary sam: Seg-
+ment and recognize twenty-thousand classes interactively. In
+European Conference on Computer Vision , pages 419–437.
+Springer, 2025. 2
+[22] Laurynas Karazija, Iro Laina, Andrea V edaldi, and Christian
+Rupprecht. Diffusion models for open-vocabulary segmen-
+tation. In European Conference on Computer Vision , pages
+299–317. Springer, 2025. 2
+20220
+
+
+=== PAGE 10 ===
+[23] Tianhe Ren, Shilong Liu, Ailing Zeng, Jing Lin, Kunchang
+Li, He Cao, Jiayu Chen, Xinyu Huang, Y ukang Chen, Feng
+Y an, et al. Grounded sam: Assembling open-world models
+for diverse visual tasks. arXiv preprint arXiv:2401.14159 ,
+2024.
+[24] Y uan Wang, Rui Sun, Naisong Luo, Y uwen Pan, and Tianzhu
+Zhang. Image-to-image matching via foundation models: A
+new perspective for open-vocabulary semantic segmentation.
+In Computer Vision and Pattern Recognition , pages 3952–
+3963, 2024. 2
+[25] Robin Rombach, Andreas Blattmann, Dominik Lorenz,
+Patrick Esser, and Bj¨orn Ommer. High-resolution image syn-
+thesis with latent diffusion models. In Computer Vision and
+Pattern Recognition, pages 10684–10695, 2022. 2
+[26] Shilong Liu, Zhaoyang Zeng, Tianhe Ren, Feng Li, Hao
+Zhang, Jie Y ang, Qing Jiang, Chunyuan Li, Jianwei Y ang,
+Hang Su, et al. Grounding dino: Marrying dino with
+grounded pre-training for open-set object detection. arXiv
+preprint arXiv:2303.05499, 2023.
+[27] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´eJ ´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. In In-
+ternational Conference on Computer Vision , pages 9650–
+9660, 2021. 2, 3
+[28] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter V ajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. In Computer Vision and Pattern Recog-
+nition, pages 7061–7070, 2023. 2
+[29] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. In Computer Vision and Pattern Recognition ,
+pages 2945–2954, 2023.
+[30] Boyi Li, Kilian Q Weinberger, Serge Belongie, Vladlen
+Koltun, and Ren ´e Ranftl. Language-driven semantic seg-
+mentation. arXiv preprint arXiv:2201.03546, 2022. 2
+[31] Huaishao Luo, Junwei Bao, Y ouzheng Wu, Xiaodong He,
+and Tianrui Li. Segclip: Patch aggregation with learnable
+centers for open-vocabulary semantic segmentation. In In-
+ternational conference on machine learning , pages 23033–
+23044. PMLR, 2023. 3, 6
+[32] Monika Wysocza ´nska, Oriane Sim ´eoni, Micha ¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzci ´nski, and Patrick P ´erez.
+Clip-dinoiser: Teaching clip a few dino tricks. In European
+Conference on Computer Vision, 2024. 3, 6, 7
+[33] Steven Bird, Ewan Klein, and Edward Loper. Natural lan-
+guage processing with Python: analyzing text with the natu-
+ral language toolkit. ” O’Reilly Media, Inc.”, 2009. 4, 6
+[34] Monika Wysocza ´nska, Micha ¨
+el Ramamonjisoa, Tomasz
+Trzci´nski, and Oriane Sim ´eoni. Clip-diy: Clip dense infer-
+ence yields open-vocabulary semantic segmentation for-free.
+In Computer Vision and Pattern Recognition , pages 1403–
+1413, 2024. 5
+[35] Seokju Cho, Sunghwan Hong, Sangryul Jeon, Y unsung Lee,
+Kwanghoon Sohn, and Seungryong Kim. Cats: Cost aggre-
+gation transformers for visual correspondence. Neural Infor-
+mation Processing Systems, 34:9011–9023, 2021. 5
+[36] Seokju Cho, Sunghwan Hong, and Seungryong Kim.
+Cats++: Boosting cost aggregation with convolutions and
+transformers. IEEE Transactions on Pattern Analysis and
+Machine Intelligence, 45(6):7174–7194, 2022.
+[37] Sunghwan Hong, Seokju Cho, Jisu Nam, Stephen Lin, and
+Seungryong Kim. Cost aggregation with 4d convolutional
+swin transformer for few-shot segmentation. In European
+Conference on Computer Vision , pages 108–126. Springer,
+2022. 5
+[38] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. In Computer Vision and Pattern Recognition , pages
+4113–4123, 2024. 5
+[39] Pengzhen Ren, Changlin Li, Hang Xu, Yi Zhu, Guan-
+grun Wang, Jianzhuang Liu, Xiaojun Chang, and Xiaodan
+Liang. Viewco: Discovering text-supervised segmentation
+masks via multi-view semantic consistency. arXiv preprint
+arXiv:2302.10307, 2023. 6
+[40] Muyang Yi, Quan Cui, Hao Wu, Cheng Y ang, Osamu
+Y oshie, and Hongtao Lu. A simple framework for text-
+supervised semantic segmentation. In Computer Vision and
+Pattern Recognition, pages 7071–7080, 2023. 6
+[41] Jilan Xu, Junlin Hou, Y uejie Zhang, Rui Feng, Yi Wang,
+Y u Qiao, and Weidi Xie. Learning open-vocabulary seman-
+tic segmentation models from natural language supervision.
+In Computer Vision and Pattern Recognition , pages 2935–
+2944, 2023. 6
+[42] Y un Xing, Jian Kang, Aoran Xiao, Jiahao Nie, Ling Shao,
+and Shijian Lu. Rewrite caption semantics: Bridging se-
+mantic gaps for language-supervised semantic segmentation.
+Neural Information Processing Systems, 36, 2024. 6
+[43] Heeseong Shin, Chaehyun Kim, Sunghwan Hong, Seokju
+Cho, Anurag Arnab, Paul Hongsuck Seo, and Seungryong
+Kim. Towards open-vocabulary semantic segmentation with-
+out semantic labels. arXiv preprint arXiv:2409.19846, 2024.
+6
+[44] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Y uille. The role of context for object detection and se-
+mantic segmentation in the wild. In Computer Vision and
+Pattern Recognition, pages 891–898, 2014. 5
+[45] Mark Everingham, Luc V an Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge. International journal of computer
+vision, 88:303–338, 2010. 5
+[46] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. In Computer
+Vision and Pattern Recognition, pages 3213–3223, 2016. 5
+[47] J MacQueen. Some methods for classiﬁcation and anal-
+ysis of multivariate observations. In Proceedings of 5-th
+Berkeley Symposium on Mathematical Statistics and Prob-
+ability/University of California Press , 1967. 6
+[48] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. In European Conference on Com-
+puter Vision, pages 696–712. Springer, 2022. 6
+20221
+
+
+=== PAGE 11 ===
+[49] Alexander Quinn Nichol and Prafulla Dhariwal. Improved
+denoising diffusion probabilistic models. In International
+conference on machine learning , pages 8162–8171. PMLR,
+2021. 6
+[50] I Loshchilov. Decoupled weight decay regularization. arXiv
+preprint arXiv:1711.05101, 2017. 6
+[51] Nikita Araslanov and Stefan Roth. Single-stage semantic
+segmentation from image labels. In 2020 IEEE/CVF Confer-
+ence on Computer Vision and Pattern Recognition (CVPR) ,
+Jun 2020. 6
+[52] Philipp Kr ¨ahenb¨uhl and Vladlen Koltun. Efﬁcient inference
+in fully connected crfs with gaussian edge potentials. Neu-
+ral Information Processing Systems,Neural Information Pro-
+cessing Systems, Dec 2011. 6
+[53] Y ong Liu, Sule Bai, Guanbin Li, Yitong Wang, and Y ansong
+Tang. Open-vocabulary segmentation with semantic-assisted
+calibration. In Computer Vision and Pattern Recognition ,
+pages 3491–3500, 2024. 7, 8
+20222

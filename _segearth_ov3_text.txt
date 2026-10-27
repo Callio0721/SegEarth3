@@ -1,0 +1,1253 @@
+
+===== PAGE 1 =====
+SegEarth-OV3: Exploring SAM 3 for Open-V ocabulary Semantic
+Segmentation in Remote Sensing Images
+Kaiyu Li1,∗, Shengqi Zhang2,∗, Yujie Wang2,∗, Yupeng Deng3, Zhi Wang1, Deyu Meng4,5,6, Xiangyong Cao 2,5,†
+1School of Software Engineering, Xi’an Jiaotong University, Xi’an, China
+2School of Computer Science and Technology, Xi’an Jiaotong University, Xi’an, China
+3School of Information and Communications Engineering, Xi’an Jiaotong University, Xi’an, China
+4School of Mathematics and Statistics, Xi’an Jiaotong University, Xi’an, China
+5Ministry of Education Key Lab of Intelligent Network Security, Xi’an, China
+6Pazhou Laboratory (Huangpu), Radarweg 29, Guangzhou, China
+Abstract
+Most existing methods for training-free open-vocabulary semantic segmentation are based on CLIP. While
+these approaches have made progress, they often face challenges in precise localization or require complex
+pipelines to combine separate modules, especially in remote sensing scenarios where numerous dense and
+small targets are present. Recently, Segment Anything Model 3 (SAM 3) was proposed, unifying segmentation
+and recognition in a promptable framework. In this paper, we present a comprehensive exploration of applying
+SAM 3 to the remote sensing open-vocabulary tasks (i.e., 2D semantic segmentation, change detection, and
+3D semantic segmentation) without any training. First, we implement a mask fusion strategy that combines the
+outputs from SAM 3’s semantic segmentation head and the Transformer decoder (instance head). This allows
+us to leverage the strengths of both heads for better land coverage. Second, we utilize the presence score from
+the presence head to filter out categories that do not exist in the scene, reducing false positives caused by the
+vast vocabulary sizes and patch-level processing in geospatial scenes. Furthermore, we extend our method to
+open-vocabulary change detection by a joint instance- and pixel-level verification strategy built directly upon
+our fused logits. We evaluate our method on extensive remote sensing datasets and tasks, including 20 segmen-
+tation datasets, 3 change detection datasets, and a 3D segmentation dataset. Experiments show that our method
+achieves promising performance, demonstrating the potential of SAM 3 for remote sensing open-vocabulary
+tasks. Our code is released athttps://github.com/earth-insights/SegEarth-OV-3.
+KeywordsRemote sensing semantic segmentation, Open-vocabulary semantic segmentation, Open-vocabulary change
+detection, 3D segmentation, GaoFen series images
+1 Introduction
+Semantic segmentation is a fundamental task in remote sensing
+analysis, enabling dense, pixel-level understanding of Earth ob-
+servation scenes. Traditionally, segmentation models were re-
+stricted to a closed set of predefined categories, limiting their
+applicability in dynamic, open-world scenarios where visual
+concepts are virtually infinite. To overcome this limitation,
+Open-V ocabulary Semantic Segmentation (OVSS) has emerged
+as a critical research direction (Li et al., 2025c). By leveraging
+the rich semantic knowledge embedded in pre-trained Vision-
+Language Models (VLMs), remote sensing OVSS aims to seg-
+ment and recognize image regions based on arbitrary text de-
+scriptions, effectively generalizing to categories unseen during
+training. This capability is essential for diverse applications,
+e.g., urban planning (Li et al., 2024b) and disaster monitor-
+ing (Wang et al., 2025), where the model must handle a vast
+vocabulary (Li et al., 2025c,b, 2026).
+Currently, the dominant paradigm for training-free OVSS re-
+lies heavily on VLMs, particularly CLIP (Radford et al.,
+2021). Early works, such as MaskCLIP (Zhou et al., 2022)
+and SCLIP (Wang et al., 2023), attempt to extract dense fea-
+*Equal contribution
+†Corresponding author (caoxiangyong@mail.xjtu.edu.cn)
+tures directly from the CLIP image encoder. However, CLIP
+is pre-trained for image-level recognition, and adapting its
+patch-level features for pixel-level localization often results
+in coarse boundaries. To address this, subsequent research
+has focused on integrating auxiliary Visual Foundation Mod-
+els (VFMs). For instance, ProxyCLIP (Lan et al., 2025) and
+CorrCLIP (Zhang et al., 2025) utilize structural guidance from
+DINO (Oquab et al., 2023) and SAM (Kirillov et al., 2023) to
+refine CLIP’s attention maps, while SegEarth-OV (Li et al.,
+2025c,b) builds an upsampler to reconstruct high-resolution
+features. Although these methods improve boundary quality,
+they rely on complex pipeline and feature alignment to bridge
+the gap between different representations. Moreover, they lack
+simultaneous semantic and instance segmentation capabilities,
+limiting their utility in complex geospatial analysis.
+Recently, the Segment Anything Model 3 (SAM 3) (Carion
+et al., 2025) was introduced. Unlike CLIP-based paradigm,
+SAM 3 is a unified model that supports promptable con-
+cept segmentation. It builds upon the DETR (Carion et al.,
+2020) and MaskFormer (Cheng et al., 2021, 2022) architec-
+tures, employing a query-based Transformer design. Crucially,
+SAM 3 utilizes a decoupled architecture in which a presence
+head is specifically designed to predict the probability that the
+prompted concept exists in the image. Meanwhile, a Trans-
+arXiv:2512.08730v2  [cs.CV]  22 Apr 2026
+
+
+===== PAGE 2 =====
+2
+former decoder and a semantic segmentation head generate pre-
+cise masks for discrete instances and continuous semantic re-
+gions, respectively. Although SAM 3 demonstrates impressive
+zero-shot capabilities on many natural image semantic segmen-
+tation benchmarks, remote sensing images present distinct chal-
+lenges,e.g., the intricate coexistence of dense small objects and
+vast amorphous backgrounds. Therefore, a tailored exploration
+to adapt SAM 3 for geospatial scenarios remains valuable.
+In this paper, we present a preliminary exploration of adapting
+SAM 3 for the remote sensing OVSS and some derived tasks
+without additional training. We investigate whether SAM 3’s
+unified architecture can offer a stronger, yet simpler baseline
+than complex CLIP-ensemble methods for Earth observation.
+Our proposed method, namely SegEarth-OV3, consists of two
+simple strategies tailored to the design of SAM 3 and the char-
+acteristics of remote sensing scenarios:
+•(1) Dual-Head Mask Fusion:Remote sensing im-
+ages exhibit a distinct duality: amorphous “stuff”
+(e.g., road, bareland) requiring pixel-wise semantic
+continuity, and countable “things” (e.g., buildings, ve-
+hicles) demanding instance-level boundary precision.
+We identify that SAM 3’s decoupled architecture natu-
+rally aligns with this duality. We propose to assign the
+semantic head to maintain land-cover completeness
+and the Transformer decoder to capture fine-grained
+instance details, thereby unifying these complemen-
+tary strengths to ensure robust segmentation across di-
+verse geospatial targets.
+•(2) Presence-Guided Filtering:In remote sens-
+ing OVSS, a complete vocabulary list might include
+global land cover types, but a single image patch cov-
+ers a minute geographical area (e.g., hundreds of me-
+ters). This results in a high category sparsity, where
+the vast majority of queried concepts are physically
+absent in the local view. We leverage the presence
+score to address this global-local gap, explicitly sup-
+pressing irrelevant categories to eliminate false posi-
+tives caused by the vast vocabulary against limited vi-
+sual content (Sun et al., 2024; Chen et al., 2025).
+Furthermore, we extend our method to Open-V ocabulary
+Change Detection (OVCD). In the open-vocabulary setting,
+VLMs often struggle with appearance variations across bi-
+temporal images (e.g., seasonal shifts or illumination differ-
+ences), leading to inconsistent recognition results. Moreover,
+directly comparing uncalibrated logits is highly sensitive to
+bi-temporal registration errors. To address this, we introduce
+a joint instance- and pixel-level verification strategy built on
+SegEarth-OV3. By combining instance-level mask overlap and
+pixel-level feature similarity, this strategy effectively filters out
+registration-induced noise and VLM recognition inconsisten-
+cies to identify true temporal changes.
+We evaluate our method on an extensive suite of remote sens-
+ing benchmarks, including 20 semantic segmentation datasets,
+3 change detection datasets, and a 3D point cloud segmenta-
+tion dataset. Our results demonstrate the strong capability of
+SAM 3 for remote sensing OVSS, which is further enhanced
+by our proposed improvements.
+(a) Countable objects (e.g., cars).
+(b) Amorphous regions (e.g., road).
+Figure 1: The Transformer decoder of SAM 3 excels at de-
+lineating countable objects but produces fragmented masks for
+amorphous regions, while the semantic head preserves conti-
+nuity for amorphous regions but lacks boundary precision for
+small targets. (Left: Remote sensing image. Middle: Predic-
+tion of Transformer Decoder. Right: Prediction of semantic
+segmentation head.)
+2 Related Work
+2.1 Training-based OVSS
+Training-based OVSS methods fine-tune pre-trained VLMs on
+annotated datasets, typically adopting either a mask classifi-
+cation or a dense feature adaptation paradigm. Mask clas-
+sification methods, including OpenSeg (Ghiasi et al., 2022),
+OVSeg (Liang et al., 2023), ZegFormer (Ding et al., 2022),
+and MasQCLIP (Xu et al., 2023b),etc., leverage generated
+class-agnostic masks for subsequent CLIP classification. In
+contrast, dense feature adaptation methods, ranging from early
+pixel-alignment works like LSeg (Li et al., 2022) to advanced
+adapter-based models like SAN (Xu et al., 2023a), SED (Xie
+et al., 2024) and CAT-Seg (Cho et al., 2024), refine CLIP’s
+feature maps directly for dense prediction via side networks
+or cost aggregation. Other methods such as SegCLIP (Luo
+et al., 2023) and GroupViT (Xu et al., 2022) explore weakly-
+supervised grouping from image-text pairs. Despite achieving
+strong performance, these methods require computationally ex-
+pensive training on large-scale datasets, limiting their flexibility
+compared to training-free alternatives.
+2.2 Training-free OVSS
+To avoid training costs, training-free methods directly adapt
+pre-trained VLMs for dense prediction. Pure CLIP-based meth-
+ods such as SCLIP (Wang et al., 2023) and ClearCLIP (Lan
+et al., 2024) modify the internal mechanisms of CLIP,e.g., re-
+moving pooling layers or refining self-attention maps, to extract
+dense features (Zhou et al., 2022; Bousselham et al., 2024; Ha-
+jimiri et al., 2025; Jin et al., 2025). However, due to CLIP’s
+image-level pre-training objective, these methods often suffer
+from coarse localization. To address this, the VFM-assisted
+methods (Lan et al., 2025; Zhang et al., 2025; Shi et al., 2025;
+Kim et al., 2025; Barsellotti et al., 2024) integrate auxiliary
+models like DINO (Caron et al., 2021; Oquab et al., 2023) or
+SAM (Kirillov et al., 2023; Ravi et al., 2024) to provide struc-
+tural guidance. By utilizing attention maps or object proposals
+from these foundation models, they achieve clearer boundaries.
+
+
+===== PAGE 3 =====
+3
+Car
+Road
+Tree
+Text Prompt:
+• Building
+• Tree
+• Road
+• Car
++
+MAX
+Presence Score
+0.85
+MAX
+SAM 3
+Building
+Argmax
+×
+Input Data
+Figure 2: The overall inference pipeline of SegEarth-OV3. Given an input image and a list of text prompts, we leverage SAM
+3’s decoupled outputs. The pipeline involves: (1) instance aggregation to consolidate sparse object predictions; (2) dual-head
+mask fusion to combine the fine-grained instance details with the global coverage of the semantic head; and (3) presence-guided
+filtering (using the presence score) to suppress false positives from absent categories.
+ denotes the element-wise maximum
+operation, and
+ denotes multiplication.
+However, these methods operate as disjointed pipelines, relying
+on separate, heavy models for segmentation and recognition,
+which leads to significant system complexity.
+2.3 Remote Sensing OVSS
+Extending OVSS to remote sensing images faces unique chal-
+lenges, such as extreme scale variations and arbitrary orien-
+tations, which often degrade the performance of methods de-
+signed for natural images. To mitigate the coarse localization
+of CLIP, recent methods like SegEarth-OV (Li et al., 2025c)
+and GSNet (Ye et al., 2025) employ feature upsampling mod-
+ules or dual-stream architectures to incorporate domain-specific
+priors, while SkySense-O (Zhu et al., 2025a) advances this by
+pre-training vision-centric VLMs on large-scale remote sensing
+data. Addressing the specific geometric complexities of aerial
+views, Cao et al. (2024) introduce rotation-aggregative modules
+to handle orientation diversity. Furthermore, AerOSeg (Dutta
+et al., 2025) and SCORE (Huang et al., 2025) leverage SAM
+features for structural guidance and regional context, while Re-
+moteSAM (Yao et al., 2025) and InstructSAM (Zheng et al.,
+2025) utilize SAM-based pipelines to unify segmentation with
+broader interpretation tasks. However, these methods typi-
+cally rely on complex multi-stage pipelines or require expen-
+sive domain-specific training. In contrast, we explore SAM
+3 (Carion et al., 2025) as a unified, training-free framework to
+simplify remote sensing OVSS.
+2.4 Remote Sensing OVCD
+OVCD extends traditional closed-set remote sensing change de-
+tection to identify arbitrary change categories using textual de-
+scriptions. Early explorations leverage vision foundation mod-
+els to locate generic changes; for instance, AnyChange (Zheng
+et al., 2024) utilizes latent matching of SAM features for class-
+agnostic mask generation. Advancing beyond generic changes,
+SCM (Tan et al., 2023) introduces a piecewise semantic atten-
+tion mechanism combining FastSAM (Zhao et al., 2023) and
+CLIP to extract building-specific changes. To systematically
+address arbitrary categories, DynamicEarth (Li et al., 2026) for-
+mally defines the task and proposes decoupled frameworks like
+Mask-Compare-Identify (M-C-I). Concurrently, other works
+explore diverse strategies to bridge modality and temporal gaps:
+AdaptOVCD (Dou et al., 2026) and UniVCD (Zhu and Yang,
+2025) employ multi-level information fusion or feature align-
+ment modules, while Semantic-CD (Zhu et al., 2025b) intro-
+duces decoupled multi-task learning to refine semantic changes.
+Despite this progress, most existing OVCD methods rely on
+disjointed multi-model ensembles, leading to system complex-
+ity. Recently, researchers have turned to the unified architec-
+ture of SAM 3 to simplify the pipeline. However, methods like
+CoRegOVCD (Tang et al., 2026) still rely on cumbersome post-
+processing steps, such as dense posterior calibration and re-
+gional consensus, to refine SAM 3’s predictions. Concurrently,
+built upon an early version of our SegEarth-OV3 (Li et al.,
+2025d), Seg2Change (Su et al., 2026) designs an additional
+category-agnostic change adapter, and OmniOVCD (Zhang
+et al., 2026) attempts to streamline the process via instance de-
+coupling. Nevertheless, their reliance on pure instance-level
+matching or external modules remains sensitive to registration
+noise in amorphous scenes. To address this, we extend our
+SegEarth-OV3 framework to OVCD with a joint instance- and
+pixel-level verification strategy. By leveraging dense visual fea-
+
+
+===== PAGE 4 =====
+4
+tures and logits from SAM 3 as constraints, our simple yet ef-
+fective design filters out pseudo-changes and registration errors,
+achieving robust open-vocabulary change detection without re-
+quiring complex pipelines or heavy post-processing.
+3 Methods
+3.1 Preliminaries
+We adopt SAM 3 as our foundational architecture. Unlike stan-
+dard semantic segmentors that map an imageI∈R H×W×3 di-
+rectly to a label mapL∈R H×W , SAM 3 operates as a prompt-
+conditioned predictor. Given an imageIand a specific text
+promptt(e.g., a category name “building”), the model predicts
+the probability that a pixel or region belongs to the concept de-
+fined byt. Architecturally, SAM 3 consists of a vision encoder
+and a text encoder that extract image embeddings and text em-
+beddings, respectively. These embeddings are processed by a
+Fusion Encoder, which outputs prompt-conditioned image fea-
+turesF cond. Based onF cond, the model utilizes three decoupled
+heads to generate predictions:
+•Presence Head:Predicts a scalar scoreS pres ∈[0,1],
+indicating the global probability that the concepttex-
+ists in the image.
+•Semantic Segmentation Head:A dense prediction
+module (FCN-style) that mapsF cond to a semantic
+probability mapP sem ∈[0,1] H×W .
+•Transformer Decoder (Instance Head):A query-
+based module that outputs a set ofNinstance pre-
+dictions{(P (k)
+inst,s (k)
+con f )}N
+k=1. Here,P (k)
+inst ∈[0,1] H×W
+is the probability map for thek-th object query, and
+s(k)
+con f ∈[0,1]is its associated confidence score.
+For OVSS, a naive baseline is to rely solely on the instance
+predictions from the Transformer decoder (Carion et al., 2025),
+aggregating them to form a segmentation mask. However, in re-
+mote sensing, this baseline often overlooks amorphous regions
+and is prone to false positives when querying a large vocabu-
+lary. Motivated by this, we introduce some strategies to address
+these limitations.
+3.2 SegEarth-OV3 Pipeline
+We propose a training-free inference strategy designed to tackle
+the specific challenges of OVSS in remote sensing scenarios,
+as shown in Figure 2. Our pipeline processes each category in
+the vocabularyVsequentially and aggregates the results into a
+final segmentation map.
+Instance Aggregation.Remote sensing scenes often contain
+dense clusters of small, identical objects (e.g., vehicles in a
+parking lot, ships in a harbor). Standard semantic segmentation
+methods often lead to boundary adhesion in dense clusters. To
+address this, we first leverage the Transformer decoder, which
+treats objects as discrete queries, effectively isolating individual
+instances even in crowded scenes. It generates a set ofNdis-
+crete instance predictions{(P (k)
+inst,s (k)
+con f )}N
+k=1. We aggregate these
+sparse predictions into a single category-level mapP inst_agg by
+taking the maximum weighted probability at each pixel:
+(a) Remote sensing image (b) Results of few categories
+(c) Results of numerous categories w/o 𝑆𝑝𝑟𝑒𝑠
+ (d) Results of numerous categories w/ 𝑆𝑝𝑟𝑒𝑠
+Figure 3: Impact of vocabulary size and our filtering strategy.
+Querying a vast vocabulary introduces severe noise due to dis-
+tracting candidates (b to c). Our presence-guided filtering lever-
+ages presence scores to suppress absent categories, effectively
+eliminating interference and restoring segmentation quality.
+Pinst_agg(h,w)=
+N
+max
+k=1
+
+P(k)
+inst(h,w)·s (k)
+con f
+
+. (1)
+This aggregation effectively consolidates individual object in-
+stances into a unified semantic layer, preserving the fine-
+grained localization capabilities of the instance head even in
+crowded scenes.
+Dual-Head Mask Fusion.While the instance head excels at
+delineating countable objects (i.e., “things”), it may produce
+fragmented predictions for large-scale continuous and amor-
+phous regions (i.e., “stuff”) like road or bareland, which are
+prevalent in remote sensing images, as shown in Figure 1. Con-
+versely, the semantic head provides dense, global coverage but
+often blurs the boundaries of small targets or misses them en-
+tirely. To reconcile these complementary strengths, we fuse
+the aggregated instance mapP inst_agg with the dense probability
+mapP sem from the semantic head using a max-fusion strategy:
+P f used(h,w)=max
+
+Psem(h,w),P inst_agg(h,w)
+
+.(2)
+This fusion ensures robust segmentation across diverse cate-
+gories, capturing both the distinct boundaries of small instances
+and the completeness of large-scale amorphous regions.
+Presence-Guided Filtering.A critical challenge in OVSS
+arises from querying a massive global vocabulary against a lo-
+calized image patch. Although the vocabularyVmight enu-
+merate a comprehensive list of global land-cover types (e.g.,
+various biomes, infrastructure), a single inference patch re-
+stricts the view to a small geographical extent (e.g., a few hun-
+dred meters). This results in a high category sparsity, where the
+valid targets in a given image are only a small subset ofV. The
+model becomes prone to hallucinating absent categories due to
+textural ambiguities common in geospatial data,e.g., confusing
+“low vegetation” with “sports field”, as shown in Figure 3.
+To mitigate this, we utilize the global presence scoreS pres to
+explicitly suppress irrelevant categories. We apply a soft gat-
+ing operation,P (c)
+f inal =P (c)
+f used ·S (c)
+pres, which reduces the weight
+of the probability maps of categories predicted to be absent.
+
+
+===== PAGE 5 =====
+5
+Finally, we assign each pixel to the category with the highest
+probability:
+M(h,w)=arg max
+c∈V
+P(c)
+f inal(h,w). (3)
+To handle ambiguous regions, pixels with a maximum prob-
+ability below a thresholdτare assigned to the “background”
+category (if it exists). Note that for categories with multiple
+prompts, we select the one with the highest probabilities to en-
+sure robustness.
+3.3 Extension to OVCD
+Building on the above, we extend SegEarth-OV3 to OVCD. In
+zero-shot scenarios, comparing bi-temporal segmentation re-
+sults directly is highly susceptible to pseudo-changes caused
+by inconsistent VLM recognitions and spatial misalignments.
+To mitigate this, we propose a joint instance- and pixel-level
+verification strategy.
+Pixel-level Comparison.To suppress pseudo-changes caused
+by appearance variations (e.g., illumination or seasonal
+changes), we utilize the dense visual features from the SAM 3
+image encoder as a structural constraint. LetI 1 andI 2 be the bi-
+temporal images, andF 1,F 2 be their corresponding extracted
+visual features by the the vision encoder of SAM 3. We com-
+pute the cosine similarity betweenF 1 andF 2, normalizing the
+similarity scores to a range of[0,1]. Then a feature change map
+Fchange is derived by subtracting this similarity from 1, where
+regions with high similarity yield values close to 0.
+Next, we construct a joint energy mapE (c) to identify signifi-
+cant semantic change for a specific categoryc. For a given cat-
+egory, letP (c)
+1 andP (c)
+2 denote the probability maps generated
+by SegEarth-OV3. The energy map is formulated as:
+E(c) =max(P (c)
+1 ,P (c)
+2 )· |P (c)
+1 −P (c)
+2 | ·F change.(4)
+The termmax(P (c)
+1 ,P (c)
+2 )ensures that the pixel is confidently
+recognized as categorycin at least one of the timestamps, while
+|P(c)
+1 −P (c)
+2 |quantifies the magnitude of the semantic change for
+that category. TheF change represents category-agnostic visual
+differences, to encompass regions that are not activated by text
+prompts. Finally, we apply the OTSU (Otsu, 1975) threshold-
+ing toE (c) to generate a binary pixel-level change maskD (c)
+pixel.
+Instance-level Comparison.Remote sensing multi-temporal
+images frequently suffer from spatial mis-alignments, causing
+unchanged objects to produce false positive. To overcome this,
+following (Zhang et al., 2026), we convert the continuous prob-
+ability maps of SegEarth-OV3 into discrete instance-level pre-
+dictions. To tolerate registration drifts, we apply morphologi-
+cal dilation to the discrete masks. Specifically, an instance in
+one temporal image is flagged as changed only if its coverage
+ratio by the dilated mask of the other image falls below a pre-
+defined threshold. This instance-level comparison is performed
+symmetrically for both temporal directions to yield an instance-
+level change maskD (c)
+inst.
+To ensure the highest reliability and minimize false alarms in-
+duced by VLM recognition inconsistencies, a pixel is classified
+as a valid change only if it is confirmed by comparisons at both
+the pixel-level and the instance-level,i.e.,D (c)
+inst ∩D (c)
+pixel. By em-
+ploying this joint verification, our method effectively filters out
+noise while maintaining sensitivity to true temporal changes for
+arbitrary categories.
+4 Experiments
+4.1 Setup
+Datasets.We evaluate the performance of SegEarth-OV3
+across three main open-vocabulary tasks, involving a total of 24
+remote sensing benchmarks and 3 general image benchmarks to
+ensure a comprehensive assessment.
+• 2D Remote Sensing Semantic Segmentation: We use
+20 datasets in total. This includes eight multi-class
+remote sensing benchmarks (OpenEarthMap (Xia
+et al., 2023), LoveDA (Wang et al., 2021),
+iSAID (Waqas Zamir et al., 2019), Potsdam, Vaihin-
+gen1, UA Vid (Lyu et al., 2020), UDD5 (Chen et al.,
+2018) and VDD (Cai et al., 2023)) and nine binary ex-
+traction datasets focusing on critical geospatial targets
+(buildings: WHU Aerial (Ji et al., 2018), WHU S at.II (Ji
+et al., 2018), Inria (Maggiori et al., 2017), and
+xBD (Gupta et al., 2019); roads: CHN6-CUG (Zhu
+et al., 2021), DeepGlobe (Demir et al., 2018), Mas-
+sachusetts (Mnih, 2013), and SpaceNet (Van Etten
+et al., 2018); and floods: WBS-SI 2). Specifically, we
+evaluate the performance of the OVSS method on
+three GF-series datasets, including the GID dataset
+(GF-2) (Tong et al., 2020), the GF-7 building dataset3,
+and the Low-Grade Road Dataset (GF-2) (Chen et al.,
+2023b).
+• Remote Sensing Change Detection: We evaluate
+our method on three representative change detec-
+tion benchmarks: LEVIR-CD (Chen and Shi, 2020),
+WHU-CD (Ji et al., 2018), and S2Looking (Shen et al.,
+2021).
+• 3D Remote Sensing Semantic Segmentation: We uti-
+lize the STPLS3D (Chen et al., 2022b) dataset, per-
+forming multi-view projection from 2D predictions to
+3D point clouds for evaluation.
+• 2D general image segmentation: To demonstrate uni-
+versality of SegEarth-OV3, we also include three gen-
+eral scene benchmarks: Pascal VOC20 (Everingham
+et al., 2010), COCO Stuff (Caesar et al., 2018), and
+Cityscapes (Cordts et al., 2016).
+The evaluation metric is mIoU for multi-class segmentation and
+IoU of the foreground class for binary segmentation tasks.
+Implementation Details.We use the official SAM 3 model
+equipped with the Perception Encoder-Large+ (PE-L+) (Bolya
+et al., 2025) backbone. Input images are resized to 1008×1008.
+Text prompts are derived directly from category names (e.g.,
+1https://www.isprs.org/education/benchmarks/UrbanSemLab
+2https://www.kaggle.com/datasets/shirshmall/water-body-
+segmentation-in-satellite-images
+3https://figshare.com/articles/dataset/GF_LowGradeRoadDataset
+_zip/24457369/2?file=42966904
+
+
+===== PAGE 6 =====
+6
+Table 1: Open-vocabulary semantic segmentation quantitative comparison on remote sensing datasets. Evaluation metric: mIoU.
+Bestandsecond bestperformances are highlighted. SCAN, SAN, SED, Cat-Seg, OVRS, GSNet, RSKT-Seg are tuned on dataset
+(7,002 images with 17 categories). SkySense-O is tuned on Sky-SA dataset (35,000 images with 1,763 categories). “Oracle” is
+achieved by a fully supervised SegFormer-b0 (Xie et al., 2021) model using full training data.
+Methods OpenEarthMap LoveDA iSAID Potsdam Vaihingen UA Vid img UDD5 VDD Avg
+Training on remote sensing segmentation data
+SCANCVPR2024(Liu et al., 2024) - 23.2 44.3 27.5 15.2 20.3 34.1 29.2 -
+SANCVPR2023(Xu et al., 2023a) - 25.3 49.6 37.3 39.2 23.5 37.2 35.8 -
+SEDCVPR2024(Xie et al., 2024) - 24.6 51.2 29.4 39.0 21.3 35.7 32.5 -
+Cat-SegCVPR2024(Cho et al., 2024) - 28.6 53.3 35.8 42.3 25.7 40.2 39.1 -
+OVRSTGRS2025(Cao et al., 2024) - 31.5 52.7 36.4 43.5 24.1 40.8 37.2 -
+GSNetAAAI2025(Ye et al., 2025) - 32.553.737.9 44.1 24.2 40.9 37.3 -
+RSKT-SegAAAI2026(Li et al., 2025a) - 33.254.338.4 42.7 25.7 42.1 39.7 -
+SkySense-OCVPR2025(Zhu et al., 2025a)40.8 38.343.954.1 51.6- - - -
+Training-free
+CLIPICML2021(Radford et al., 2021) 12.0 12.4 7.5 15.6 10.8 10.9 9.5 14.2 11.4
+MaskCLIPECCV2022(Zhouet al.,2022)25.1 27.8 14.5 33.9 29.9 28.6 32.4 32.9 27.2
+SCLIPECCV2024(Wang et al., 2023) 29.3 30.4 16.1 39.6 35.9 31.4 38.7 37.9 31.1
+GEMCVPR2024(Bousselham et al., 2024) 33.9 31.6 17.7 39.1 36.4 33.4 41.2 39.5 32.3
+ClearCLIPECCV2024(Lan et al., 2024) 31.0 32.4 18.2 42.0 36.2 36.2 41.8 39.3 33.4
+SegEarth-OVCVPR2025(Li et al., 2025c) 40.3 36.9 21.7 48.5 40.042.5 50.645.3 39.2
+ProxyCLIPECCV2024(Lan et al., 2025) 38.9 34.3 21.8 49.0 47.5 35.8 40.847.8 39.5
+CorrCLIPICCV2025(Zhang et al., 2025) 32.9 36.9 25.5 51.9 47.0 38.3 46.1 47.3 40.7
+SegEarth-OV342.9 47.427.657.8 60.8 54.7 71.7 64.5 53.4
+Oracle 64.4 50.0 36.2 74.3 61.2 59.7 56.5 62.9 58.2
+Table 2: Open-vocabulary building / road / flood extraction quantitative comparison on remote sensing datasets. Evaluation
+metric: IoU of the foreground class,i.e.building, road or flood.Bestandsecond bestperformances are highlighted.
+Method Building Extraction Road Extraction Flood Detection
+WHUAerial WHUS at.II Inria xBDpre CHN6-CUG DeepGlobe Massachusetts SpaceNet WBS-SI
+CLIP (Radford et al., 2021) 17.7 3.5 19.6 16.0 7.7 3.9 4.9 7.1 18.6
+MaskCLIP (Zhou et al., 2022) 29.8 14.0 33.4 29.2 28.1 13.2 10.6 20.8 39.8
+SCLIP (Wang et al., 2023) 33.4 21.0 34.9 25.9 21.1 7.0 7.4 14.9 32.1
+GEM (Bousselham et al., 2024) 24.4 13.6 28.5 20.8 13.4 4.7 5.1 11.9 39.5
+ClearCLIP (Lan et al., 2024) 36.6 20.8 39.0 30.1 25.5 5.7 6.4 16.3 44.9
+SegEarth-OV (Li et al., 2025c)49.2 28.4 44.6 37.0 35.4 17.8 11.5 23.8 60.2
+SegEarth-OV386.9 44.2 72.4 64.3 49.6 39.3 27.7 35.6 75.6
+Table 3: Comparison of different OVSS methods on GF-
+series datasets (GID, GF-7 Building dataset, Low-Grade Road
+dataset).
+Method GID GF-7 Building Low-Grade Road
+CLIP 22.7 19.1 3.3
+MaskCLIP 35.4 26.1 9.5
+GEM 40.1 23.3 4.9
+SCLIP 37.6 27.2 5.7
+ClearCLIP 39.7 28.2 5.1
+SegEarth-OV46.332.1 9.4
+ProxyCLIP 42.8 34.9 22.1
+CorrCLIP 40.9 32.2 10.5
+SegEarth-OV3 42.258.7 60.2
+“building”, “road”), and some categories are augmented with
+synonyms. The background thresholdτand the initial confi-
+dence threshold for the Transformer decoder are slightly ad-
+justed for each dataset to achieve roughly optimal perfor-
+mance. No test-time augmentation or extra post-processing
+method (Araslanov and Roth, 2020) is used.
+Table 4: Ablation study on dual-head mask fusion. “Instance
+Only” denotes using predictions solely from the Transformer
+decoder, while “Semantic Only” relies exclusively on the se-
+mantic segmentation head.Boldindicates the best perfor-
+mance.
+Method LoveDA Uavid xBD pre CHN6-CUG
+Instance Only 32.2 50.4 61.4 38.4
+Semantic Only 35.4 47.1 44.9 39.5
+SegEarth-OV347.4 54.7 64.3 49.6
+4.2 Main Results
+Semantic segmentation.We report the quantitative compar-
+ison on eight remote sensing semantic segmentation bench-
+marks in Table 1. Our method, SegEarth-OV3, achieves a
+new state-of-the-art, demonstrating a substantial performance
+leap over existing methods. Specifically, it achieves an av-
+erage mIoU of 53.4%, surpassing the best previous training-
+free method, CorrCLIP (40.7% mIoU), by a remarkable mar-
+gin of +12.7% mIoU. This performance also consistently out-
+performed training-based OVSS methods fine-tuned on re-
+
+
+===== PAGE 7 =====
+7
+Figure 4: Inference results of SegEarth-OV3 on a remote sensing image exceeding 10k×10k resolution. The image originates
+from (Chen et al., 2023a).
+mote sensing data,e.g., RSKT-Seg (39.7% mIoU) and Cat-
+Seg (39.1% mIoU). A notable observation is that our zero-
+shot method outperforms the fully supervised Oracle on some
+datasets. On UDD5 and VDD datasets, SegEarth-OV3 achieves
+71.7% mIoU and 64.5% mIoU respectively, exceeding the Or-
+acle baselines (56.5% and 62.9% mIoU). We attribute this to
+the fact that fully supervised models are prone to overfitting
+when trained on domain-specific datasets with limited scale
+or variations. In contrast, this surprising result suggests that
+the rich semantic knowledge and robust segmentation capa-
+bilities inherent in the SAM 3 foundation model can provide
+superior generalization and robustness without requiring any
+target-domain supervision. In Figure 4, we visualize the infer-
+ence results on a large-scale remote sensing image exceeding
+10,000×10,000pixels. Crucially, this seamless large-scale
+segmentation prediction highlights the effectiveness of our
+presence-guided filtering in practical deployments. When per-
+forming sliding-window inference, querying a massive global
+vocabulary against small localized patches typically causes se-
+vere categorical hallucinations. By dynamically suppressing
+absent categories patch-by-patch, our filtering strategy effec-
+tively eliminates localized false positives, verifying its practical
+applicability in actual large-scale scenes.
+Single-class extraction.We further evaluate the single-class
+land-cover extraction capability of our method on nine bench-
+marks focusing on buildings, roads, and floods (Table 2). In
+building extraction, our method achieves unprecedented gains,
+reaching 86.9% IoU on WHUAerial and 72.4% IoU on Inria, out-
+performing the previous state-of-the-art SegEarth-OV by mas-
+sive margins of +37.7% and +27.8% respectively. Similarly,
+for road extraction, it consistently surpasses previous meth-
+ods, achieving 49.6% IoU on CHN6-CUG. In the flood detec-
+tion task, SegEarth-OV3 attains 75.6% IoU, marking a +15.4%
+improvement. These consistent and dramatic improvements
+across diverse geospatial targets, emphasize the robustness of
+SegEarth-OV3 and the generalization capability of SAM 3.
+4.3 Ablation Studies
+We investigate the contribution of the dual-head fusion strat-
+egy by evaluating the performance of each head individually
+on four representative datasets, as listed in Table 4. Using
+only Transformer decoder predictions yields strong results on
+object-centric tasks like building extraction, but underperforms
+on complex scenes, due to struggles with amorphous regions.
+Conversely, the “Semantic Only” baseline struggles with pre-
+cise object boundaries, achieving only 44.9% IoU on xBD. By
+fusing both heads, SegEarth-OV3 achieves significant improve-
+ments. On LoveDA and CHN6-CUG, SegEarth-OV3 reaches
+47.4% mIoU and 49.6% IoU, surpassing the best single-head
+baselines by +12.0% and +10.1%. Even on the instance-heavy
+xBD dataset, fusion further boosts performance by 2.9%. These
+results validate our hypothesis that the semantic and instance
+heads provide complementary information,i.e., global cover-
+age and fine-grained precision, and their combination is essen-
+
+
+===== PAGE 8 =====
+8
+Table 5: Quantitative evaluation of different methods on the change detection dataset.†denotes results from (Su et al., 2026).
+The pink background indicates methods based on SegEarth-OV3. JIPS denotes our joint instance- and pixel-level verification
+strategy. JIPS denotes our joint instance- and pixel-level verification strategy.
+Method Base Model Comparator WHU-CD LEVIR-CD S2Looking
+F1c IoU c F1c IoU c F1c IoU c
+PCA-KMeans (Celik, 2009) / KMeans 14.3 7.7 10.0 5.2 - -
+CV A (Bovolo and Bruzzone, 2006) / CV A Match 7.2 3.7 9.3 4.9 5.8 -
+DCV A (Saha et al., 2019) / CV A Match 20.6 11.5 13.9 7.4 - -
+UCD-SCM (Tan et al., 2023) FastSAM + CLIP OTSU 32.1 19.1 32.4 19.3 - -
+AnyChange (Zheng et al., 2024) SAM Latent Match 28.1 16.4 32.7 19.5 6.4 -
+AnyChange†(Zheng et al., 2024) SegEarth-OV3 Latent Match 69.3 53.0 72.3 56.6 - -
+Inst-CEG (Li et al., 2024a) APE (Shen et al., 2024) CEG 62.5 45.5 63.3 46.3 - -
+Inst-CEG†(Li et al., 2024a) SegEarth-OV3 CEG 71.4 55.5 70.6 54.6 - -
+DynamicEarth (Li et al., 2026) SAM2 + SegEarth-OV DINOv2 57.4 40.2 50.5 33.8 37.6 23.1
+DynamicEarth (Li et al., 2026) APE (Shen et al., 2024) DINOv2 75.9 61.1 66.7 50.0 21.1 11.8
+DynamicEarth†(Li et al., 2026) SegEarth-OV3 DINOv2 79.7 66.2 72.0 56.2 - -
+OmniOVCD (Zhang et al., 2026) SegEarth-OV3 SFID 79.9 66.5 80.4 67.2 39.4 24.5
+Seg2Change (Su et al., 2026) SegEarth-OV3 CACH 86.2 75.7 78.7 64.9 - -
+SegEarth-OV3-CD (ours) SegEarth-OV3 JIPS (ours) 88.0 78.6 85.3 74.3 48.8 32.3
+(a) 3D UA V scene
+(b) Ground truth
+(c) Our prediction
+Figure 5: Visualization of our method in 3D UA V scene.
+tial for remote sensing OVSS.
+4.4 Performance on Specialized Images
+We evaluate SegEarth-OV3 on the GF-series datasets (Chen
+et al., 2022a) to test its performance on Chinese satellite im-
+ages. As shown in Table 3, SegEarth-OV3 performs well on
+target-specific datasets. On the GF-7 Building and Low-Grade
+Road datasets, it achieves 58.7% and 60.2% IoU, respectively,
+outperforming previous CLIP-based methods (e.g., ProxyCLIP
+at 34.9% and 22.1%). However, on the GID dataset, the per-
+formance of SegEarth-OV3 (42.2% mIoU) is lower than that of
+SegEarth-OV (46.3% mIoU). The GID dataset consists of GF-2
+satellite images, which have a relatively lower spatial resolution
+and distinct imaging characteristics compared to UA V or sub-
+meter commercial satellite images. This resolution difference
+introduces a notable domain gap for SAM 3, as the model is
+primarily trained on natural images with sharp object bound-
+aries. Consequently, SAM 3 may struggle with the blurred tex-
+tures and continuous macroscopic land-cover categories (e.g.,
+forest and farmland) in GF-2 images. In contrast, CLIP-based
+methods like SegEarth-OV benefit from extensive pre-training
+on diverse web data, providing stronger semantic generaliza-
+tion for such low-resolution or continuous scenes. Neverthe-
+less, for precise object extraction in higher-resolution images,
+SegEarth-OV3 remains a strong baseline.
+4.5 Performance on OVCD Task
+We evaluate the OVCD performance on the WHU-CD, LEVIR-
+CD, and S2Looking datasets. For the data processing, we
+crop the original test images of LEVIR-CD and WHU-CD into
+patches of512×512pixels. For the S2Looking dataset, we use
+the original1024×1024images directly for testing. Table 5
+presents the quantitative comparison between our method and
+other change detection algorithms. Our method, which com-
+bines SegEarth-OV3 with the joint instance- and pixel-level
+verification strategy, achieves the highest performance across
+all three benchmarks. For example, it reaches 88.0% F1 and
+78.6% IoU on WHU-CD, and 85.3% F1 and 74.3% IoU on
+LEVIR-CD. We observe two main findings from the results in
+Table 5. First, existing change detection architectures show
+consistent performance improvements when using SegEarth-
+OV3 as their segmentation backbone. For instance, the F1
+score of DynamicEarth on WHU-CD increases from 75.9% to
+79.7%, and on LEVIR-CD from 66.7% to 72.0% (Su et al.,
+2026). This demonstrates the high quality of the segmentation
+masks extracted by our SegEarth-OV3. Second, our proposed
+joint instance- and pixel-level verification strategy outperforms
+other matching algorithms (e.g., SFID and CACH) when using
+the same SegEarth-OV3 foundation. This confirms that com-
+
+
+===== PAGE 9 =====
+9
+Table 6: Quantitative evaluation of different methods on the STPLS3D-WMSC dataset.
+Training sets Methods mIoU (%) Per Class IoU (%)
+Ground Building Tree Car Light pole Fence
+Real 3D Data
+PointTransformer (Zhao et al., 2021) 36.27 39.95 20.88 62.57 36.13 49.32 8.76
+RandLA-Net (Hu et al., 2020) 42.33 46.13 24.23 72.46 53.37 44.82 12.95
+SCF-Net (Fan et al., 2021) 45.93 68.77 37.27 65.49 51.50 31.2221.34
+MinkowskiNet (Choy et al., 2019) 46.52 64.22 29.95 61.33 45.96 65.25 12.43
+KPConv (Thomas et al., 2019) 45.22 60.87 32.13 69.0553.8052.08 3.40
+Synthetic
+3D Data
+PointTransformer (Zhao et al., 2021) 45.73 84.12 73.37 60.60 16.96 27.23 12.10
+RandLA-Net (Hu et al., 2020) 45.03 76.78 57.74 56.08 28.44 40.36 10.78
+SCF-Net (Fan et al., 2021) 47.82 77.51 68.68 56.81 29.87 42.53 11.52
+MinkowskiNet (Choy et al., 2019) 50.78 85.23 72.66 64.80 31.31 36.85 13.83
+KPConv (Thomas et al., 2019) 49.16 85.50 70.65 63.84 28.75 32.97 13.22
+Real+Synthetic
+3D Data
+PointTransformer (Zhao et al., 2021) 47.64 80.19 76.35 57.13 36.35 23.72 12.10
+RandLA-Net (Hu et al., 2020) 50.53 82.90 66.59 63.77 33.91 41.84 14.19
+SCF-Net (Fan et al., 2021) 50.65 77.80 58.98 64.86 46.37 40.50 15.41
+MinkowskiNet (Choy et al., 2019) 51.35 80.86 74.03 59.21 31.72 45.51 16.79
+KPConv (Thomas et al., 2019) 53.73 87.4078.5166.18 39.63 41.30 9.34
+None SegEarth-OV361.26 88.9275.0477.4044.5769.0212.63
+Table 7: Comparison with state-of-the-art OVSS methods on
+Pascal VOC20, COCO Stuff, and Cityscapes benchmarks.
+Boldindicates the best performance.
+Method Size VOC20 Stuff City
+Training-basedTCL (Cha et al., 2023)
+ViT-B/16
+83.2 22.4 24.0CLIP-DINOiser (Wysocza´nska et al., 2024) 80.9 24.6 31.7CoDe (Wu et al., 2024) - 23.9 28.9CAT-Seg (Cho et al., 2024) 94.6 - -
+Training-freeCLIP =Radford et al. (2021)
+ViT-B/16
+41.9 4.4 5.0MaskCLIP (Zhou et al., 2022) 74.9 16.4 12.6ClearCLIP (Lan et al., 2024) 80.9 23.9 30.0SCLIP (Wang et al., 2023) 80.4 22.4 32.2ProxyCLIP (Lan et al., 2025) 80.3 26.5 38.1LaVG (Kang and Cho, 2024) 82.5 23.2 26.2CLIPtrase (Shao et al., 2024) 81.2 24.1 -NACLIP (Hajimiri et al., 2025) 83.0 25.7 38.3Trident (Shi et al., 2025) 84.5 28.3 42.9ResCLIP (Yang et al., 2025) 86.0 24.7 35.9SC-CLIP (Bai et al., 2024) 84.3 26.6 41.0CLIPer (Sun et al., 2025) 85.2 27.5 -CASS (Kim et al., 2025) 87.8 26.7 39.4CorrCLIP (Zhang et al., 2025) 88.8 31.6 49.4
+FreeDA (Barsellotti et al., 2024)
+ViT-L/14
+87.9 28.8 36.7CaR (Sun et al., 2024) 91.4 - -ProxyCLIP (Lan et al., 2025) 83.2 25.6 40.1ResCLIP (Yang et al., 2025) 85.5 23.4 33.7SC-CLIP (Bai et al., 2024) 88.3 26.9 41.3CLIPer (Sun et al., 2025) 90.0 28.7 -CorrCLIP (Zhang et al., 2025) 91.5 34.0 51.1
+ProxyCLIP (Lan et al., 2025) ViT-H/14 83.3 26.8 42.0Trident (Shi et al., 2025) 88.7 28.6 47.6CorrCLIP (Zhang et al., 2025) 91.8 32.7 49.9
+SegEarth-OV3 PE-L+/14 96.8 42.8 69.7
+bining instance-level topology with the pixel-level comparison
+effectively reduces the impact of recognition errors and spa-
+tial misalignments. It enables robust zero-shot change detection
+without requiring any temporal training.
+4.6 Generalization to 3D Point Cloud Segmentation
+To extend SegEarth-OV3 to 3D point cloud segmentation, we
+employ a multi-view projection strategy. Given a 3D point
+cloud and the corresponding camera intrinsic and extrinsic pa-
+rameters, we project the 3D points onto multiple 2D image
+planes. We process these 2D images using SegEarth-OV3 to
+obtain semantic predictions, which are then projected back to
+the 3D points. Because a single 3D point may be visible in mul-
+tiple overlapping camera views, the 2D predictions can some-
+times be inconsistent due to occlusions or varied perspectives.
+To aggregate these predictions and determine the final semantic
+label for each point, we apply a straightforward class-weighted
+voting mechanism.
+We evaluate this approach on the STPLS3D-WMSC dataset.
+As shown in Table 6, our training-free method achieves a
+61.26% mIoU. It outperforms several fully supervised 3D
+models (e.g., PointTransformer, RandLA-Net, MinkowskiNet)
+trained on real and synthetic 3D data. This result demon-
+strates that the 2D visual representations from SegEarth-OV3
+are highly robust across different viewpoints. By combining
+these 2D predictions with a simple weighted voting strategy,
+the model identifies 3D structures effectively without relying
+on 3D point cloud annotations or complex geometric refine-
+ments. In Figure 5, we provide a qualitative visualization of a
+3D UA V scene. The result shows that our method accurately
+categorizes distinct targets in a complex terrain. The predicted
+point cloud closely matches the ground truth, confirming that
+the multi-view projection strategy successfully translates 2D
+semantic knowledge into 3D spatial topologies.
+4.7 Performance on General Scene Datasets
+We benchmark SegEarth-OV3 on three standard general scene
+datasets: Pascal VOC20, COCO Stuff, and Cityscapes (Ta-
+ble 7). For Pascal VOC20 and Cityscapes, we refine category
+names to better align with visual concepts; for instance, the
+“terrain” class in Cityscapes is expanded to “grass, horizontal
+
+
+===== PAGE 10 =====
+10
+vegetation, soil, sand” based on official definitions4. SegEarth-
+OV3 achieves dominance across all benchmarks. On Pascal
+VOC20, it achieves 96.8% mIoU, surpassing both the best
+training-free method CorrCLIP (91.8% mIoU) and the training-
+based CAT-Seg (94.6% mIoU). On COCO Stuff, it reaches
+42.8% mIoU, significantly exceeding CorrCLIP by +8.8%. The
+most significant improvement is observed on Cityscapes, where
+our method achieves 69.7% mIoU, representing an increase of
+18.6% mIoU over the previous best result. These results further
+emphasize the powerful capabilities of SAM 3 and the effec-
+tiveness of SegEarth-OV3.
+5 Conclusion
+This paper explores the application of SAM 3 for open-
+vocabulary remote sensing interpretation. We introduce
+SegEarth-OV3, a training-free framework that adapts the
+prompt-based architecture of SAM 3 for complex geospatial
+scenarios. For semantic segmentation, we fuse the seman-
+tic and instance outputs and apply presence-guided filtering
+to address the scale variations and category sparsity inherent
+in Earth observation images. Building upon these fused pre-
+dictions, we extend the framework to OVCD. By introduc-
+ing a joint instance- and pixel-level verification strategy, the
+method effectively mitigates errors caused by spatial misalign-
+ments and recognition inconsistencies across bi-temporal im-
+ages. Furthermore, we demonstrate the generalization capabil-
+ity of SegEarth-OV3 by applying it to 3D point cloud segmen-
+tation via multi-view projection. Our comprehensive evalua-
+tion across 24 diverse remote sensing benchmarks shows that
+the proposed method establishes a strong training-free baseline
+for multi-dimensional remote sensing tasks. In certain scenar-
+ios, it even outperforms fully supervised models. These results
+confirm that, with appropriate adaptation mechanisms, general
+visual foundation models can serve as effective tools for open-
+vocabulary remote sensing analysis without requiring domain-
+specific training or complex architectures.
+References
+N. Araslanov and S. Roth. Single-stage semantic segmentation from
+image labels. InProceedings of the IEEE/CVF conference on com-
+puter vision and pattern recognition, pages 4253–4262, 2020.
+S. Bai, Y . Liu, Y . Han, H. Zhang, and Y . Tang. Self-calibrated clip
+for training-free open-vocabulary segmentation.arXiv preprint
+arXiv:2411.15869, 2024.
+L. Barsellotti, R. Amoroso, M. Cornia, L. Baraldi, and R. Cucchiara.
+Training-free open-vocabulary segmentation with offline diffusion-
+augmented prototype generation. InProceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition, pages
+3689–3698, 2024.
+D. Bolya, P.-Y . Huang, P. Sun, J. H. Cho, A. Madotto, C. Wei, T. Ma,
+J. Zhi, J. Rajasegaran, H. Rasheed, et al. Perception encoder: The
+best visual embeddings are not at the output of the network.arXiv
+preprint arXiv:2504.13181, 2025.
+W. Bousselham, F. Petersen, V . Ferrari, and H. Kuehne. Ground-
+ing everything: Emerging localization properties in vision-language
+transformers. InProceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition, pages 3828–3837, 2024.
+4https://www.cityscapes-dataset.com/dataset-overview
+F. Bovolo and L. Bruzzone. A theoretical framework for unsupervised
+change detection based on change vector analysis in the polar do-
+main.IEEE Transactions on Geoscience and Remote Sensing, 45
+(1):218–236, 2006.
+H. Caesar, J. Uijlings, and V . Ferrari. Coco-stuff: Thing and stuff
+classes in context. InProceedings of the IEEE conference on com-
+puter vision and pattern recognition, pages 1209–1218, 2018.
+W. Cai, K. Jin, J. Hou, C. Guo, L. Wu, and W. Yang. Vdd:
+Varied drone dataset for semantic segmentation.arXiv preprint
+arXiv:2305.13608, 2023.
+Q. Cao, Y . Chen, C. Ma, and X. Yang. Open-vocabulary re-
+mote sensing image semantic segmentation.arXiv preprint
+arXiv:2409.07683, 2024.
+N. Carion, F. Massa, G. Synnaeve, N. Usunier, A. Kirillov, and
+S. Zagoruyko. End-to-end object detection with transformers. In
+European conference on computer vision, pages 213–229. Springer,
+2020.
+N. Carion, L. Gustafson, Y .-T. Hu, S. Debnath, R. Hu, D. Suris,
+C. Ryali, K. V . Alwala, H. Khedr, A. Huang, et al. Sam 3: Segment
+anything with concepts.arXiv preprint arXiv:2511.16719, 2025.
+M. Caron, H. Touvron, I. Misra, H. Jégou, J. Mairal, P. Bojanowski,
+and A. Joulin. Emerging properties in self-supervised vision trans-
+formers. InProceedings of the IEEE/CVF international conference
+on computer vision, pages 9650–9660, 2021.
+T. Celik. Unsupervised change detection in satellite images using prin-
+cipal component analysis andk-means clustering.IEEE geoscience
+and remote sensing letters, 6(4):772–776, 2009.
+J. Cha, J. Mun, and B. Roh. Learning to generate text-grounded mask
+for open-world semantic segmentation from only image-text pairs.
+InProceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 11165–11174, 2023.
+H. Chen and Z. Shi. A spatial-temporal attention-based method and
+a new dataset for remote sensing image change detection.Remote
+Sensing, 12(10):1662, 2020.
+H. Chen, C. Lan, J. Song, C. Broni-Bediako, J. Xia, and N. Yokoya.
+Land-cover change detection using paired openstreetmap data
+and optical high-resolution imagery via object-guided transformer.
+arXiv preprint arXiv:2310.02674, 2023a.
+L. Chen, H. Letu, M. Fan, H. Shang, J. Tao, L. Wu, Y . Zhang,
+C. Yu, J. Gu, N. Zhang, et al. An introduction to the chinese high-
+resolution earth observation system: Gaofen-1˜ 7 civilian satellites.
+Journal of Remote Sensing, 2022a.
+M. Chen, Q. Hu, Z. Yu, H. Thomas, A. Feng, Y . Hou, K. McCullough,
+F. Ren, and L. Soibelman. Stpls3d: A large-scale synthetic and
+real aerial photogrammetry 3d point cloud dataset.arXiv preprint
+arXiv:2203.09065, 2022b.
+P. Chen, H. Huang, J. Liu, J. Wang, C. Liu, N. Zhang, M. Su, and
+D. Zhang. Leveraging chinese gaofen-7 imagery for high-resolution
+building height estimation in multiple cities.Remote Sensing of
+Environment, 298:113802, 2023b.
+Q. Chen, L. Yang, Y . Chen, N. Zhao, J. Lai, J. Shao, and X. Xie.
+Training-free class purification for open-vocabulary semantic seg-
+mentation. InProceedings of the IEEE/CVF International Confer-
+ence on Computer Vision, pages 23124–23134, 2025.
+Y . Chen, Y . Wang, P. Lu, Y . Chen, and G. Wang. Large-scale structure
+from motion with semantic constraints of aerial images. InChinese
+Conference on Pattern Recognition and Computer Vision (PRCV),
+pages 347–359. Springer, 2018.
+B. Cheng, A. Schwing, and A. Kirillov. Per-pixel classification is not
+all you need for semantic segmentation.Advances in Neural Infor-
+mation Processing Systems, 34:17864–17875, 2021.
+
+
+===== PAGE 11 =====
+11
+B. Cheng, I. Misra, A. G. Schwing, A. Kirillov, and R. Girdhar.
+Masked-attention mask transformer for universal image segmen-
+tation. InProceedings of the IEEE/CVF conference on computer
+vision and pattern recognition, pages 1290–1299, 2022.
+S. Cho, H. Shin, S. Hong, A. Arnab, P. H. Seo, and S. Kim. Cat-seg:
+Cost aggregation for open-vocabulary semantic segmentation. In
+Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 4113–4123, 2024.
+C. Choy, J. Gwak, and S. Savarese. 4d spatio-temporal convnets:
+Minkowski convolutional neural networks. InProceedings of the
+IEEE/CVF conference on computer vision and pattern recognition,
+pages 3075–3084, 2019.
+M. Cordts, M. Omran, S. Ramos, T. Rehfeld, M. Enzweiler, R. Benen-
+son, U. Franke, S. Roth, and B. Schiele. The cityscapes dataset
+for semantic urban scene understanding. InProceedings of the
+IEEE conference on computer vision and pattern recognition, pages
+3213–3223, 2016.
+I. Demir, K. Koperski, D. Lindenbaum, G. Pang, J. Huang, S. Basu,
+F. Hughes, D. Tuia, and R. Raskar. Deepglobe 2018: A challenge to
+parse the earth through satellite images. InProceedings of the IEEE
+conference on computer vision and pattern recognition workshops,
+pages 172–181, 2018.
+J. Ding, N. Xue, G.-S. Xia, and D. Dai. Decoupling zero-shot se-
+mantic segmentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 11583–11592,
+2022.
+M. Dou, S. Qiu, M. Hu, Y . Chen, H. Ye, X. Liao, and
+Z. Sun. Adaptovcd: Training-free open-vocabulary remote sensing
+change detection via adaptive information fusion.arXiv preprint
+arXiv:2602.06529, 2026.
+S. Dutta, A. Vasim, S. Gole, H. Rezatofighi, and B. Banerjee. Aeroseg:
+Harnessing sam for open-vocabulary segmentation in remote sens-
+ing images. InProceedings of the Computer Vision and Pattern
+Recognition Conference, pages 2254–2264, 2025.
+M. Everingham, L. Van Gool, C. K. Williams, J. Winn, and A. Zisser-
+man. The pascal visual object classes (voc) challenge.International
+journal of computer vision, 88(2):303–338, 2010.
+S. Fan, Q. Dong, F. Zhu, Y . Lv, P. Ye, and F.-Y . Wang. Scf-net: Learn-
+ing spatial contextual features for large-scale point cloud segmen-
+tation. InProceedings of the IEEE/CVF conference on computer
+vision and pattern recognition, pages 14504–14513, 2021.
+G. Ghiasi, X. Gu, Y . Cui, and T.-Y . Lin. Scaling open-vocabulary im-
+age segmentation with image-level labels. InEuropean Conference
+on Computer Vision, pages 540–557. Springer, 2022.
+R. Gupta, R. Hosfelt, S. Sajeev, N. Patel, B. Goodman, J. Doshi,
+E. Heim, H. Choset, and M. Gaston. xbd: A dataset for assess-
+ing building damage from satellite imagery, 2019. URLhttps:
+//arxiv.org/abs/1911.09296.
+S. Hajimiri, I. B. Ayed, and J. Dolz. Pay attention to your neigh-
+bours: Training-free open-vocabulary semantic segmentation. In
+2025 IEEE/CVF Winter Conference on Applications of Computer
+Vision (WACV), pages 5061–5071. IEEE, 2025.
+Q. Hu, B. Yang, L. Xie, S. Rosa, Y . Guo, Z. Wang, N. Trigoni, and
+A. Markham. Randla-net: Efficient semantic segmentation of large-
+scale point clouds. InProceedings of the IEEE/CVF conference
+on computer vision and pattern recognition, pages 11108–11117,
+2020.
+S. Huang, S. He, H. Qin, and B. Wen. Score: Scene context matters
+in open-vocabulary remote sensing instance segmentation. InPro-
+ceedings of the IEEE/CVF International Conference on Computer
+Vision, pages 12559–12569, 2025.
+S. Ji, S. Wei, and M. Lu. Fully convolutional networks for multisource
+building extraction from an open aerial and satellite imagery data
+set.IEEE Transactions on geoscience and remote sensing, 57(1):
+574–586, 2018.
+S. Jin, S. Yu, B. Zhang, M. Sun, Y . Dong, and J. Xiao. Feature
+purification matters: Suppressing outlier propagation for training-
+free open-vocabulary semantic segmentation. InProceedings of
+the IEEE/CVF International Conference on Computer Vision, pages
+20291–20300, 2025.
+D. Kang and M. Cho. In defense of lazy visual grounding for open-
+vocabulary semantic segmentation. InEuropean Conference on
+Computer Vision and Pattern Recognition (ECCV), 2024.
+C. Kim, D. Ju, W. Han, M.-H. Yang, and S. J. Hwang. Distilling
+spectral graph for object-context aware open-vocabulary semantic
+segmentation. InProceedings of the Computer Vision and Pattern
+Recognition Conference, pages 15033–15042, 2025.
+A. Kirillov, E. Mintun, N. Ravi, H. Mao, C. Rolland, L. Gustafson,
+T. Xiao, S. Whitehead, A. C. Berg, W.-Y . Lo, et al. Segment any-
+thing. InProceedings of the IEEE/CVF International Conference
+on Computer Vision, pages 4015–4026, 2023.
+M. Lan, C. Chen, Y . Ke, X. Wang, L. Feng, and W. Zhang. Clearclip:
+Decomposing clip representations for dense vision-language infer-
+ence.arXiv preprint arXiv:2407.12442, 2024.
+M. Lan, C. Chen, Y . Ke, X. Wang, L. Feng, and W. Zhang. Proxyclip:
+Proxy attention improves clip for open-vocabulary segmentation. In
+European Conference on Computer Vision, pages 70–88. Springer,
+2025.
+B. Li, K. Q. Weinberger, S. Belongie, V . Koltun, and R. Ran-
+ftl. Language-driven semantic segmentation.arXiv preprint
+arXiv:2201.03546, 2022.
+B. Li, H. Dong, D. Zhang, Z. Zhao, J. Gao, and X. Li. Exploring ef-
+ficient open-vocabulary segmentation in the remote sensing.arXiv
+preprint arXiv:2509.12040, 2025a.
+K. Li, X. Cao, Y . Deng, J. Song, J. Liu, D. Meng, and Z. Wang.
+Semicd-vl: Visual-language model guidance makes better semi-
+supervised change detector.IEEE Transactions on Geoscience and
+Remote Sensing, 2024a.
+K. Li, F. Dong, D. Wang, S. Li, Q. Wang, X. Gao, and T.-S. Chua.
+Show me what and where has changed? question answering and
+grounding for remote sensing change detection.arXiv preprint
+arXiv:2410.23828, 2024b.
+K. Li, X. Cao, R. Liu, S. Wang, Z. Jiang, Z. Wang, and D. Meng.
+Annotation-free open-vocabulary segmentation for remote-sensing
+images.arXiv preprint arXiv:2508.18067, 2025b.
+K. Li, R. Liu, X. Cao, X. Bai, F. Zhou, D. Meng, and Z. Wang.
+Segearth-ov: Towards training-free open-vocabulary segmentation
+for remote sensing images. InProceedings of the Computer Vision
+and Pattern Recognition Conference, pages 10545–10556, 2025c.
+K. Li, S. Zhang, Y . Deng, Z. Wang, D. Meng, and X. Cao. Segearth-
+ov3: Exploring sam 3 for open-vocabulary semantic segmentation
+in remote sensing images.arXiv preprint arXiv:2512.08730, 2025d.
+K. Li, X. Cao, Y . Deng, C. Pang, Z. Xin, H. Qiao, T. Gong, D. Meng,
+and Z. Wang. Dynamicearth: How far are we from open-vocabulary
+change detection? InProceedings of the AAAI Conference on Arti-
+ficial Intelligence, volume 40, pages 6279–6287, 2026.
+F. Liang, B. Wu, X. Dai, K. Li, Y . Zhao, H. Zhang, P. Zhang, P. Vajda,
+and D. Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. InProceedings of the IEEE/CVF conference on
+computer vision and pattern recognition, pages 7061–7070, 2023.
+
+
+===== PAGE 12 =====
+12
+Y . Liu, S. Bai, G. Li, Y . Wang, and Y . Tang. Open-vocabulary seg-
+mentation with semantic-assisted calibration. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern Recogni-
+tion, pages 3491–3500, 2024.
+H. Luo, J. Bao, Y . Wu, X. He, and T. Li. Segclip: Patch aggregation
+with learnable centers for open-vocabulary semantic segmentation.
+InInternational Conference on Machine Learning, pages 23033–
+23044. PMLR, 2023.
+Y . Lyu, G. V osselman, G.-S. Xia, A. Yilmaz, and M. Y . Yang. Uavid:
+A semantic segmentation dataset for uav imagery.ISPRS Journal of
+Photogrammetry and Remote Sensing, 165:108 – 119, 2020. ISSN
+0924-2716. doi:https://doi.org/10.1016/j.isprsjprs.2020.05.009.
+URLhttp://www.sciencedirect.com/science/
+article/pii/S0924271620301295.
+E. Maggiori, Y . Tarabalka, G. Charpiat, and P. Alliez. Can semantic la-
+beling methods generalize to any city? the inria aerial image label-
+ing benchmark. In2017 IEEE International geoscience and remote
+sensing symposium (IGARSS), pages 3226–3229. IEEE, 2017.
+V . Mnih.Machine Learning for Aerial Image Labeling. PhD thesis,
+University of Toronto, 2013.
+M. Oquab, T. Darcet, T. Moutakanni, H. V o, M. Szafraniec, V . Khali-
+dov, P. Fernandez, D. Haziza, F. Massa, A. El-Nouby, et al. Dinov2:
+Learning robust visual features without supervision.arXiv preprint
+arXiv:2304.07193, 2023.
+N. Otsu. A threshold selection method from gray-level histograms.
+Automatica, 11:285–296, 1975.
+A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal,
+G. Sastry, A. Askell, P. Mishkin, J. Clark, et al. Learning transfer-
+able visual models from natural language supervision. InInterna-
+tional conference on machine learning, pages 8748–8763. PMLR,
+2021.
+N. Ravi, V . Gabeur, Y .-T. Hu, R. Hu, C. Ryali, T. Ma, H. Khedr, R. Rä-
+dle, C. Rolland, L. Gustafson, et al. Sam 2: Segment anything in
+images and videos.arXiv preprint arXiv:2408.00714, 2024.
+S. Saha, F. Bovolo, and L. Bruzzone. Unsupervised deep change vec-
+tor analysis for multiple-change detection in vhr images.IEEE
+Transactions on Geoscience and Remote Sensing, 57(6):3677–
+3693, 2019.
+T. Shao, Z. Tian, H. Zhao, and J. Su. Explore the potential of clip for
+training-free open vocabulary semantic segmentation. InEuropean
+Conference on Computer Vision. Springer, 2024.
+L. Shen, Y . Lu, H. Chen, H. Wei, D. Xie, J. Yue, R. Chen, S. Lv, and
+B. Jiang. S2looking: A satellite side-looking dataset for building
+change detection.Remote Sensing, 13(24):5094, 2021.
+Y . Shen, C. Fu, P. Chen, M. Zhang, K. Li, X. Sun, Y . Wu, S. Lin, and
+R. Ji. Aligning and prompting everything all at once for univer-
+sal visual perception. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 13193–13203,
+2024.
+Y . Shi, M. Dong, and C. Xu. Harnessing vision foundation models for
+high-performance, training-free open vocabulary segmentation. In
+Proceedings of the IEEE/CVF International Conference on Com-
+puter Vision, pages 23487–23497, 2025.
+Y . Su, Y . Song, J. Chen, and Z. Wen. Seg2change: Adapting
+open-vocabulary semantic segmentation model for remote sensing
+change detection.arXiv preprint arXiv:2604.11231, 2026.
+L. Sun, J. Cao, J. Xie, X. Jiang, and Y . Pang. Cliper: Hierarchically im-
+proving spatial representation of clip for open-vocabulary semantic
+segmentation. InProceedings of the IEEE/CVF International Con-
+ference on Computer Vision, pages 23199–23209, 2025.
+S. Sun, R. Li, P. Torr, X. Gu, and S. Li. Clip as rnn: Segment count-
+less visual concepts without training endeavor. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern Recog-
+nition, pages 13171–13182, 2024.
+X. Tan, G. Chen, T. Wang, J. Wang, and X. Zhang. Segment
+change model (scm) for unsupervised change detection in vhr re-
+mote sensing images: a case study of buildings.arXiv preprint
+arXiv:2312.16410, 2023.
+W. Tang, H. Sun, Z. Li, Y . Wang, and F. Zhang. Coregovcd:
+Consistency-regularized open-vocabulary change detection.arXiv
+preprint arXiv:2604.02160, 2026.
+H. Thomas, C. R. Qi, J.-E. Deschaud, B. Marcotegui, F. Goulette, and
+L. J. Guibas. Kpconv: Flexible and deformable convolution for
+point clouds. InProceedings of the IEEE/CVF international con-
+ference on computer vision, pages 6411–6420, 2019.
+X.-Y . Tong, G.-S. Xia, Q. Lu, H. Shen, S. Li, S. You, and L. Zhang.
+Land-cover classification with high-resolution remote sensing im-
+ages using transferable deep models.Remote Sensing of Environ-
+ment, 237:111322, 2020.
+A. Van Etten, D. Lindenbaum, and T. M. Bacastow. Spacenet:
+A remote sensing dataset and challenge series.arXiv preprint
+arXiv:1807.01232, 2018.
+F. Wang, J. Mei, and A. Yuille. Sclip: Rethinking self-attention for
+dense vision-language inference.arXiv preprint arXiv:2312.01597,
+2023.
+J. Wang, Z. Zheng, A. Ma, X. Lu, and Y . Zhong. Loveda: A
+remote sensing land-cover dataset for domain adaptive semantic
+segmentation. In J. Vanschoren and S. Yeung, editors,Proceedings
+of the Neural Information Processing Systems Track on Datasets
+and Benchmarks, volume 1. Curran Associates, Inc., 2021. URL
+https://datasets-benchmarks-proceedings.
+neurips.cc/paper_files/paper/2021/file/
+4e732ced3463d06de0ca9a15b6153677-Paper-round2.
+pdf.
+J. Wang, W. Xuan, H. Qi, Z. Liu, K. Liu, Y . Wu, H. Chen, J. Song,
+J. Xia, Z. Zheng, et al. Disasterm3: A remote sensing vision-
+language dataset for disaster damage assessment and response.
+arXiv preprint arXiv:2505.21089, 2025.
+S. Waqas Zamir, A. Arora, A. Gupta, S. Khan, G. Sun, F. Shah-
+baz Khan, F. Zhu, L. Shao, G.-S. Xia, and X. Bai. isaid: A large-
+scale dataset for instance segmentation in aerial images. InPro-
+ceedings of the IEEE Conference on Computer Vision and Pattern
+Recognition Workshops, pages 28–37, 2019.
+J.-J. Wu, A. C.-H. Chang, C.-Y . Chuang, C.-P. Chen, Y .-L. Liu, M.-
+H. Chen, H.-N. Hu, Y .-Y . Chuang, and Y .-Y . Lin. Image-text co-
+decomposition for text-supervised semantic segmentation. InPro-
+ceedings of the IEEE/CVF Conference on Computer Vision and Pat-
+tern Recognition, pages 26794–26803, 2024.
+M. Wysocza´nska, O. Siméoni, M. Ramamonjisoa, A. Bursuc, T. Trz-
+ci´nski, and P. Pérez. Clip-dinoiser: Teaching clip a few dino tricks
+for open-vocabulary semantic segmentation. InEuropean Confer-
+ence on Computer Vision, pages 320–337. Springer, 2024.
+J. Xia, N. Yokoya, B. Adriano, and C. Broni-Bediako. Openearthmap:
+A benchmark dataset for global high-resolution land cover map-
+ping. InProceedings of the IEEE/CVF Winter Conference on Ap-
+plications of Computer Vision, pages 6254–6264, 2023.
+B. Xie, J. Cao, J. Xie, F. S. Khan, and Y . Pang. Sed: A simple encoder-
+decoder for open-vocabulary semantic segmentation. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, 2024.
+
+
+===== PAGE 13 =====
+13
+E. Xie, W. Wang, Z. Yu, A. Anandkumar, J. M. Alvarez, and P. Luo.
+Segformer: Simple and efficient design for semantic segmentation
+with transformers.Advances in neural information processing sys-
+tems, 34:12077–12090, 2021.
+J. Xu, S. De Mello, S. Liu, W. Byeon, T. Breuel, J. Kautz, and
+X. Wang. Groupvit: Semantic segmentation emerges from text su-
+pervision. InProceedings of the IEEE/CVF conference on computer
+vision and pattern recognition, pages 18134–18144, 2022.
+M. Xu, Z. Zhang, F. Wei, H. Hu, and X. Bai. Side adapter network
+for open-vocabulary semantic segmentation. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern Recogni-
+tion, pages 2945–2954, 2023a.
+X. Xu, T. Xiong, Z. Ding, and Z. Tu. Masqclip for open-vocabulary
+universal image segmentation. InProceedings of the IEEE/CVF
+International Conference on Computer Vision, pages 887–898,
+2023b.
+Y . Yang, J. Deng, W. Li, and L. Duan. Resclip: Residual attention
+for training-free dense vision-language inference. InProceedings
+of the Computer Vision and Pattern Recognition Conference, pages
+29968–29978, 2025.
+L. Yao, F. Liu, D. Chen, C. Zhang, Y . Wang, Z. Chen, W. Xu, S. Di,
+and Y . Zheng. Remotesam: Towards segment anything for earth
+observation. InProceedings of the 33rd ACM International Confer-
+ence on Multimedia, pages 3027–3036, 2025.
+C. Ye, Y . Zhuge, and P. Zhang. Towards open-vocabulary remote
+sensing image semantic segmentation. InProceedings of the AAAI
+Conference on Artificial Intelligence, volume 39, pages 9436–9444,
+2025.
+D. Zhang, F. Liu, and Q. Tang. Corrclip: Reconstructing patch corre-
+lations in clip for open-vocabulary semantic segmentation. InPro-
+ceedings of the IEEE/CVF International Conference on Computer
+Vision, pages 24677–24687, 2025.
+X. Zhang, D. Li, Y . Xia, X. Dong, H. Yu, J. Wang, and Q. Li. Om-
+niovcd: Streamlining open-vocabulary change detection with sam
+3.arXiv preprint arXiv:2601.13895, 2026.
+H. Zhao, L. Jiang, J. Jia, P. H. Torr, and V . Koltun. Point transformer.
+InProceedings of the IEEE/CVF international conference on com-
+puter vision, pages 16259–16268, 2021.
+X. Zhao, W. Ding, Y . An, Y . Du, T. Yu, M. Li, M. Tang, and J. Wang.
+Fast segment anything.arXiv preprint arXiv:2306.12156, 2023.
+Y . Zheng, W. Wu, Q. Li, X. Wang, X. Zhou, A. Ren, J. Shen, L. Zhao,
+G. Li, and X. Yang. Instructsam: A training-free framework
+for instruction-oriented remote sensing object recognition.arXiv
+preprint arXiv:2505.15818, 2025.
+Z. Zheng, Y . Zhong, L. Zhang, and S. Ermon. Segment any change.
+InAdvances in Neural Information Processing Systems, 2024.
+C. Zhou, C. C. Loy, and B. Dai. Extract free dense labels from
+clip. InEuropean Conference on Computer Vision, pages 696–712.
+Springer, 2022.
+Q. Zhu, Y . Zhang, L. Wang, Y . Zhong, Q. Guan, X. Lu, L. Zhang,
+and D. Li. A global context-aware and batch-independent network
+for road extraction from vhr satellite imagery.ISPRS Journal of
+Photogrammetry and Remote Sensing, 175:353–365, 2021.
+Q. Zhu, J. Lao, D. Ji, J. Luo, K. Wu, Y . Zhang, L. Ru, J. Wang, J. Chen,
+M. Yang, et al. Skysense-o: Towards open-world remote sensing in-
+terpretation with vision-centric visual-language modeling. InPro-
+ceedings of the Computer Vision and Pattern Recognition Confer-
+ence, pages 14733–14744, 2025a.
+Y . Zhu, L. Li, K. Chen, C. Liu, F. Zhou, and Z. Shi. Semantic-cd:
+Remote sensing image semantic change detection towards open-
+vocabulary setting. InIGARSS 2025-2025 IEEE International Geo-
+science and Remote Sensing Symposium, pages 6388–6392. IEEE,
+2025b.
+Z. Zhu and B. Yang. Univcd: A new method for unsupervised
+change detection in the open-vocabulary era.arXiv preprint
+arXiv:2512.13089, 2025.

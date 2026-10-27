@@ -1,0 +1,11 @@
+dataset,sample,image,gt,baseline,ours,palette,baseline_miou,ours_miou
+LoveDA,loveda_001,/path/to/LoveDA/img_dir/val/000001.png,/path/to/LoveDA/ann_dir/val/000001.png,/path/to/preds/loveda_baseline.npy,/path/to/preds/loveda_ours.npy,/path/to/palettes/loveda.json,47.34,48.81
+OpenEarthMap,oem_001,/path/to/OEM/img_dir/val/000001.tif,/path/to/OEM/ann_dir/val/000001.tif,/path/to/preds/oem_baseline.npy,/path/to/preds/oem_ours.npy,/path/to/palettes/openearthmap.json,44.30,53.08
+Potsdam,potsdam_001,/path/to/potsdam/img_dir/val/000001.png,/path/to/potsdam/ann_dir/val/000001.png,/path/to/preds/potsdam_baseline.npy,/path/to/preds/potsdam_ours.npy,/path/to/palettes/potsdam.json,57.87,63.18
+Vaihingen,vaihingen_001,/path/to/vaihingen/img_dir/val/000001.png,/path/to/vaihingen/ann_dir/val/000001.png,/path/to/preds/vaihingen_baseline.npy,/path/to/preds/vaihingen_ours.npy,/path/to/palettes/vaihingen.json,60.86,66.38
+iSAID,isaid_001,/path/to/iSAID/img_dir/val/000001.png,/path/to/iSAID/ann_dir/val/000001.png,/path/to/preds/isaid_baseline.npy,/path/to/preds/isaid_ours.npy,/path/to/palettes/isaid.json,27.64,29.13
+UAVid,uavid_001,/path/to/UAVid/img_dir/val/000001.png,/path/to/UAVid/ann_dir/val/000001.png,/path/to/preds/uavid_baseline.npy,/path/to/preds/uavid_ours.npy,/path/to/palettes/uavid.json,54.58,59.82
+UDD5,udd5_001,/path/to/UDD5/val/src/000001.png,/path/to/UDD5/val/gt/000001.png,/path/to/preds/udd5_baseline.npy,/path/to/preds/udd5_ours.npy,/path/to/palettes/udd5.json,71.80,72.94
+VDD,vdd_001,/path/to/VDD/img_dir/val/000001.png,/path/to/VDD/ann_dir/val/000001.png,/path/to/preds/vdd_baseline.npy,/path/to/preds/vdd_ours.npy,/path/to/palettes/vdd.json,64.11,66.56
+VOC20,voc20_001,/path/to/VOC2012/JPEGImages/000001.jpg,/path/to/VOC2012/SegmentationClass/000001.png,/path/to/preds/voc20_baseline.npy,/path/to/preds/voc20_ours.npy,/path/to/palettes/voc20.json,96.89,97.11
+Cityscapes,cityscapes_001,/path/to/CityScapes/leftImg8bit/val/000001.png,/path/to/CityScapes/gtFine/val/000001.png,/path/to/preds/cityscapes_baseline.npy,/path/to/preds/cityscapes_ours.npy,/path/to/palettes/cityscapes.json,67.90,72.20

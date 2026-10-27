@@ -1,0 +1,1066 @@
+=== PAGE 1 ===
+S2C2Seg: Semantic-Spatial Consistency and Category Optimization for
+Open-Vocabulary Segmentation
+Yuhao Qing1 Yueying Wang1† Chaoyang Chen2 Weidong Zhang3 Jie Wen4 Xin Xu5
+1Shanghai University, Shanghai, China
+2Hunan University of Science and Technology, Xiangtan, China
+3Henan Institute of Science and Technology, Xinxiang, China
+4Harbin Institute of Technology, Shenzhen, China
+5National University of Defense Technology, Changsha, China
+yuhao fly@163.com, yueyingwang@shu.edu.cn, ouzk@163.com
+zwd@hist.edu.cn, jiewen pr@126.com, xinxu@nudt.edu.cn
+aeroplane bird
+aeroplane
+Img
+ProxyCLIPImg
+A B
+Clipseg
+ProxyCLIP
+sky
+cloth
+aeroplane
+truck
+plate
+sky
+aeroplane
+ground
+mountain
+sky
+motorbike
+road
+ground
+mountain
+sky
+floor
+rock
+motorbike
+ProxyCLIP + Ours
+C
+Figure 1.Motivation, Framework, and Performance Comparison of Open-Vocabulary Segmentation. (A)Existing methods suffer
+from spatial confusion and category ambiguity, causing inaccurate segmentation of similar or adjacent objects.(B)S2C2Seg selects high-
+confidence category subsets and applies consistent semantic guidance for accurate, category-aware segmentation.(C)Mean mIoU (%)
+across eight benchmarks. S2C2Seg improves SCLIP, ProxyCLIP, and CorrCLIP by +9.7, +6.8, and +3.4 points respectively.
+Abstract
+Open-vocabulary semantic segmentation extends pixel-
+level recognition to arbitrary text-described categories.
+Despite strong global semantic understanding, vision-
+language models such as CLIP exhibit limited spatial pre-
+cision and semantic ambiguity across large vocabularies,
+constraining their effectiveness for dense prediction. We
+present S2C2Seg, a training-free framework that integrates
+with existing methods through Category Subset Selection
+(CSS) and Consistent Semantic Guidance (CSG). CSS em-
+ploys multi-aspect scoring to filter candidate categories:
+CLIP-based global semantic similarity, spatial presence
+from dense prediction models, and cross-view consistency
+via alignment and conditional entropy. This joint exploita-
+tion of semantic, spatial, and consistency cues reduces cat-
+egory redundancy and semantic ambiguity. CSG adap-
+†Corresponding author.
+tively fuses CLIP global features with local spatial predic-
+tions through category-specific confidence weighting, ap-
+plying stronger regularization to high-similarity categories
+for correcting prediction biases while preserving spatial
+precision for low-confidence categories. Extensive exper-
+iments across eight benchmarks demonstrate broad appli-
+cability: when integrated with SCLIP , ProxyCLIP , and Cor-
+rCLIP , S2C2Seg achieves consistent improvements of 3.4 to
+9.7 percentage points in mIoU, establishing a new state-of-
+the-art of 51.2% average mIoU.
+1. Introduction
+Vision-language models such as CLIP [31] demonstrate
+strong zero-shot recognition across arbitrary text-specified
+categories, yet extending it to open-vocabulary semantic
+segmentation [30] remains challenging. CLIP’s contrastive
+pretraining optimizes global image-text alignment, yielding
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+6293
+
+
+=== PAGE 2 ===
+strong classification but limited spatial granularity for dense
+prediction [25, 42]. Recent studies [25, 42] identify two
+primary challenges: coarse spatial localization in attention
+maps originally designed for classification, and overlapping
+activations among semantically similar or co-occurring cat-
+egories when scaled to large vocabularies, degrading seg-
+mentation quality.
+Existing methods address these challenges through two
+primary directions. Spatial refinement approaches enhance
+localization through CLIP attention refinement [3, 13, 25,
+42], feature denoising [1, 22, 35], or integration of comple-
+mentary models such as DINO [5], diffusion models [34].
+Despite improving spatial precision, these methods treat all
+candidate categories uniformly regardless of semantic rela-
+tionships or prediction confidence, propagating ambiguous
+activations from global features to final predictions when
+large vocabularies contain similar categories such as air-
+plane and aircraft or co-occurring objects such as road and
+vehicle. Disambiguation approaches [2, 18, 41] reduce se-
+mantic overlap through similarity-based category ranking or
+selection, constraining vocabulary size yet relying on global
+similarity metrics without explicitly modeling spatial pre-
+diction consistency. As these two directions target spatial
+and semantic challenges respectively, the interdependence
+between coarse localization and category overlap suggests
+that joint modeling may yield superior results.
+We propose S2C2Seg, a training-free framework coor-
+dinating spatial localization and semantic disambiguation.
+Image-level models like CLIP [31] provide robust global
+semantics but lack spatial precision, while pixel-level mod-
+els like CLIPSeg [26] enable fine-grained localization yet
+yield inconsistent cross-category predictions. S2C2Seg rec-
+onciles these complementary limitations via two coordi-
+nated components: Category Subset Selection (CSS) fil-
+ters candidate categories via multi-aspect scoring, reduc-
+ing redundancy and ambiguity; Consistent Semantic Guid-
+ance (CSG) fuses global semantic features with local spatial
+predictions through category-specific confidence weighting,
+with stronger regularization for semantically proximate cat-
+egories while preserving spatial precision. Figure 1 illus-
+trates improvements across eight benchmarks with repre-
+sentative baselines.
+Our primary contributions are as follows:
+• We propose a training-free framework that integrates
+global semantic models and local spatial predictors to
+jointly address vocabulary disambiguation and spatial
+refinement in open-vocabulary segmentation, achieving
+consistent improvements across diverse baseline methods
+without additional training.
+• We introduce CSS, which filters candidate categories
+through multi-aspect scoring that integrates global sim-
+ilarity, spatial presence, and cross-view consistency, re-
+ducing category redundancy and semantic ambiguity.
+• We develop CSG, which adaptively fuses global seman-
+tic features with local spatial predictions via category-
+specific confidence weighting, applying stronger regular-
+ization to semantically proximate categories while pre-
+serving spatial precision.
+2. Related Work
+2.1. Open-Vocabulary Segmentation
+Open-vocabulary semantic segmentation extends closed-
+set segmentation to arbitrary text-described categories.
+Training-based methodsenhance CLIP’s segmentation ca-
+pability through region-text pseudo-labeling [8, 15], image-
+level weak supervision [12, 14, 27], mask proposal gener-
+ation [49, 50], and cross-modal distillation [24, 53], with
+recent advances further addressing decoding efficiency and
+cross-domain generalization [16, 23, 52, 56]. Despite strong
+in-domain performance, these methods typically require
+task-specific annotations.Training-free methodsuse pre-
+trained VLMs without fine-tuning for improved general-
+ization to novel categories. Representative strategies in-
+clude self-attention refinement [10, 22, 25, 42] that modi-
+fies CLIP’s internal attention for better spatial localization,
+external prior integration from self-supervised or diffusion
+models [21, 36, 40] for enhanced spatial detail, and en-
+semble [3, 13] or global-local consistency strategies [43].
+S2C2Seg addresses category space optimization through
+multi-dimensional filtering and enhances prediction qual-
+ity via category-aware adaptive fusion of global and local
+features.
+2.2. Category Selection Strategies
+Category selection remains underexplored in OVSS. Exist-
+ing methods rely on single-dimensional criteria: CaR [41]
+refines categories via CLIP similarity, potentially under-
+weighting those with strong local presence but weak global
+alignment. FLOSS [2] uses text template entropy with pre-
+defined templates, while CDAM [18] measures spatial at-
+tention distribution through JS divergence for category rel-
+evance. DenseCLIP [32] and ViewCo [33] explore dense
+prediction and multi-view consistency; Mask-Adapter [24]
+enforces mask IoU consistency but requires training. In
+contrast, CSS integrates three complementary dimensions,
+namely global semantic alignment, local spatial activation,
+and prediction entropy, within a two-stage framework that
+balances recall and precision for dynamic category filtering.
+2.3. Semantic Guidance for Dense Prediction
+Multiple approaches exploit CLIP’s semantic knowledge
+for dense prediction: category-level modulation [18, 23,
+32, 38] employs CLIP features as fixed semantic priors,
+adaptive text guidance [44, 45] dynamically modulates em-
+beddings conditioned on image context, and recent meth-
+6294
+
+
+=== PAGE 3 ===
+Figure 2. S2C2Seg framework architecture. Given an input image and vocabularyT,(a)CSS filtersTto a compact subsetT ′ through
+multi-aspect scoring of global CLIP similarity, local CLIPSeg response, and cross-view confidence with adaptive thresholding.(b)CSG
+generates final segmentation via category-aware adaptive fusion of global and local features with confidence weighting.
+ods further explore learnable fusion with multi-scale inte-
+gration [29]. Our CSG mechanism introduces category-
+aware dynamic weighting that modulates local predictions
+via CLIP’s per-category global confidence, enabling adap-
+tive trust allocation across the vocabulary while preserving
+spatial precision under strong semantic priors.
+3. Method
+3.1. Overview
+Given an imageI∈R H×W×3 andCsemantic categories
+C={c 1, . . . , cC}with text descriptionsT={t 1, . . . , tC},
+open-vocabulary semantic segmentation produces a dense
+predictionM∈ {1, . . . , C} H×W assigning each pixel to
+one category. Standard OVSS methods independently eval-
+uate allCcategories for each pixel, leading to category re-
+dundancy where predictions scatter across visually similar
+categories, and global-local inconsistency where pixel-wise
+predictions lack coherent semantic constraints. We propose
+a two-stage framework: Category Subset Selection filtersC
+toC ′ ⊂ CwithK=|C ′|, and Consistent Semantic Guid-
+ance refines predictions via adaptive fusion. Given baseline
+Fbase, our segmentation is given by
+M= CSG(I,C ′,S spat), (1)
+whereS spat denotes pixel-level spatial predictions for the
+filtered subset.
+3.2. Category Subset Selection
+Given full category setC, CSS selectsC ′ ⊂ Cmaximizing
+segmentation quality while minimizing redundancy through
+multi-aspect scoring and adaptive thresholding.
+3.2.1. Multi-aspect Scoring
+Three complementary functions assess each categoryc i:
+global semantic alignment measures image-level category
+matching through vision-language embeddings, local spa-
+tial presence quantifies fine-grained evidence from dense
+prediction activations, and cross-view consistency validates
+reliability via global-local agreement following multi-view
+learning principles.
+Global Semantic Alignment.We employ CLIP
+encoders [31] to generate text embeddingsT=
+[t1, . . . ,tC]⊤ ∈R C×d and global image featurev glob ∈
+Rd. We compute the global similarity scores (i)
+glob for cate-
+goryc i viaL 2-normalized cosine similarity betweenv glob
+and text embeddingt i ∈R d.
+Local Spatial Presence.To complement global semantic
+alignment with fine-grained spatial evidence, we quantify
+the local presence of each category through dense spatial
+activations. A dense prediction model generates pixel-level
+activation mapsP (i) ∈[0,1] H ′×W ′
+for each categoryc i,
+whereH ′ ×W ′ denotes the activation map resolution. The
+spatial presence scores (i)
+spat is obtained by averaging activa-
+tions across all spatial locations, with higher values indicat-
+ing stronger evidence for categoryc i presence.
+Cross-view Confidence.We quantify prediction confi-
+dence through cross-view alignment following multi-view
+learning principles. Given score vectorss glob,s spat ∈R C,
+we applyL 1 normalization to obtain distributions¯s (i)
+glob =
+s(i)
+glob/P
+j s(j)
+glob and¯s(i)
+spat similarly. The fusion weightαis
+6295
+
+
+=== PAGE 4 ===
+derived from their inner product:
+α=σ
+ CX
+i=1
+¯s(i)
+glob ·¯s(i)
+spat −0.5
+!
+, (2)
+whereσ(·)denotes the sigmoid function. This formulation
+assigns higher weight when both views agree and lower
+weight when they conflict. The fused distribution is con-
+structed through weighted averaging and renormalization as
+p(i) =
+α¯s(i)
+glob + (1−α)¯s(i)
+spat
+PC
+j=1
+h
+α¯s(j)
+glob + (1−α)¯s(j)
+spat
+i . (3)
+Category-wise confidence is quantified via conditional en-
+tropy. After selecting categoryc i, we compute the residual
+distributionp (j|i)
+res =p (j)/(1−p (i))forj̸=iand obtain
+normalized conditional entropy as
+H (i) =− 1
+log(C−1)
+X
+j̸=i
+p(j|i)
+res logp (j|i)
+res . (4)
+The final confidence score combines selection probabil-
+ity with certainty:
+s(i)
+conf =p (i)(1−H (i))∈[0,1]. (5)
+This captures both presence likelihood viap (i) and choice
+certainty via1−H (i), favoring categories with high proba-
+bility and low ambiguity.
+3.2.2. Two-stage Filtering Strategy
+To maximize recall while reducing redundancy, we employ
+a two-stage filtering strategy. Multi-aspect Aggregation
+constructs an initial setC init with high recall, then Adaptive
+Size Control refines it to the final subsetC ′.
+Multi-aspect Aggregation.To ensure comprehensive cov-
+erage across scoring perspectives, we independently select
+top-ranked categories from each score vector with unified
+retention ratioτ∈(0,1]as
+Ik = TopK(sk,⌊τ·C⌋), k∈ {glob,spat,conf}, (6)
+The initial category subset is then obtained by taking the
+union of the three index sets as
+Cinit ={c i :i∈ I glob ∪ Ispat ∪ Iconf}. (7)
+This union operation maximizes recall by retaining cate-
+gories with strong evidence in any aspect, while subsequent
+Adaptive Size Control refines the subset through cross-
+aspect reranking.
+Adaptive Size Control.To ensureK min ≤ |C ′| ≤K max,
+we rerank categories inCinit using a unified scoring function.
+For each categoryc i ∈ C init, we apply min-max normal-
+ization to each score typek∈ {glob,spat,conf}to obtain
+normalized scoresˆs(i)
+k ∈[0,1]. The final ranking score is
+obtained by summing the three normalized components as
+s(i)
+final = ˆs(i)
+glob + ˆs(i)
+spat + ˆs(i)
+conf, c i ∈ Cinit. (8)
+The output subsetC ′ consists of top-Kcategories ranked by
+s(i)
+final, whereKis bounded byK min = 6andK max = 20.
+The lower bound ensures sufficient category diversity for
+simple scenes, while the upper bound prevents excessive
+redundancy in complex scenarios.
+3.3. Consistent Semantic Guidance
+Given filtered category subsetC ′ withK=|C ′|categories
+from CSS, CSG refines pixel-level predictions by adaptively
+fusing global semantic features with local spatial predic-
+tions under category-specific confidence weighting.
+3.3.1. Dual-stream Feature Extraction
+We extract two complementary visual representations that
+provide global context and local details respectively.
+Global Semantic Features.The CLIP visual encoder
+extracts patch-level featuresV∈R N×d , whereN=
+HpWp denotes the number of spatial patches. LetT ′ =
+[t′
+1, . . . ,t′
+K]⊤ ∈R K×d denote text embeddings for cate-
+gories inC ′. We compute patch-text similarity via cosine
+similarity. Let ¯V∈R N×d and ¯T′ ∈R K×d denote row-
+wiseL 2 normalized versions ofVandT ′. The similarity
+matrix is
+Sglob = ¯V ¯T′⊤ ∈R N×K . (9)
+We reshapeS glob and upsample it from patch resolution
+Hp ×W p to image resolutionH×Wvia bilinear inter-
+polation, yieldingS glob ∈R K×H×W .
+Local Spatial Predictions.To obtain fine-grained spatial
+localization, we employ dense prediction model CLIPSeg
+generating pixel-level prediction logits. While excelling at
+capturing spatial details, these local predictions lack global
+semantic consistency, necessitating fusion with global fea-
+tures. Formally, the dense model processes imageIand text
+descriptionsT ′ for categories inC ′:
+Sspat =F dense(I,T ′)∈R K×H×W , (10)
+whereF dense denotes any dense prediction model such as
+CLIPSeg.
+3.3.2. Adaptive Semantic Fusion
+To jointly combine global semantic consistency with local
+spatial precision, we fuseS glob andS spat using category-
+specific confidence weighting. For each categoryc i ∈ C ′,
+we first compute the spatial average of global similarity
+scores as
+g(i) = 1
+HW
+HX
+h=1
+WX
+w=1
+S(i)
+glob(h, w). (11)
+6296
+
+
+=== PAGE 5 ===
+Table 1. Quantitative comparison on eight benchmarks. mIoU (%) averaged across all datasets.With background: VOC21, Ctx60,
+COCO;Without background: VOC20, City, Ctx59, ADE, Stuff.
+Method Venue With background Without background Avg.↑
+VOC21 Ctx60 COCO-Obj VOC20 City Ctx59 ADE Stuff
+GroupViT[48]CVPR’2250.4 18.7 27.5 79.7 11.1 23.4 9.2 15.3 27.7
+TCL[6]CVPR’2351.2 24.3 30.4 77.5 23.1 30.3 14.9 19.6 33.1
+CLIP-Dinoiser[47]ECCV’2462.2 32.4 35.0 80.2 31.7 35.9 20.0 24.6 40.3
+CoDe[46]CVPR’2457.5 30.5 32.3 - 28.9 - 17.7 23.9 -
+CLIP[31] 20.8 9.3 8.9 49.1 6.7 11.2 3.2 5.7 14.4
+ReCo[37]NeurIPS’2225.1 19.9 15.7 57.7 21.6 22.3 11.2 14.8 23.7
+MaskCLIP[9]ICML’2338.8 23.6 20.6 74.9 12.6 26.4 9.8 16.4 27.9
+CLIPSurgery[25]PR’2555.2 30.3 29.7 77.5 33.1 33.4 16.1 22.2 37.2
+GEM[3]CVPR’2446.2 32.6 33.9 79.9 21.2 35.9 15.7 23.7 36.1
+ClearCLIP[22]ECCV’2457.0 32.2 32.5 82.3 32.8 35.8 17.3 24.0 39.2
+CaR[41]CVPR’2448.6 13.6 15.4 73.7 – 18.4 5.4 – –
+OVDiff[19]ECCV’2466.3 29.7 34.6 80.9 23.4 32.9 14.1 20.3 37.8
+LA VG[17]ECCV’2462.1 31.6 34.2 82.5 26.2 34.7 15.8 23.2 38.8
+CDAM[18]ICLR’2558.7 30.6 35.2 – 23.7 – 17.2 24.8 –
+ResCLIP[51]CVPR’2561.1 33.5 35.0 86.0 35.9 36.8 18.0 24.7 41.4
+SCCLIP[1]TIP’2564.6 36.8 37.7 84.3 41.0 40.1 20.1 26.6 43.9
+Trident[36]ICCV’2567.1 38.6 41.1 84.5 42.9 42.2 21.9 28.3 45.8
+LPOSS+[39]CVPR’2562.4 35.4 34.3 79.3 37.9 38.6 22.3 26.5 42.1
+CASS[20]CVPR’2565.8 36.7 37.8 87.8 39.4 40.2 20.4 26.7 44.4
+SCLIP[42]ECCV’2459.1 30.4 30.5 80.4 32.2 34.2 16.1 22.4 38.2
++Ours – 70.7 41.8 40.5 88.9 41.3 47.7 22.4 30.0 47.9↑9.7
+ProxyCLIP[21]ECCV’2461.3 35.3 37.5 80.3 38.1 39.1 20.2 26.5 42.3
++Ours – 72.8 42.7 41.5 89.2 43.6 48.7 23.1 31.0 49.1↑6.8
+CorrCLIP[54]ICCV’2571.9 41.1 40.7 87.8 42.0 46.3 22.2 30.5 47.8
++Ours – 75.7 44.5 44.8 91.1 47.0 50.8 23.7 32.3 51.2↑3.4
+This aggregation quantifies semantic strength for cate-
+goryc i and modulates local predictionsS (i)
+spat to inte-
+grate global context with spatial detail. The scoresg=
+[g(1), . . . , g(K)]⊤ are transformed into confidence weights
+w= [w (1), . . . , w(K)]⊤ via temperature-scaled softmax.
+The fused logits for categoryc i are then computed as
+S(i)
+fused =S (i)
+glob +λ·w (i) ·S (i)
+spat, i= 1, . . . , K, (12)
+whereλbalances the contribution of global semantic fea-
+tures and locally weighted spatial predictions andw (i) pro-
+vides adaptive category-specific weighting: categories with
+stronger global semantic evidence receive higher weights
+for local feature integration, while weak categories are
+down-weighted to reduce noise.
+Finally, to generate predictions over the originalCcat-
+egories, we constructS final ∈R C×H×W by mapping the
+Kfiltered categories back to their positions in the full label
+space:
+S(j)
+final(h, w) =
+(
+S(i)
+fused(h, w)ifc j ∈ C ′,
+−∞otherwise, (13)
+whereidenotes the index of categoryc j withinC ′. The
+large negative value effectively excludes filtered-out cat-
+egories from consideration. The final segmentation map
+M∈ {1, . . . , C} H×W is obtained via per-pixel argmax:
+M(h, w) = arg maxj S(j)
+final(h, w).
+4. Experiments
+4.1. Experimental Setup
+Datasets and Metrics.We evaluate on eight benchmarks:
+PASCAL VOC [11] (20/21 classes), PASCAL Context [28]
+(59/60 classes), COCO-Object [4] (80 classes), COCO-
+Stuff [4] (171 classes), ADE20K [55] (150 classes), and
+Cityscapes [7] (19 classes). We report mean Intersection-
+over-Union (mIoU, %) on validation sets.
+Implementation Details.We implement our framework
+in PyTorch on NVIDIA RTX 4090 GPUs. We adopt
+ViT-B/16 CLIP [31] as the visual-language backbone and
+CLIPSeg [26] for dense prediction. Following standard
+practice [31], we use 80 prompt templates per category for
+text embedding. For CSS, we set retention ratioτ= 0.3
+and subset size boundsK min = 6,K max = 20. For CSG,
+6297
+
+
+=== PAGE 6 ===
+S2C2Seg SCCLIPGT Trident ProxyCLIP ImgCASS ResCLIP
+ Mskclip
+Context
+ ADE20K Coco
+ Voc Cityscapes
+Figure 3. Qualitative comparison on PASCAL Context, ADE20K, COCO-Object, PASCAL VOC, and Cityscapes. Our S2C2Seg produces
+more accurate segmentations with improved category discrimination and spatial consistency compared to state-of-the-art methods.
+Table 2. Ablation study on framework components. CSS refines
+category subsets; CSG performs category-aware fusion. Eval-
+uated on eight benchmarks with two baselines (ProxyCLIP and
+CLIPSeg).w/o CSG: uniform weighting replaces category-aware.
+Method With background Without background
+VOC21 Ctx60 COCO VOC20 City Ctx59 ADE Stuff
+Baselines
+ProxyCLIP 61.3 35.3 37.5 80.3 38.1 39.1 20.2 26.5
+CLIPSeg 63.5 36.2 37.1 76.1 39.2 41.8 21.3 25.3
+With CSS (category refinement)
+ProxyCLIP 64.3 37.2 38.9 84.8 39.7 40.7 20.9 28.1
+CLIPSeg 66.3 37.9 39.0 80.7 40.4 42.9 21.7 27.7
+Proposed framework variants
+Ours (w/o CSG) 70.4 41.0 39.3 87.6 41.8 44.1 20.4 28.8
+Ours (w/o CSS) 68.0 39.5 39.1 87.5 40.2 42.5 21.7 28.3
+Ours (Full) 72.8 42.7 41.5 89.2 43.6 48.7 23.1 31.0
+we set fusion weightλ= 0.6. Images are resized such
+that the shorter side is 336 pixels for PASCAL VOC and
+Context datasets, and 448 pixels for ADE20K, Cityscapes,
+and COCO-Stuff. To demonstrate generalizability, we inte-
+grate S2C2Seg with three representative baselines employ-
+ing distinct feature extraction strategies: SCLIP [42] refines
+attention mechanisms, ProxyCLIP [21] incorporates self-
+supervised models, and CorrCLIP [54] represents current
+state-of-the-art performance.
+Table 3. Ablation of CSS scoring dimensions across eight bench-
+marks.Oracle (GT): uses only the ground-truth categories present
+in each image with our CSG module.
+Config. With background Without background
+VOC21 Ctx60 COCO VOC20 City Ctx59 ADE Stuff
+w/o Sel. 68.0 39.5 39.1 87.5 40.2 42.5 21.7 28.3
+Sglob only 68.8 40.1 39.8 88.0 40.7 43.2 22.0 29.3
+Sglob+Sspat 70.1 41.2 40.7 88.6 42.1 46.3 22.8 30.1
+Sglob+Sconf 70.5 40.9 40.5 88.3 42.4 46.8 22.4 30.3
+Full (Ours) 72.8 42.7 41.5 89.2 43.6 48.7 23.1 31.0
+Oracle (GT) 80.5 57.2 52.2 95.6 57.3 65.8 38.3 48.6
+4.2. Main Results
+4.2.1. Quantitative Analysis
+Table 1 reports mIoU across eight benchmarks.
+S2C2Seg+CorrCLIP achieves 51.2% mIoU, surpass-
+ing Trident at 45.8% and CASS at 44.4% by 5.4 and 6.8
+points. Integration with SCLIP, ProxyCLIP, and CorrCLIP
+yields gains of +9.7, +6.8, and +3.4 points, where improve-
+ment inversely correlates with baseline sophistication. On
+Context59 with 59 categories, CSS reduces the category
+space to achieve 50.8% mIoU. On VOC21, where back-
+ground accounts for 21 categories, CSG exploits CLIP’s
+global discriminative capacity to correct local biases from
+background interference, yielding +11.5 points.
+6298
+
+
+=== PAGE 7 ===
+aeroplanebicycle
+birdboat
+diningtable
+bottlehorseperson
+catchaircowdogbuscarsheepsofatrain
+motorbikepottedplanttvmonitor
+Predicted category
+aeroplane
+bicycle
+bird
+boat
+diningtable
+bottle
+horse
+person
+cat
+chair
+cow
+dog
+bus
+car
+sheep
+sofa
+train
+motorbike
+pottedplant
+tvmonitor
+Ground-truth category
+(a) aeroplanebicycle
+birdboat
+diningtable
+bottlehorseperson
+catchaircowdogbuscarsheepsofatrain
+motorbikepottedplanttvmonitor
+Predicted category
+aeroplane
+bicycle
+bird
+boat
+diningtable
+bottle
+horse
+person
+cat
+chair
+cow
+dog
+bus
+car
+sheep
+sofa
+train
+motorbike
+pottedplant
+tvmonitor
+Ground-truth category
+(b) aeroplanebicycle
+birdboat
+diningtable
+bottlehorseperson
+catchaircowdogbuscarsheepsofatrain
+motorbikepottedplanttvmonitor
+Predicted category
+aeroplane
+bicycle
+bird
+boat
+diningtable
+bottle
+horse
+person
+cat
+chair
+cow
+dog
+bus
+car
+sheep
+sofa
+train
+motorbike
+pottedplant
+tvmonitor
+Ground-truth category
+1
+2
+3
+4
+5
+(c)
+Top 5 improved pairs
+0.0
+0.2
+0.4
+0.6
+0.8
+P(predicted | ground truth)
+0.0
+0.2
+0.4
+0.6
+0.8
+P(predicted | ground truth)
+−0.15
+−0.10
+−0.05
+0.00
+0.05
+0.10
+0.15
+Confusion reduction (Δ probability)
+Figure 4. Category confusion analysis on PASCAL VOC20 validation set. (a) Confusion matrix for ProxyCLIP baseline showing frequent
+confusion between semantically similar categories (e.g., bicycle/motorbike, car/bus). (b) Confusion matrix for ProxyCLIP + S2C2Seg
+showing reduced off-diagonal confusion. (c) Confusion reduction heatmap (green indicates improvement); yellow annotations highlight
+the top-5 category pairs with greatest confusion reduction.
+/uni00000013/uni00000011/uni00000015/uni00000013/uni00000011/uni00000016/uni00000013/uni00000011/uni00000017/uni00000013/uni00000011/uni00000018/uni00000013/uni00000011/uni00000019/uni00000013/uni00000011/uni0000001a/uni00000013/uni00000011/uni0000001b/uni00000013/uni00000011/uni0000001cˆsglob
+/uni00000013/uni00000011/uni00000015/uni00000013/uni00000011/uni00000016/uni00000013/uni00000011/uni00000017/uni00000013/uni00000011/uni00000018/uni00000013/uni00000011/uni00000019/uni00000013/uni00000011/uni0000001a/uni00000013/uni00000011/uni0000001b
+ˆsspat
+/uni00000013/uni00000011/uni00000015
+/uni00000013/uni00000011/uni00000016
+/uni00000013/uni00000011/uni00000017
+/uni00000013/uni00000011/uni00000018
+/uni00000013/uni00000011/uni00000019
+/uni00000013/uni00000011/uni0000001a
+/uni00000013/uni00000011/uni0000001b
+/uni00000013/uni00000011/uni0000001c
+ˆsconf
+Figure 5. 3D visualization of CSS category scoring on PASCAL
+VOC20. Each candidate is plotted by global semantic scoreS glob,
+local spatial responseS spat, and prediction entropyS conf. Selected
+categories are marked in red and orange; filtered ones in gray.
+4.2.2. Qualitative Analysis
+Figure 3 presents qualitative comparisons across five bench-
+marks. On ADE20K indoor scenes in columns 4–6, our
+method produces spatially coherent segmentations where
+baselines exhibit fragmentation. Column 1 shows cor-
+rect sky, ground, and person boundary segmentation; col-
+umn 4 demonstrates precise toilet-room structure delin-
+eation. On COCO in columns 7–8 and VOC in column 11,
+S2C2Seg distinguishes table and cabinet from background
+while preserving person-background boundaries, confirm-
+ing the complementary effects of CSS category refinement
+and CSG adaptive fusion.
+4.3. Ablation Studies
+4.3.1. Component Analysis
+Table 2 evaluates framework components with ProxyCLIP
+and CLIPSeg baselines. CSS provides +3.0 mIoU on
+sofa
+person
+person
+car
+Img CLIP Full modelCLIPseg
+Figure 6. Visualization of complementary representations from
+CLIP global features and CLIPSeg local predictions.
+VOC21 and +4.5 on VOC20 through category refinement.
+w/o CSGachieves +9.1 on VOC21 via category refinement,
+whilew/o CSSusing all categories with adaptive fusion
+contributes +6.7. The full framework combining both mod-
+ules achieves +11.5 on VOC21 and +8.9 on VOC20, where
+the VOC21 gain exceeds the sum of individual contributions
+(+3.0 and +6.7), demonstrating complementary benefits.
+4.3.2. Multi-Dimensional Category Selection Analysis
+Component-wise Ablation.Table 3 evaluates CSS scoring
+dimensions. Without category selection, performance aver-
+ages 45.9% mIoU across eight benchmarks. Adding spa-
+tial scoreS spat to global scoreS glob improves performance
+to 47.7% mIoU, while adding confidence scoreS conf yields
+47.8%. Full CSS combining all three dimensions achieves
+6299
+
+
+=== PAGE 8 ===
+0.2 0.5 0.8
+λ
+20
+40
+60
+80mIoU (%)
+0.1 0.3 0.5
+τ
+10 20 30 40
+K_max
+VOC21 Context60 COCO-Obj VOC20 City Context59 ADE Stuff
+Figure 7. Hyperparameter sensitivity analysis.(a)Fusion weightλin CSG module.(b)Upper boundK max on selected category subset
+size.(c)Retention ratioτin CSS union-based selection. Results demonstrate robust performance across parameter ranges.
+Table 4. Comparison of fusion strategies in the CSG module
+(mIoU, %). All methods combine CLIP global semantic features
+Sglob with CLIPSeg local spatial featuresS spat without training.
+Method With background Without background
+VOC21 Ctx60 COCO VOC20 City Ctx59 ADE Stuff
+Add. 70.4 41.0 39.3 87.6 41.8 44.1 20.4 28.8
+Mult. 67.9 38.5 37.8 85.4 39.1 42.8 19.8 27.6
+W.A. 69.6 39.8 39.7 86.8 42.1 45.7 21.1 28.5
+MMN 68.1 39.0 38.4 86.2 41.5 44.9 21.3 28.1
+Ours 72.8 42.7 41.5 89.2 43.6 48.7 23.1 31.0
+49.1% mIoU, exceeding either pair and confirming com-
+plementary effects. Oracle with ground truth categories
+reaches 61.9%, with gap analysis in the supplementary doc-
+ument.
+Confusion Matrix Analysis.Figure 4 examines confu-
+sion matrices on VOC20. Our method shows stronger
+diagonals and less off-diagonal confusion. CSS reduces
+confusion between related categories (bicycle/motorbike,
+car/bus). CSG reduces confusion between spatially adjacent
+categories (person/chair, person/table), maintaining spatial
+consistency via global guidance.
+Scoring Space Visualization.Figure 5 visualizes the cat-
+egory distribution in CSS scoring space on VOC20. Gray
+points represent filtered categories with insufficient con-
+fidence or spatial evidence; blue points denote single-
+dimension-dominant categories; red and orange points in-
+dicate selected categories with balanced multi-dimensional
+scores. Selected categories concentrate in high-score re-
+gions where ground truth predominantly resides, confirm-
+ing multi-dimensional scoring distinguishes reliable predic-
+tions from false positives.
+4.3.3. Analysis of CSG Fusion Strategies
+We compare five fusion strategies in Table 4: ad-
+ditive(Add.), multiplicative(Mult.), weighted averag-
+ing(W.A.), min-max normalization(MMN), and category-
+aware (ours). Category-aware fusion achieves 49.1%
+average mIoU, outperforming additive by +2.4, with no-
+table gains on Context59 (+4.6), ADE (+2.7), and VOC21
+(+2.4). Figure 6 visualizes the complementary nature of
+global and local representations. CLIP exhibits limited
+spatial precision (rows 1-2, person and boat regions over-
+lap), while CLIPSeg provides finer localization (column
+3). CSG modulates local evidence via global confidence,
+maintaining consistency when cues diverge (column 4).
+4.4. Hyperparameter Sensitivity
+We analyze three key hyperparameters on PASCAL VOC
+validation set using ProxyCLIP baseline (Figure 7). The
+fusion weightλbalances global semantic guidance with
+local spatial predictions. Performance remains stable at
+48.0–49.5% mIoU acrossλ∈ {0.4,0.8}, and we adopt
+λ= 0.6. The retention ratioτdetermines initial category
+set size before adaptive filtering, exhibiting robust perfor-
+mance acrossτ∈ {0.2,0.5}withτ= 0.3balancing recall
+and precision. The upper boundK max constrains final sub-
+set size, showing consistent results forK max ∈ {15,25}.
+We setK max = 20based on typical object distributions.
+5. Conclusion
+We present S2C2Seg, a training-free framework for open-
+vocabulary semantic segmentation addressing category re-
+dundancy and global–local semantic inconsistency. CSS
+filters candidate categories via multi-aspect scoring to re-
+duce redundancy and ambiguity while maintaining recall.
+CSG adaptively fuses CLIP’s global semantic features with
+CLIPSeg’s local spatial predictions via category-specific
+confidence weighting. Experiments across eight bench-
+marks show that integrating S2C2Seg with baselines such
+as SCLIP, ProxyCLIP, and CorrCLIP consistently improves
+performance by +3.4 to +9.7 pp mIoU, achieving state-of-
+the-art 51.2% mIoU.
+6300
+
+
+=== PAGE 9 ===
+Acknowledgment
+This work was supported by the National Natural Science
+Foundation of China under Grant 62421004, U24A20279,
+62533010, 62473243, and the Shanghai Commission of
+Science and Technology, China under Grant 23010500100.
+References
+[1] Sule Bai, Yong Liu, Yifei Han, Haoji Zhang, Yansong Tang,
+Jie Zhou, and Jiwen Lu. Self-calibrated clip for training-free
+open-vocabulary segmentation.IEEE Transactions on Image
+Processing, 2025.
+[2] Yasser Benigmim, Mohammad Fahes, Tuan-Hung Vu, An-
+drei Bursuc, and Raoul de Charette. Floss: Free lunch in
+open-vocabulary semantic segmentation. InProceedings of
+the IEEE/CVF International Conference on Computer Vi-
+sion, pages 21471–21481, 2025.
+[3] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and
+Hilde Kuehne. Grounding everything: Emerging localiza-
+tion properties in vision-language transformers. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 3828–3837, 2024.
+[4] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. InProceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 1209–1218, 2018.
+[5] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. InPro-
+ceedings of the IEEE/CVF international conference on com-
+puter vision, pages 9650–9660, 2021.
+[6] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learn-
+ing to generate text-grounded mask for open-world semantic
+segmentation from only image-text pairs. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 11165–11174, 2023.
+[7] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. InProceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 3213–3223, 2016.
+[8] Son Duy Dao, Hengcan Shi, Dinh Phung, and Jianfei Cai.
+Class enhancement losses with pseudo labels for open-
+vocabulary semantic segmentation.IEEE Transactions on
+Multimedia, 26:8442–8453, 2024.
+[9] Zheng Ding, Jieke Wang, and Zhuowen Tu. Open-
+vocabulary universal image segmentation with maskclip. In
+Proceedings of the 40th International Conference on Ma-
+chine Learning, pages 8090–8102, 2023.
+[10] Xiaoyi Dong, Jianmin Bao, Yinglin Zheng, Ting Zhang,
+Dongdong Chen, Hao Yang, Ming Zeng, Weiming Zhang,
+Lu Yuan, Dong Chen, et al. Maskclip: Masked self-
+distillation advances contrastive language-image pretraining.
+InProceedings of the IEEE/CVF conference on computer vi-
+sion and pattern recognition, pages 10995–11005, 2023.
+[11] Mark Everingham, SM Ali Eslami, Luc Van Gool, Christo-
+pher KI Williams, John Winn, and Andrew Zisserman. The
+pascal visual object classes challenge: A retrospective.Inter-
+national journal of computer vision, 111(1):98–136, 2015.
+[12] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scal-
+ing open-vocabulary image segmentation with image-level
+labels. InEuropean conference on computer vision, pages
+540–557. Springer, 2022.
+[13] Sina Hajimiri, Ismail Ben Ayed, and Jose Dolz. Pay attention
+to your neighbours: Training-free open-vocabulary semantic
+segmentation. InProceedings of the Winter Conference on
+Applications of Computer Vision, pages 5061–5071, 2025.
+[14] Cong Han, Yujie Zhong, Dengjie Li, Kai Han, and Lin
+Ma. Open-vocabulary semantic segmentation with decou-
+pled one-pass network. InProceedings of the IEEE/CVF
+International Conference on Computer Vision, pages 1086–
+1096, 2023.
+[15] Haiwen Huang, Songyou Peng, Dan Zhang, and Andreas
+Geiger. Renovating names in open-vocabulary segmentation
+benchmarks.Advances in Neural Information Processing
+Systems, 37:88410–88442, 2024.
+[16] Siyu Jiao, Hongguang Zhu, Jiannan Huang, Yao Zhao, Yun-
+chao Wei, and Humphrey Shi. Collaborative vision-text rep-
+resentation optimizing for open-vocabulary segmentation. In
+European Conference on Computer Vision, pages 399–416.
+Springer, 2024.
+[17] Dahyun Kang and Minsu Cho. In defense of lazy visual
+grounding for open-vocabulary semantic segmentation. In
+European Conference on Computer Vision, pages 143–164.
+Springer, 2024.
+[18] Dong Un Kang, Hayeon Kim, and Se Young Chun. Class
+distribution-induced attention map for open-vocabulary se-
+mantic segmentations. InThe Thirteenth International Con-
+ference on Learning Representations, 2025.
+[19] Laurynas Karazija, Iro Laina, Andrea Vedaldi, and Christian
+Rupprecht. Diffusion models for open-vocabulary segmen-
+tation. InEuropean Conference on Computer Vision, 2024.
+[20] Chanyoung Kim, Dayun Ju, Woojung Han, Ming-Hsuan
+Yang, and Seong Jae Hwang. Distilling spectral graph for
+object-context aware open-vocabulary semantic segmenta-
+tion. InProceedings of the Computer Vision and Pattern
+Recognition Conference, pages 15033–15042, 2025.
+[21] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Proxyclip: Proxy
+attention improves clip for open-vocabulary segmentation.
+InEuropean Conference on Computer Vision, pages 70–88.
+Springer, 2024.
+[22] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+ence. InEuropean Conference on Computer Vision, pages
+143–160. Springer, 2024.
+[23] Minhyeok Lee, Suhwan Cho, Jungho Lee, Sunghun Yang,
+Heeseung Choi, Ig-Jae Kim, and Sangyoun Lee. Effective
+sam combination for open-vocabulary semantic segmenta-
+tion. InProceedings of the Computer Vision and Pattern
+Recognition Conference, pages 26081–26090, 2025.
+6301
+
+
+=== PAGE 10 ===
+[24] Yongkang Li, Tianheng Cheng, Bin Feng, Wenyu Liu,
+and Xinggang Wang. Mask-adapter: The devil is in the
+masks for open-vocabulary segmentation. InProceedings
+of the IEEE/CVF conference on computer vision and pattern
+recognition, pages 14998–15008, 2025.
+[25] Yi Li, Hualiang Wang, Yiqun Duan, Jiheng Zhang, and Xi-
+aomeng Li. A closer look at the explainability of con-
+trastive language-image pre-training.Pattern Recognition,
+162:111409, 2025.
+[26] Timo L ¨uddecke and Alexander Ecker. Image segmenta-
+tion using text and image prompts. InProceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 7086–7096, 2022.
+[27] Huaishao Luo, Junwei Bao, Youzheng Wu, Xiaodong He,
+and Tianrui Li. Segclip: Patch aggregation with learnable
+centers for open-vocabulary semantic segmentation. InIn-
+ternational Conference on Machine Learning, pages 23033–
+23044. PMLR, 2023.
+[28] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and
+semantic segmentation in the wild. InProceedings of the
+IEEE conference on computer vision and pattern recogni-
+tion, pages 891–898, 2014.
+[29] Zelin Peng, Zhengqin Xu, Zhilin Zeng, Changsong Wen,
+Yu Huang, Menglin Yang, Feilong Tang, and Wei Shen.
+Understanding fine-tuning clip for open-vocabulary seman-
+tic segmentation in hyperbolic space. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 4562–4572, 2025.
+[30] Yuhao Qing, Dan Zeng, Shaorong Xie, Kaer Huang, and
+Yueying Wang. Integrating low-level visual cues for en-
+hanced unsupervised semantic segmentation. InProceed-
+ings of the AAAI Conference on Artificial Intelligence, pages
+6603–6611, 2025.
+[31] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. InInternational conference on machine learning, pages
+8748–8763. PmLR, 2021.
+[32] Yongming Rao, Wenliang Zhao, Guangyi Chen, Yansong
+Tang, Zheng Zhu, Guan Huang, Jie Zhou, and Jiwen Lu.
+Denseclip: Language-guided dense prediction with context-
+aware prompting. InProceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+18082–18091, 2022.
+[33] Pengzhen Ren, Changlin Li, Hang Xu, Yi Zhu, Guan-
+grun Wang, Jianzhuang Liu, Xiaojun Chang, and Xiaodan
+Liang. Viewco: Discovering text-supervised segmentation
+masks via multi-view semantic consistency.arXiv preprint
+arXiv:2302.10307, 2023.
+[34] Robin Rombach, Andreas Blattmann, Dominik Lorenz,
+Patrick Esser, and Bj ¨orn Ommer. High-resolution image
+synthesis with latent diffusion models. InProceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 10684–10695, 2022.
+[35] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. InEuropean Conference on Com-
+puter Vision, pages 139–156. Springer, 2024.
+[36] Yuheng Shi, Minjing Dong, and Chang Xu. Harnessing
+vision foundation models for high-performance, training-
+free open vocabulary segmentation. InProceedings of the
+IEEE/CVF International Conference on Computer Vision,
+pages 23487–23497, 2025.
+[37] Gyungin Shin, Weidi Xie, and Samuel Albanie. Reco: Re-
+trieve and co-segment for zero-shot transfer.Advances in
+Neural Information Processing Systems, 35:33754–33767,
+2022.
+[38] Heeseong Shin, Chaehyun Kim, Sunghwan Hong, Seokju
+Cho, Anurag Arnab, Paul Hongsuck Seo, and Seungryong
+Kim. Towards open-vocabulary semantic segmentation with-
+out semantic labels.Advances in Neural Information Pro-
+cessing Systems, 37:9153–9177, 2024.
+[39] Vladan Stojni ´c, Yannis Kalantidis, Ji ˇr´ı Matas, and Giorgos
+Tolias. Lposs: Label propagation over patches and pixels
+for open-vocabulary semantic segmentation. InProceedings
+of the Computer Vision and Pattern Recognition Conference,
+pages 9794–9803, 2025.
+[40] Lin Sun, Jiale Cao, Jin Xie, Xiaoheng Jiang, and Yanwei
+Pang. Cliper: Hierarchically improving spatial representa-
+tion of clip for open-vocabulary semantic segmentation. In
+Proceedings of the IEEE/CVF International Conference on
+Computer Vision, pages 23199–23209, 2025.
+[41] Shuyang Sun, Runjia Li, Philip Torr, Xiuye Gu, and Siyang
+Li. Clip as rnn: Segment countless visual concepts without
+training endeavor. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+13171–13182, 2024.
+[42] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethink-
+ing self-attention for dense vision-language inference. In
+European conference on computer vision, pages 315–332.
+Springer, 2024.
+[43] Jingyun Wang, Cilin Yan, and Guoliang Kang. Globality
+strikes back: Rethinking the global knowledge of clip in
+training-free open-vocabulary semantic segmentation.arXiv
+e-prints, pages arXiv–2502, 2025.
+[44] Zhaoqing Wang, Xiaobo Xia, Ziye Chen, Xiao He, Yandong
+Guo, Mingming Gong, and Tongliang Liu. Open-vocabulary
+segmentation with unpaired mask-text supervision.arXiv
+preprint arXiv:2402.08960, 2024.
+[45] Zhengyang Wang, Tingliang Feng, Fan Lyu, Fanhua Shang,
+Wei Feng, and Liang Wan. Dual semantic guidance for open
+vocabulary semantic segmentation. InProceedings of the
+Computer Vision and Pattern Recognition Conference, pages
+20212–20222, 2025.
+[46] Ji-Jia Wu, Andy Chia-Hao Chang, Chieh-Yu Chuang,
+Chun-Pei Chen, Yu-Lun Liu, Min-Hung Chen, Hou-Ning
+Hu, Yung-Yu Chuang, and Yen-Yu Lin. Image-text co-
+decomposition for text-supervised semantic segmentation. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 26794–26803, 2024.
+[47] Monika Wysocza ´nska, Oriane Sim´eoni, Micha¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzci ´nski, and Patrick P ´erez.
+6302
+
+
+=== PAGE 11 ===
+Clip-dinoiser: Teaching clip a few dino tricks for open-
+vocabulary semantic segmentation. InEuropean Conference
+on Computer Vision, pages 320–337. Springer, 2024.
+[48] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas Breuel, Jan Kautz, and Xiaolong Wang. Groupvit:
+Semantic segmentation emerges from text supervision. In
+Proceedings of the IEEE/CVF conference on computer vi-
+sion and pattern recognition, pages 18134–18144, 2022.
+[49] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. InEuropean conference on computer vi-
+sion, pages 736–753. Springer, 2022.
+[50] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. San: Side adapter network for open-vocabulary
+semantic segmentation.IEEE Transactions on Pattern Anal-
+ysis and Machine Intelligence, 45(12):15546–15561, 2023.
+[51] Yuhang Yang, Jinhong Deng, Wen Li, and Lixin Duan.
+Resclip: Residual attention for training-free dense vision-
+language inference. InProceedings of the Computer Vision
+and Pattern Recognition Conference, pages 29968–29978,
+2025.
+[52] Gonca Yilmaz, Songyou Peng, Marc Pollefeys, Francis En-
+gelmann, and Hermann Blum. Opendas: Domain adap-
+tation for open-vocabulary segmentation.arXiv preprint
+arXiv:2405.20141, 7, 2024.
+[53] Quan-Sheng Zeng, Yunheng Li, Daquan Zhou, Guanbin Li,
+Qibin Hou, and Ming-Ming Cheng. Maskclip++: A mask-
+based clip fine-tuning framework for open-vocabulary image
+segmentation.arXiv preprint arXiv:2412.11464, 2024.
+[54] Dengke Zhang, Fagui Liu, and Quan Tang. Corrclip: Re-
+constructing patch correlations in clip for open-vocabulary
+semantic segmentation. InProceedings of the IEEE/CVF In-
+ternational Conference on Computer Vision, pages 24677–
+24687, 2025.
+[55] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset.International
+journal of computer vision, 127(3):302–321, 2019.
+[56] Xueyan Zou, Zi-Yi Dou, Jianwei Yang, Zhe Gan, Linjie Li,
+Chunyuan Li, Xiyang Dai, Harkirat Behl, Jianfeng Wang, Lu
+Yuan, et al. Generalized decoding for pixel, image, and lan-
+guage. InProceedings of the IEEE/CVF conference on com-
+puter vision and pattern recognition, pages 15116–15127,
+2023.
+6303

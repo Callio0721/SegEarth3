@@ -1,0 +1,1080 @@
+=== PAGE 1 ===
+LPOSS: Label Propagation Over Patches and Pixels
+for Open-vocabulary Semantic Segmentation
+Vladan Stojni ´c1 Y annis Kalantidis2 Jiˇr´ı Matas 1 Giorgos Tolias1
+1 VRG, FEE, Czech Technical University in Prague 2 NA VER LABS Europe
+Abstract
+We propose a training-free method for open-vocabulary
+semantic segmentation using Vision-and-Language Models
+(VLMs). Our approach enhances the initial per-patch pre-
+dictions of VLMs through label propagation, which jointly
+optimizes predictions by incorporating patch-to-patch rela-
+tionships. Since VLMs are primarily optimized for cross-
+modal alignment and not for intra-modal similarity, we use
+a Vision Model (VM) that is observed to better capture these
+relationships. We address resolution limitations inherent to
+patch-based encoders by applying label propagation at the
+pixel level as a reﬁnement step, signiﬁcantly improving seg-
+mentation accuracy near class boundaries. Our method,
+called LPOSS+, performs inference over the entire image,
+avoiding window-based processing and thereby capturing
+contextual interactions across the full image. LPOSS+
+achieves state-of-the-art performance among training-free
+methods, across a diverse set of datasets. Code:
+https:
+//github.com/vladan-stojnic/LPOSS
+1. Introduction
+Semantic segmentation models are typically trained in a su-
+pervised manner, requiring pixel-level annotations based on
+a predeﬁned set of categories or classes. These approaches
+face signiﬁcant scalability challenges due to the high cost of
+annotation, and their applicability is limited by the ﬁxed set
+of classes they are trained to recognize. Open-vocabulary
+semantic segmentation aims to generalize and allow the seg-
+mentation of an image into any given list of classes provided
+at inference time. This task is usually solved with the use of
+a Vision-and-Language Model (VLM) [
+10, 22, 33].
+VLMs produce aligned textual and visual features and
+enable matching textual descriptions, such as class names,
+to visual features. While highly effective for image-level
+classiﬁcation tasks, VLMs are less suited for dense pre-
+diction tasks like semantic segmentation out-of-the-box,
+as they are trained to align global image representations
+53.8/35.9 66.1/48.4
+82.1/53.6 84.0/59.1
+69.4/54.5 70.3/60.0
+ground-truth LPOSS LPOSS+
+Figure 1. Open-vocabulary semantic segmentation with LPOSS
+(patch-level LP) and LPOSS+ (pixel-level LP). Performance re-
+ported via mIoU / Boundary IoU. Images from the Context and
+COCO-Stuff datasets.
+with textual data. Our work addresses this gap by propos-
+ing a novel, training-free VLM enhancement for open-
+vocabulary semantic segmentation.
+Although segmentation is deﬁned as pixel-wise labeling,
+recent approaches, that rely on VLMs [
+26, 42, 46] utilizing
+ViT [ 15] architecture, form predictions at the patch level
+and simply up-sample the predictions. A ViT-based VLM
+typically provides a class probability distribution indepen-
+dently for each patch, yielding an initial prediction. Our
+approach incorporates the initial prediction together with
+patch relationships by making joint predictions across all
+patches. This is achieved through minimizing a quadratic
+cost function with unary and binary terms. This approach
+ensures that ﬁnal predictions remain close to initial ones
+while nearby patches or patches with similar appearances
+produce similar predictions, reﬂecting a common prior in
+semantic segmentation. Optimization is performed through
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+9794
+
+
+=== PAGE 2 ===
+either an iterative Label Propagation (LP) [ 54] operation
+on a patch graph or, equivalently, by solving a linear sys-
+tem. The latter is computationally efﬁcient due to the high
+sparsity of the coefﬁcient matrix and the use of GPU-based
+solvers. Following prior work [
+23, 26, 46], and due to
+the fact that VLMs optimize inter-modal rather than intra-
+modal similarity, we leverage a strong Vision Model (VM),
+speciﬁcally DINO [
+5], to effectively capture patch-to-patch
+appearance and relationships. Using such an encoder, in-
+stead of the VLM’s visual encoder, signiﬁcantly improves
+predictions at a patch level.
+While operating at the patch level provides efﬁciency
+beneﬁts, it constrains pixel-level accuracy. In an experiment
+where semantic segmentation ground truth is downsampled
+to patch-level resolution, then upsampled and evaluated as
+a prediction, we show that the resulting performance mea-
+sured via mIoU averages approximately 85% across eight
+datasets. To address this limitation, we perform a second
+stage of LP on a pixel-level graph, using the patch-based
+LP result as the initial prediction set. This reﬁnement con-
+sistently improves segmentation accuracy, particularly near
+class boundaries, as we show by measuring the Boundary
+IoU metric [
+9]. Figure 1 demonstrates examples of such
+improvement using VLM and VM with a ViT backbone.
+The strength of ViT architectures comes with limita-
+tions. There is a strong bias introduced by their pre-
+training settings, i.e. processing ﬁxed-resolution square im-
+ages. Consequently, current segmentation methods per-
+form feature extraction and prediction in a sliding win-
+dow fashion with overlapping windows. In contrast, we
+move beyond this standard practice by performing predic-
+tions jointly for the entire image, accounting for interac-
+tions across all patches. However, we show that while
+joint predictions are possible, joint feature extraction across
+the whole image is not feasible without a noticeable per-
+formance decrease. Our proposed method, called Label
+Propagation over Patches (LPOSS) and Pixels (LPOSS+),
+achieves state-of-the-art results across various datasets, out-
+performing existing training-free methods on eight datasets.
+Our contributions are summarized as follows:
+• We establish a connection between classical label prop-
+agation methods and vision-language models (VLMs) in
+the context of dense prediction tasks.
+• We introduce a training-free approach for semantic seg-
+mentation that predicts and propagates labels at both
+patch and pixel levels. This strategy leverages the pre-
+training of foundation models and addresses the perfor-
+mance limitations of coarse patch-level predictions.
+• We propose to decouple feature extraction from class
+prediction, enabling image-level inference and capturing
+contextual interactions across the entire image.
+2. Related work
+The introduction of vision-language models [
+10, 22, 33]
+opened up the possibilities of performing many recognition
+tasks in the open-vocabulary setting [
+43], e.g., zero-shot
+classiﬁcation [33, 38, 41], semantic segmentation [ 17, 53],
+object detection [44], etc. However, considering these mod-
+els are usually trained only to optimize global image rep-
+resentation, they do not excel in dense recognition tasks
+such as segmentation [
+3, 53]. Because of this, consider-
+able work is being done to improve their performance. This
+is achieved by training specialized VLM for such tasks,
+changing the VLM architecture during inference, and em-
+ploying other vision models to aid VLMs.
+Training VLMs for segmentation. One line of work trains
+from scratch VLMs specialized for semantic segmentation
+using varying levels of supervision: using segmentation
+masks without class annotations [
+14, 17] and only image-
+caption pairs [ 29, 34, 47, 48]. On the other hand, another
+line of work trains additional modules on top of pre-trained
+VLM to improve their localization abilities [
+6, 28, 31].
+Training-free segmentation with VLMs. It is ob-
+served [27, 42] that different VLM components are respon-
+sible for VLMs bad localization performance and that the
+performance can be substantially improved by removing or
+changing them during inference. MaskCLIP [
+53] revisits
+the global attention pooling of CLIP [ 33] and proposes to
+remove its query and key embeddings while reformulating
+the value embedding layer and the last linear layer into two
+1× 1 convolutions. SCLIP [
+42] proposes to replace the self-
+attention layer of the ViT with correlative self-attention.
+ClearCLIP [
+25] identiﬁes residual connections as the pri-
+mary source of VLMs’ bad localization performance. Be-
+cause of this, it proposes to remove them from the last
+layer. It additionally replaces self-attention with self-self-
+attention and removes the feed-forward network from the
+last layer. GEM [
+3] improves the semantic segmentation
+abilities of VLMs by adding self-self-attention blocks par-
+allel to self-attention layers. We consider these methods
+complementary to ours as we apply our method on top of
+MaskCLIP [
+53].
+VLMs and VMs for segmentation. Vision models trained
+in a self-supervised fashion show remarkable object local-
+ization abilities [
+5, 13, 32, 36, 37]. Because of this, the
+growing line of work investigates how to leverage them to
+improve the ability of VLMs to perform open-vocabulary
+semantic segmentation. CLIP-DIY [
+45] uses an unsu-
+pervised object discovery method FOUND [ 37] to clear
+and improve the open-vocabulary segmentation maps of
+CLIP [
+33]. CLIP-DINOiser [ 46] proposes a training-free
+variant that uses patch-to-patch afﬁnity from DINO [ 5] to
+reﬁne CLIP’s image features. Additionally, it shows that
+good localization capabilities can be extracted from CLIP
+by training two small convolutional layers. ProxyCLIP [
+26]
+9795
+
+
+=== PAGE 3 ===
+proposes replacing the attention matrix of the last layer of
+CLIP [
+33] with an afﬁnity matrix from a vision model such
+as DINO [ 5]. LaVG performs panoptic segmentation us-
+ing the normalized cut on top of DINO [ 5] features. The
+discovered segments are then classiﬁed into a class using a
+VLM. Our method falls into this group of methods and is
+most similar to CLIP-DINOiser [
+46]. Compared to CLIP-
+DINOiser, which uses afﬁnity based on Euclidean similar-
+ities between DINO patches, we propose to use geodesic
+similarities obtained through label propagation. Addition-
+ally, compared to all other works, we perform the prediction
+jointly across all sliding windows, which are usually used in
+such methods. Finally, we depart from performing predic-
+tions only at the patch level and reﬁne the predictions at the
+pixel level by applying the same process on top of pixels.
+Relation to CRFs. Conditional Random Fields (CRFs) [
+24,
+40] have a long tradition in dense prediction tasks with
+classical approaches [ 18, 24, 35]. In early deep models
+for semantic segmentation, CRFs are used as a reﬁnement
+step to increase the accuracy and the resolution of the pre-
+dictions [
+8]. There are also attempts to integrate a sim-
+ilar objective function during end-to-end training [ 7, 50].
+CRFs and LP both leverage pairwise connections to achieve
+smooth label assignments. LP directly propagates labels
+based on neighbors, while CRFs explicitly model these rela-
+tionships in their energy function. We opt for an LP variant
+that has theoretical convergence proofs and corresponds to
+an intuitive quadratic cost function, which does not hold for
+all existing LP variants [
+2]. LP is typically easy to imple-
+ment, computationally efﬁcient [ 54], and compatible with
+GPU-based software implementations [ 38]. Consequently,
+it is used in various computer vision and machine learning
+tasks [
+19, 21, 38, 39], while in this work, LP is tailored
+for semantic segmentation in the era of VLMs and ViT en-
+coders.
+3. Label propagation over patches and pixels
+3.1. Problem formulation
+In the task of open-vocabulary semantic segmentation we
+are given an image X ∈ RH× W × 3 and a list of class names
+C = {c1, . . . , c C}. Our goal is to assign one of the classes
+to every pixel or, conversely, tensor Y ∈ RH× W × C that
+contains a segmentation mask for each of the C classes.
+To solve such a task, one can utilize a Vision Language
+Model (VLM), i.e. a model that is able to encode both the
+class names as well as the image in the compatible feature
+spaces. Let f : I → Rd× NP denote the vision encoder, i.e.
+a ViT [
+15] with patch size P . The vision encoder extracts
+feature vectors for all NP = ⌈H/P ⌉ · ⌈W/P ⌉ patches for
+an image in I 1. Also, let g : T → Rd represent the text
+1We discard the representation corresponding to the CLS token usually
+present in ViTs.
+encoder of the VLM, with T representing the space of the
+textual input. One can, therefore, perform open-vocabulary
+semantic segmentation by obtaining the patch features for
+an image Zvlm = f (X), class name features F = g(C) ∈
+Rd× C, and calculating per patch class similarities
+Yvlm = Z ⊤
+vlmF, (1)
+which are further upsampled to pixel-wise class similarities
+at the original image size. The class with the highest simi-
+larity is then assigned to each pixel.
+3.2. Preliminaries
+Label propagation (LP). Let {n1, . . . , n N } be a set of
+graph nodes and S ∈ RN × N be a symmetric, typically
+very sparse, adjacency matrix with zero diagonal. We ob-
+tain a symmetrically normalized adjacency matrix by ˆS =
+D− 1
+2 SD − 1
+2 , where D = diag(S1N ) is a degree matrix and
+1N is the all-ones N -dimensional vector. Given ˆS, label
+propagation [54] is an iterative process given by
+ˆY (t+1) = α ˆS ˆY (t) + (1 − α )Y (2)
+until convergence, that reﬁnes initial node predictions Y ∈
+RN × C across C classes based on the graph structure 2.
+Hyper-parameter α ∈ (0, 1) controls the amount of prop-
+agation and reﬁnement. It is possible to show [ 54] that this
+iterative solution is equivalent to solving C N -variable lin-
+ear systems
+L(S) ˆY = Y, (3)
+where L(S) = I − αD − 1
+2 SD − 1
+2 = I − α ˆS is the graph
+Laplacian. The closed-form solution of these linear systems
+ˆY = L(S)− 1Y = Linv(S)Y, (4)
+is not practical for large graphs as Linv(S) is a dense RN × N
+matrix. However, given that L is positive-deﬁnite, it is
+usual [ 20, 21] to solve ( 3) using the conjugate-gradient
+method which is known to be faster than running the iter-
+ative solution [
+20]. Matrix Linv provides geodesic similari-
+ties between all pairs of nodes, as these are captured based
+on the graph structure. Additionally, label propagation cor-
+responds to minimizing the quadratic criterion
+Q( ˆY ) = (1 − α )
+N∑
+i=1
+||ˆYi− Yi||2+α
+N∑
+i,j=1
+Sij||D− 1
+2 ˆYi− D− 1
+2 ˆYj||2.
+(5)
+The criterion ( 5) consists of two parts: the ﬁrst one keeps
+node predictions close to the initial ones, and the second
+one pushes neighboring nodes in the graph to have the same
+predictions.
+2A common use of LP is to propagate from labeled to unlabeled nodes;
+instead we reﬁne predictions for all nodes which are already labeled.
+9796
+
+
+=== PAGE 4 ===
+Exploiting a Vision Model (VM). VLMs are trained by
+minimizing cross-modal similarities between correspond-
+ing visual and textual features. This training approach re-
+sults in suboptimal performance on dense prediction tasks,
+such as open vocabulary semantic segmentation [
+53], for
+two main reasons. First, VLMs are typically trained using a
+loss on global image representations, which means they do
+not explicitly optimize patch-level features. Second, VLM
+training focuses solely on cross-modal similarities and does
+not account for relationships across patches, making the re-
+sulting representations less effective for capturing the inter-
+patch relationships essential for semantic segmentation.
+For these reasons, recent works [
+23, 26, 46] further uti-
+lize a separate Vision Model (VM) to provide improved
+patch-level representations. Let Zvm = h(X) denote patch-
+level features from such a model, where h : I → Rd′× NP
+is an encoder with a ViT architecture. The usual choice
+for the vision model is DINO [
+5], an encoder trained with
+self-supervised learning that exhibits strong performance
+for dense prediction tasks [
+5, 36, 37].
+The training-free variant of the CLIP-DINOiser [ 46] im-
+proves VLM predictions Yvlm by reﬁning VLM image fea-
+tures Zvlm using patch relations from VM. They use image
+features Zvm and compute an afﬁnity matrix A = Z ⊤
+vmZvm.
+This afﬁnity is then used to reﬁne the VLM predictions as
+YDINOiser = AZ ⊤
+vlmF = AYvlm. (6)
+This process propagates the patch features, or, equivalently,
+due to linearity, the VLM predictions, over the afﬁnity ma-
+trix
+3. This is a smoothening operation, which we also per-
+form in our method but in a more principled way.
+Class prediction using a sliding window approach. Cur-
+rent approaches [
+23, 26, 42, 46] perform feature extraction
+and prediction in a sliding-window fashion to handle test
+images of arbitrary resolution. Let W denote a set of K
+sliding windows. Prediction typically proceeds in 3 steps:
+1. Extract features Z (wi)
+vlm and obtain predictions Y (wi)
+vlm =
+Z (wi)
+vlm
+⊤
+F independently for each window wi ∈ W .
+2. Upsample patch-level predictions to the original window
+resolution using function up(Y (wi)
+vlm ).
+3. Obtain per-pixel predictions by averaging predictions
+over all sliding windows that contain each pixel and
+combine them into an H × W class conﬁdence map
+Y (img)
+vlm = combine({up(Y (w1)
+vlm ), . . . , up(Y (wK )
+vlm )}) .
+The sliding window approach presented above is a re-
+sult of the poor generalization of ViTs to resolutions and
+aspect ratios different from the ones used during training.
+All existing approaches couple feature extraction with class
+prediction and perform both jointly, and independently in
+each window before averaging predictions across windows.
+3Their implementation ℓ2-normalizes features after propagation, i.e.
+ℓ2(AX)F ⊤ , which breaks the equivalence but performs slightly better.
+In the following sections, we decouple the two for our ap-
+proach and perform predictions by looking across windows.
+3.3. LPOSS: LP over patches
+We observe that (
+6) and ( 4) can both be seen as differ-
+ent forms of label reﬁnement. In ( 6), the VLM-based la-
+bels Yvlm are reﬁned using matrix A of Euclidean similari-
+ties across patches, while in ( 4), graph labels Y are reﬁned
+via the geodesic similarities Linv, computed over the graph.
+This motivates us to utilize label propagation to reﬁne the
+VLM predictions. Not only is (
+4) optimizing ( 5), which
+is a principled and intuitive objective function, but we also
+expect geodesic similarities to capture more complex rela-
+tions and contextual information, as they are computed by
+considering the entire set of patch features together.
+We assume a patch pi = ( zvmi , pi) is represented as a
+tuple by its features zvmi from the VM, i.e. the i-th column
+of Zvm, and the location of its center pi in the image. We
+then construct a graph with nodes {p1, . . . , pNP } and adja-
+cency matrix SP = Sa ⊙ Sp, where ⊙ denotes element-wise
+multiplication. Sa is an appearance-based adjacency matrix
+and saij = (z⊤
+vmi zvmj )γ if zvmj is in the k-nearest neighbors
+of zvmi , and 0 otherwise. Sp is a position-based adjacency
+matrix that depends on the spatial distance between patches
+with spij = exp
+(
+− ||pi− pj ||2
+σ
+)
+. Having such a graph, we
+apply label propagation by
+Ylposs = Linv(SP)Yvlm (7)
+to reﬁne the VLM predictions. This process effectively re-
+ﬁnes the predictions such that neighboring patches (patches
+with high appearance similarity or spatial proximity) have
+similar predictions, while keeping the ﬁnal prediction not
+far from the VLM predictions.
+3.4. LPOSS across all windows
+We propose to decouple the feature extraction process from
+class prediction. First, we perform feature extraction on a
+per-window basis to be consistent with the encoder’s train-
+ing resolution. Unlike existing methods, however, we then
+carry out predictions across windows, i.e., jointly for the en-
+tire image. This approach enables us to explicitly account
+for interactions across all patches.
+Sliding-window extraction provides us with baseline
+VLM predictions Y (wi)
+vlm for window wi with patches
+p(wi)
+j , j = 1 , . . . , N P , which we merge in Y (W)
+vlm =
+[Y (w1)
+vlm
+⊤
+, . . . , Y (wK )
+vlm
+⊤
+]⊤ , across all windows. We con-
+struct afﬁnity matrix S(W) ∈ RKN P × KN P over
+nodes {p(w1)
+1 , . . . , p(w1)
+NP , . . . , p(wK )
+1 , . . . , p(wK )
+NP } contain-
+ing patches from all sliding windows, and perform LP
+jointly for the whole image by
+Y (W)
+lposs = Linv(SW )Y (W)
+vlm . (8)
+9797
+
+
+=== PAGE 5 ===
+LPOSS
+input image
+H=6
+W=10
+LPOSS+
+cropped image 
+windows
+vlm predictions
+per window
+low-res LPOSS
+window predictions
+high-res LPOSS 
+window predictions
+LPOSS image 
+segmentation
+VLM
+up-sample
+up-sample
+combine
+sea sand
+class names
+LPOSS image 
+predictions
+LPOSS+ image 
+segmentation
+LPOSS+ image 
+predictions
+Figure 2. Overview of LPOSS and LPOSS+. Processing steps: (1) input image window cropping (2) feature extraction with the VLM
+and patch-level predictions per window (3) patch-level predictions jointly across all windows with LPOSS (4) upsampling of patch-level
+predictions (5) combining window predictions into a single pixel-level image prediction (6) pixel-level prediction with LPOSS+. The
+graphs of LPOSS and LPOSS+ are generated based on patch features extracted with the VM and pixel color values, respectively.
+79.0/67.8
+32.8/6.9
+ground-truth ground-truth at patch-level res.
+Figure 3. Visualization of artifacts caused by patch-level pre-
+dictions. Ground-truth at patch-level resolution produced by
+downsampling the ground-truth by the patch size P = 16 and then
+upsampling to the original size. Performance reported via mIoU /
+Boundary IoU.
+We decompose the output prediction into parts associated
+with each window by Y (W)
+lposs = [ Y (w1)
+lposs
+⊤
+, . . . , Y (wK )
+lposs
+⊤
+]⊤ ,
+and, similar to other approaches, upsample and combine by
+Y (img)
+lposs = combine({up(Y (w1)
+lposs ), . . . , up(Y (wK )
+lposs )}),
+(9)
+with Y (img)
+lposs ∈ RH× W × C. We show a graphical represen-
+tation of this process in Figure 2.
+3.5. LPOSS+: LP over pixels
+Similar to related approaches, LPOSS performs predictions
+at patch resolution, which are subsequently upsampled to
+the original image resolution. However, we observe that
+this process results in block-like artifacts in the predictions,
+as shown in Figure
+3.
+To assess the impact of these artifacts on performance,
+we conducted the following experiment on the ground-truth
+maps: we downsampled the ground-truth map to patch-level
+resolution by a factor corresponding to the patch size (e.g.,
+P = 16 ), then upsampled it back to the original image
+resolution. We treat the result as a prediction and evalu-
+ate performance using mIoU and Boundary IoU [
+9] relative
+to the ground truth. The average performance across eight
+datasets was approximately 85% for mIoU and 70% for
+Boundary IoU, as shown in Table
+1 and Table 2, indicating
+that patch-level predictions inherently limit performance.
+To address this, we propose to apply label propagation at
+the pixel level to further reﬁne LPOSS predictions Y (img)
+lposs .
+We assume a pixel ˜pi = ( ˜zi, ˜pi) to be represented as a
+tuple by its location ˜pi within the image and its features
+˜zi, which may be based on the RGB values or any en-
+coder. Similar to the patch-level case, we construct a graph
+with pixels as nodes and adjacency matrix S˜P = S˜a ⊙ S ˜p.
+The position-based afﬁnity S ˜p is binary, with non-zero el-
+ements within the r × r neighborhood of a pixel, and the
+appearance-based afﬁnity S˜a has elements equal to s˜aij =
+exp
+(
+− ||˜zi− ˜zj ||2
+τ
+)
+.
+We apply label propagation on top of the pixel-level
+graph by
+Ylposs+ = Linv(S˜P)Y (img)
+lposs , (10)
+with Y (img)
+lposs+ ∈ RH× W × C, which, after argmax, becomes
+the ﬁnal segmentation mask. This process reﬁnes the pre-
+dictions such that neighboring pixels have similar predic-
+tions, while keeping the ﬁnal prediction not far from the
+LPOSS predictions. We call this approach LPOSS+ and
+show its visualization in Figure
+2.
+4. Experiments
+4.1. Datasets and evaluation metrics
+We evaluate our method on eight datasets: PASCAL
+VOC [
+16] (VOC), COCO Object [ 4] (Object), PASCAL
+Context [ 30] (Context), PASCAL Context59 [ 30] (C59),
+COCO Stuff [ 4] (Stuff), PASCAL VOC20 [ 16] (VOC20),
+ADE20k [51, 52], and Cityscapes [ 12] (City), that are com-
+monly used [ 23, 26, 42, 46] to evaluate open-vocabulary
+9798
+
+
+=== PAGE 6 ===
+Method VM VOC Object Context C59 Stuff VOC20 ADE20k City Avg
+Oracle (patch-level res.) - 91.5 83.8 86.6 86.8 86.0 92.8 80.6 73.6 85.2
+MaskCLIP* [53] ✗ 32.9 16.3 22.9 25.5 17.5 61.8 14.2 25.0 27.0
+GEM [3] ✗ 46.8 - 34.5 - - - 17.1 - -
+SCLIP [42] ✗ 59.1 30.5 30.4 34.2 22.4 80.4 16.1 32.2 38.2
+ClearCLIP [25] ✗ 51.8 33.0 32.6 35.9 23.9 80.9 16.7 30.0 38.1
+CLIP-DIY† [45] ✓ 59.9 31.0 19.7 19.8 13.3 79.7 9.9 11.6 30.6
+CLIP-DINOiser* [46] ✓ 62.2 34.7 32.5 36.0 24.6 80.8 20.1 31.1 40.2
+ProxyCLIP* [26] ✓ 59.3 36.3 34.4 38.0 25.7 79.7 19.4 36.0 41.1
+LaVG* [23] ✓ 61.8 33.3 31.5 34.6 22.8 81.9 14.8 25.0 38.2
+LPOSS ✓ 61.1 33.4 34.6 37.8 25.9 78.8 21.8 37.3 41.3
+LPOSS+ ✓ 62.4 34.3 35.4 38.6 26.5 79.3 22.3 37.9 42.1
+Table 1. Performance comparison in terms of mIoU on 8 datasets using ViT-B/16 backbone for both VLM and VM. * denotes the
+methods for which we reproduce the performance. † denotes numbers taken from Wysoczanska et al. [46].
+Method VM VOC Object Context C59 Stuff VOC20 ADE20k City Avg
+Oracle (patch-level res.) - 80.1 61.3 62.6 68.0 69.0 83.5 65.0 66.4 69.5
+MaskCLIP [53] ✗ 17.2 7.0 9.2 12.0 9.3 38.6 8.2 17.2 14.8
+CLIP-DINOiser [46] ✓ 47.4 17.5 15.7 22.4 15.6 71.1 12.3 22.1 28.0
+ProxyCLIP [26] ✓ 45.0 19.7 17.4 23.0 15.9 69.4 12.9 28.4 29.0
+LaVG [23] ✓ 49.5 19.1 18.3 23.6 15.4 74.3 9.2 15.7 28.1
+LPOSS ✓ 48.5 18.4 19.1 24.8 17.9 70.1 14.9 28.4 30.3
+LPOSS+ ✓ 51.2 20.4 21.6 27.1 19.2 71.7 16.0 29.5 32.1
+Table 2. Performance comparison in terms of Boundary IoU on 8 datasets using ViT-B/16 backbone both for VLM and VM.
+semantic segmentation. Following standard practice, we re-
+port mean Intersection over Union (mIoU) metric and addi-
+tionally Boundary IoU [
+9] that measures performance only
+near the ground-truth mask boundaries.
+4.2. Experimental setup
+Backbones and textual prompts. We report the results
+using ViT-B/16 backbones and use DINO [
+5] as a visual
+model h and OpenCLIP [ 10] as a VLM (f, g ). We fol-
+low the setup of CLIP-DINOiser [ 46] and use the output
+of DINO’s last layer’s value embedding as the visual model
+features Zvm, while we use the output of MaskCLIP [ 53] as
+the VLM features Zvlm and F . We use ImageNet prompt
+templates from CLIP [ 33] as templates for the VLM, fol-
+lowing standard practice [ 23, 26, 46, 53]. For datasets that
+have a class background, we use text expansion for it and
+expand background into, e.g. sky, wall, etc., follow-
+ing SCLIP [ 42], ProxyCLIP [26], and LaVG [ 23].
+Compared methods We compare our method with
+methods that use only a VLM, by making small changes
+during inference to the general ViT architecture, for
+open-vocabulary semantic segmentation: MaskCLIP [
+53],
+GEM [3], SCLIP [42], and ClearCLIP [25]. Additionally,
+we compare with methods that utilize vision models to
+aid VLMs: CLIP-DIY [
+45], CLIP-DINOiser [46]4,
+4We use their trained model in our evaluation because it is publicly
+ProxyCLIP [26], and LaVG [23].
+Implementation details We reproduce results for CLIP-
+DINOiser5, ProxyCLIP 6, and LaVG 7 following their ofﬁ-
+cial implementations, while we reproduce MaskCLIP us-
+ing the implementation provided by CLIP-DINOiser. We
+report the performance of CLIP-DIY [
+45] as reported in
+CLIP-DINOiser [46], while for GEM [ 3], SCLIP [ 42], and
+ClearCLIP [25] we report the numbers provided by the orig-
+inal papers. We implement our method using MMSegmen-
+tation [
+11] using the sliding-window approach with window
+size 224 × 224, window stride 112 × 112, and resizing the
+input image to have the shorter side of 448 for all datasets.
+We also ﬁx the values of hyper-parameters α , k, γ, σ , r,
+and τ for LPOSS and LPOSS+ to 0. 95, 400, 3. 0, 100, 13,
+and 0. 01, respectively, across all datasets. For pixel fea-
+tures of LPOSS+, we use image pixels converted to Lab
+color space. We discuss the design choices and show the im-
+pact of different hyper-parameters of LPOSS and LPOSS+
+in Section
+7 of the supplementary.
+4.3. Results
+We present the quantitative results in Table
+1 given by the
+conventionally used mIoU metric. LPOSS achieves state-
+available and performs similarly to the training-free variant.
+5https://github.com/wysoczanska/clip_dinoiser
+6https://github.com/mc-lan/ProxyCLIP
+7https://github.com/dahyun-kang/lavg
+9799
+
+
+=== PAGE 7 ===
+Image GT MaskCLIP CLIP-DINOiser ProxyCLIP LaVG LPOSS+
+9.7/4.0 85.6/42.5 56.2/25.8 36.3/19.7 87.5/49.0
+3.2/1.0 75.3/41.7 30.4/18.5 30.9/25.2 72.7/47.7
+5.9/3.9 28.1/17.1 25.2/19.0 43.6/31.2 45.3/36.2
+5.7/2.2 41.2/20.2 13.9/8.4 15.3/8.2 42.7/23.1
+19.4/13.2 30.6/19.5 38.8/25.5 18.1/10.1 34.5/25.0
+Figure 4. Qualitative comparison of open-vocabulary semantic segmentation. A comparison of LPOSS+ with the best perform-
+ing methods: MaskCLIP [ 53], CLIP-DINOiser [ 46], ProxyCLIP [ 26], and LaVG [ 23]. On top of each segmentation map we show its
+mIoU/Boundary IoU. Pixels shown in white are pixels that do not have a class in the ground-truth.
+of-the-art performance on average, with competitive perfor-
+mance across most datasets with only a few notable excep-
+tions. One such exception happens on the VOC20 dataset
+where LPOSS has low performance compared to others. We
+observe this is the case because of the choice of the win-
+dow size, something that we discuss in other experiments.
+LPOSS+ further improves the results of LPOSS by 0. 8%
+on average and obtains state-of-the-art performance on all
+datasets besides VOC20 and Object. ProxyCLIP is the only
+method that signiﬁcantly outperforms LPOSS+ on the Ob-
+jects dataset, something that we attribute to the fact that it
+employs dataset-speciﬁc thresholds to ﬁlter the background
+class in this case, as well as for the VOC dataset.
+Boundary IoU metric. Based on Table
+1 we can already
+see that going beyond patch-level predictions in LPOSS
+to pixel-level predictions in LPOSS+ improves the results.
+Improvements are even more visible when we look into
+the Boundary IoU [
+9] metric, presented in Table 2, which
+is representative of how well the predicted object bound-
+aries match the ground truth. LPOSS+ outperforms all
+other methods and achieves state-of-the-art on almost all
+datasets. Interestingly, even LPOSS outperforms competi-
+tors in this metric by a large margin. We attribute this to our
+choice of the window size, as LPOSS achieves Boundary
+IoU of 28. 9% on average when we apply it with window
+size 448 × 448 and window stride 224 × 224, which is com-
+parable to the other approaches.
+Additionally, in Table
+1 and Table 2, we report mIoU
+and Boundary IoU, respectively, for the oracle-based exper-
+iment for patch-level resolution prediction. In this experi-
+ment, we downsample the ground-truth map to the patch-
+level resolution by a factor equal to the patch size and up-
+sample it to the original image resolution, which we treat
+as predictions. Both mIoU and especially Boundary IoU
+are signiﬁcantly impacted by this process, which shows that
+patch-level predictions are signiﬁcantly limiting the seg-
+mentation performance.
+Qualitative results. We present the qualitative results of
+LPOSS+ and the most important competitors in Figure
+4.
+We observe that LPOSS+ obtains good results across a va-
+9800
+
+
+=== PAGE 8 ===
+Method VOC Object Context C59 Stuff VOC20 ADE20k City Avg
+No sliding windows
+CLIP-DINOiser [
+46] 60.2 32.4 31.3 34.6 23.2 79.1 18.7 28.2 38.5
+ProxyCLIP [26] 43.1 24.2 25.9 28.8 18.7 73.1 13.6 13.6 30.1
+LaVG [23] 24.3 16.1 12.7 13.7 10.0 32.5 8.2 6.8 15.6
+LPOSS 59.2 31.2 31.4 34.4 23.3 80.7 19.0 28.4 38.4
+LPOSS+ 59.7 31.7 32.0 35.0 23.6 81.3 19.3 28.5 38.9
+Window size: 448 × 448, window stride: 224 × 224
+CLIP-DINOiser [46] 62.2 34.7 32.5 36.0 24.6 80.8 20.1 31.1 40.2
+ProxyCLIP [26] 59.9 36.0 34.6 38.2 25.6 78.9 18.9 33.6 40.7
+LaVG [23] 36.7 19.6 16.4 18.7 13.8 44.3 10.2 10.8 21.3
+LPOSS 61.3 32.5 32.9 36.3 25.2 82.8 20.4 31.8 40.4
+LPOSS+ 62.0 33.1 33.4 36.9 25.5 83.0 20.7 32.1 40.8
+Window size: 224 × 224, window stride: 112 × 112
+CLIP-DINOiser [46] 55.4 33.0 32.2 35.7 24.8 73.1 21.1 36.3 38.9
+ProxyCLIP [26] 54.9 32.9 33.2 36.4 24.3 73.0 18.6 36.0 38.7
+LaVG [23] 62.0 32.3 31.8 34.7 22.8 79.8 15.4 23.1 37.7
+LPOSS 61.1 33.4 34.6 37.8 25.9 78.8 21.8 37.3 41.3
+LPOSS+ 62.4 34.3 35.4 38.6 26.5 79.3 22.3 37.9 42.1
+Ensemble of two setups above
+CLIP-DINOiser [
+46] 63.0 35.9 34.1 37.8 26.3 79.6 22.1 35.9 41.8
+ProxyCLIP [26] 59.0 35.1 35.3 38.9 26.1 78.1 19.8 36.8 41.1
+LaVG [23] 51.4 27.3 24.3 28.4 20.1 63.7 14.7 20.3 31.3
+LPOSS 62.9 34.1 35.1 38.6 26.5 82.1 22.2 36.5 42.3
+LPOSS+ 63.9 35.0 35.8 39.3 27.0 82.5 22.7 37.0 42.9
+Table 3. Impact of sliding windows for feature extraction. Feature extraction is performed with windows of different size/stride or
+no windows at all. Following the original design choices, other methods perform window-based prediction, while LPOSS and LPOSS+
+perform prediction jointly across all windows. Image resize of the smaller side to 448 is used and the reported metric is mIoU.
+riety of images coming from different benchmark datasets.
+Qualitatively, our output is closer to that of CLIP-DINOiser
+due to the similarity of the approach. Nevertheless, ours
+varies in a smoother way, boosting the performance, which
+indicates that our LP-based formulation is a key ingredient.
+Additionally, in Figure
+1, we show the qualitative compar-
+ison of LPOSS and LPOSS+. We observe that predictions
+of LPOSS+ follow the object boundary much better than the
+predictions from LPOSS.
+Impact of sliding windows. In Table
+3, we show the impact
+of sliding windows. All methods are negatively impacted
+when we depart from the use of sliding windows, with Prox-
+yCLIP and LaVG being signiﬁcantly more impacted than
+others. The largest drop in the performance happens on the
+Cityscapes dataset, which has an aspect ratio that is furthest
+from the square aspect ratio that was used to train VLM and
+VM. Besides that, CLIP-DINOiser and ProxyCLIP perform
+better when used with larger sliding windows, while LaVG,
+LPOSS, and LPOSS+ prefer smaller windows. We attribute
+LPOSS’s and LPOSS+’s preference for smaller windows to
+the fact that we decouple prediction and feature extraction.
+We are thus able to select a (smaller) window size close to
+the training resolution to get stronger features, but are still
+able to propagate labels over the full image. Related meth-
+ods lose performance in this setting because the prediction
+happens with the smaller context. Additionally, based on
+the analysis in Section
+6 of the supplementary we propose
+to ensemble the two different window sizes. We observe
+that all methods, besides LaVG, beneﬁt from the ensem-
+ble. However, LPOSS and LPOSS+ beneﬁt more than oth-
+ers and obtain state-of-the-art results.
+LPOSS++ as a reﬁnement step for linear semantic seg-
+mentation. LPOSS+ reﬁnes pixel-level predictions and, as
+such, could potentially be applied to other dense predic-
+tion tasks. To test this, we apply it on the predictions ob-
+tained by training a linear segmentation head on top of DI-
+NOv2 [
+32] features on the ADE20k dataset [51, 52]. Apply-
+ing LPOSS+ out of the box, we are able to improve DINOv2
+predictions and increase mIoU from 47. 3% to 49. 5%.
+5. Conclusion
+This work proposes a training-free method for open-
+vocabulary segmentation, called LPOSS, that uses ViT-
+based VLMs and VMs. We highlight the limitations of low-
+resolution patch-based predictions and window-based pro-
+cessing. LPOSS targets both issues and provides improve-
+ments through an LP-based predictor that operates jointly
+over patches of all windows, and over pixels. In a com-
+prehensive benchmark across a variety of datasets and do-
+mains, LPOSS surpasses the previous state-of-the-art, espe-
+cially when evaluating near class boundaries.
+9801
+
+
+=== PAGE 9 ===
+Acknowledgements. This work was supported by the Ju-
+nior Star GACR GM 21-28830M and the Czech Technical
+University in Prague grant No. SGS23/173/OHK3/3T/13.
+We acknowledge VSB – Technical University of Ostrava,
+IT4Innovations National Supercomputing Center, Czech
+Republic, for awarding this project access to the LUMI
+supercomputer, owned by the EuroHPC Joint Undertaking,
+hosted by CSC (Finland) and the LUMI consortium through
+the Ministry of Education, Y outh and Sports of the Czech
+Republic through the e-INFRA CZ (grant ID: 90254).
+References
+[1] Nikita Araslanov and Stefan Roth. Single-stage semantic
+segmentation from image labels. In CVPR, 2020.
+14
+[2] Y oshua Bengio, Olivier Delalleau, and Nicolas Le Roux. La-
+bel propagation and quadratic criterion. In Semi-Supervised
+Learning, pages 192–216. The MIT Press, 2006. 3
+[3] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and
+Hilde Kuehne. Grounding everything: Emerging localiza-
+tion properties in vision-language transformers. In CVPR,
+2024.
+2, 6
+[4] Holger Caesar, Jasper R. R. Uijlings, and Vittorio Ferrari.
+Coco-stuff: Thing and stuff classes in context. In CVPR,
+2018. 5
+[5] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J ´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. In
+ICCV, 2021.
+2, 3, 4, 6, 14
+[6] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learn-
+ing to generate text-grounded mask for open-world semantic
+segmentation from only image-text pairs. In CVPR, 2023.
+2
+[7] Siddhartha Chandra and Iasonas Kokkinos. Fast, exact and
+multi-scale inference for semantic image segmentation with
+deep gaussian crfs. In ECCV, 2016.
+3
+[8] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L. Y uille. Deeplab: Semantic im-
+age segmentation with deep convolutional nets, atrous con-
+volution, and fully connected crfs. IEEE TPAMI, 2018.
+3
+[9] Bowen Cheng, Ross Girshick, Piotr Doll ´ar, Alexander C.
+Berg, and Alexander Kirillov. Boundary IoU: Improving
+object-centric image segmentation evaluation. In CVPR,
+2021.
+2, 5, 6, 7
+[10] Mehdi Cherti, Romain Beaumont, Ross Wightman, Mitchell
+Wortsman, Gabriel Ilharco, Cade Gordon, Christoph Schuh-
+mann, Ludwig Schmidt, and Jenia Jitsev. Reproducible scal-
+ing laws for contrastive language-image learning. In CVPR,
+2023.
+1, 2, 6
+[11] MMSegmentation Contributors. MMSegmentation:
+Openmmlab semantic segmentation toolbox and
+benchmark.
+https : / / github . com / open -
+mmlab/mmsegmentation, 2020. 6
+[12] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. In CVPR,
+2016.
+5
+[13] Timoth ´ee Darcet, Maxime Oquab, Julien Mairal, and Piotr
+Bojanowski. Vision transformers need registers. In ICLR,
+2024. 2
+[14] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. In CVPR, 2022.
+2
+[15] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is
+worth 16x16 words: Transformers for image recognition at
+scale. In ICLR, 2021.
+1, 3
+[16] M. Everingham, L. V an Gool, C. K. I. Williams, J. Winn, and
+A. Zisserman. The PASCAL Visual Object Classes Chal-
+lenge 2012 (VOC2012) Results.
+5
+[17] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scal-
+ing open-vocabulary image segmentation with image-level
+labels. In ECCV, 2022.
+2
+[18] Xuming He, Richard S. Zemel, and Miguel ´A. Carreira-
+Perpi˜n´an. Multiscale conditional random ﬁelds for image
+labeling. In CVPR, 2004. 3
+[19] Xuefeng Hu, Ke Zhang, Lu Xia, Albert Chen, Jiajia Luo,
+Y uyin Sun, Ken Wang, Nan Qiao, Xiao Zeng, Min Sun,
+Cheng-Hao Kuo, and Ram Nevatia. Reclip: Reﬁne con-
+trastive language image pre-training with source free domain
+adaptation. In WACV, 2024.
+3
+[20] Ahmet Iscen, Giorgos Tolias, Y annis Avrithis, Teddy Furon,
+and Ondrej Chum. Efﬁcient diffusion on region manifolds:
+Recovering small objects with compact CNN representa-
+tions. In CVPR, 2017.
+3
+[21] Ahmet Iscen, Giorgos Tolias, Y annis Avrithis, and Ondrej
+Chum. Label propagation for deep semi-supervised learning.
+In CVPR, 2019.
+3, 11
+[22] Chao Jia, Yinfei Y ang, Y e Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc V . Le, Y un-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representation
+learning with noisy text supervision. In ICML, 2021.
+1, 2
+[23] Dahyun Kang and Minsu Cho. In defense of lazy visual
+grounding for open-vocabulary semantic segmentation. In
+ECCV, 2024.
+2, 4, 5, 6, 7, 8, 12, 14, 15
+[24] Philipp Kr ¨ahenb¨uhl and Vladlen Koltun. Efﬁcient inference
+in fully connected crfs with gaussian edge potentials. In
+NeurIPS, 2011.
+3, 14
+[25] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+ence. In ECCV, 2024.
+2, 6
+[26] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Proxyclip: Proxy at-
+tention improves clip for open-vocabulary segmentation. In
+ECCV, 2024.
+1, 2, 4, 5, 6, 7, 8, 12, 14, 15
+[27] Yi Li, Hualiang Wang, Yiqun Duan, Hang Xu, and Xi-
+aomeng Li. Exploring visual interpretability for con-
+trastive language-image pre-training. arXiv preprint
+arXiv:2209.07046, 2022.
+2
+[28] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter V ajda, and Diana
+9802
+
+
+=== PAGE 10 ===
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted CLIP. In CVPR, 2023.
+2
+[29] Huaishao Luo, Junwei Bao, Y ouzheng Wu, Xiaodong He,
+and Tianrui Li. Segclip: Patch aggregation with learn-
+able centers for open-vocabulary semantic segmentation. In
+ICML, 2023.
+2
+[30] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan L. Y uille. The role of context for object detection and
+semantic segmentation in the wild. In CVPR, 2014.
+5
+[31] Jishnu Mukhoti, Tsung-Y u Lin, Omid Poursaeed, Rui Wang,
+Ashish Shah, Philip H. S. Torr, and Ser-Nam Lim. Open
+vocabulary semantic segmentation with patch aligned con-
+trastive learning. In CVPR, 2023.
+2
+[32] Maxime Oquab, Timoth ´ee Darcet, Theo Moutakanni, Huy V .
+V o, Marc Szafraniec, V asil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, Rus-
+sell Howes, Po-Y ao Huang, Hu Xu, V asu Sharma, Shang-
+Wen Li, Wojciech Galuba, Mike Rabbat, Mido Assran, Nico-
+las Ballas, Gabriel Synnaeve, Ishan Misra, Herve Jegou,
+Julien Mairal, Patrick Labatut, Armand Joulin, and Piotr Bo-
+janowski. DINOv2: Learning robust visual features without
+supervision. TMLR, 2024.
+2, 8
+[33] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen
+Krueger, and Ilya Sutskever. Learning transferable visual
+models from natural language supervision. In ICML, 2021.
+1, 2, 3, 6
+[34] Kanchana Ranasinghe, Brandon McKinzie, Sachin Ravi,
+Yinfei Y ang, Alexander Toshev, and Jonathon Shlens. Per-
+ceptual grouping in contrastive vision-language models. In
+ICCV, 2023.
+2
+[35] Jamie Shotton, John M. Winn, Carsten Rother, and Antonio
+Criminisi. TextonBoost: Joint appearance, shape and context
+modeling for multi-class object recognition and segmenta-
+tion. In ECCV, 2006.
+3
+[36] Oriane Sim ´eoni, Gilles Puy, Huy V . V o, Simon Roburin,
+Spyros Gidaris, Andrei Bursuc, Patrick P ´erez, Renaud Mar-
+let, and Jean Ponce. Localizing objects with self-supervised
+transformers and no labels. In BMVC, 2021.
+2, 4
+[37] Oriane Sim ´eoni, Chlo ´e Sekkat, Gilles Puy, Anton ´ın
+V obeck´y, ´Eloi Zablocki, and Patrick P ´erez. Unsupervised
+object localization: Observing the background to discover
+objects. In CVPR, 2023.
+2, 4
+[38] Vladan Stojni ´c, Y annis Kalantidis, and Giorgos Tolias. Label
+propagation for zero-shot classiﬁcation with vision-language
+models. In CVPR, 2024.
+2, 3, 11
+[39] Boyuan Sun, Y uqi Y ang, Le Zhang, Ming-Ming Cheng, and
+Qibin Hou. Corrmatch: Label propagation via correlation
+matching for semi-supervised semantic segmentation. In
+CVPR, 2024.
+3
+[40] Charles Sutton and Andrew McCallum. An introduction
+to conditional random ﬁelds. F ound. Trends Mach. Learn.,
+2012. 3
+[41] Vishaal Udandarao, Ankush Gupta, and Samuel Albanie.
+Sus-x: Training-free name-only transfer of vision-language
+models. In ICCV, 2023.
+2
+[42] Feng Wang, Jieru Mei, and Alan Y uille. Sclip: Rethinking
+self-attention for dense vision-language inference. In ECCV,
+2024. 1, 2, 4, 5, 6
+[43] Jianzong Wu, Xiangtai Li, Shilin Xu, Haobo Y uan, Henghui
+Ding, Yibo Y ang, Xia Li, Jiangning Zhang, Y unhai Tong,
+Xudong Jiang, Bernard Ghanem, and Dacheng Tao. Towards
+open vocabulary learning: A survey. IEEE Trans. Pattern
+Anal. Mach. Intell., 46(7):5092–5113, 2024.
+2
+[44] Size Wu, Wenwei Zhang, Sheng Jin, Wentao Liu, and
+Chen Change Loy. Aligning bag of regions for open-
+vocabulary object detection. In CVPR, 2023.
+2
+[45] Monika Wysoczanska, Micha ¨el Ramamonjisoa, Tomasz
+Trzcinski, and Oriane Sim ´eoni. CLIP-DIY: CLIP dense in-
+ference yields open-vocabulary semantic segmentation for-
+free. In WACV, 2024.
+2, 6
+[46] Monika Wysoczanska, Oriane Sim ´eoni, Micha ¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzcinski, and Patrick P ´erez.
+Clip-dinoiser: Teaching clip a few dino tricks for open-
+vocabulary semantic segmentation. In ECCV, 2024.
+1, 2,
+3, 4, 5, 6, 7, 8, 12, 14, 15
+[47] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas M. Breuel, Jan Kautz, and Xiaolong Wang.
+Groupvit: Semantic segmentation emerges from text super-
+vision. In CVPR, 2022.
+2
+[48] Jilan Xu, Junlin Hou, Y uejie Zhang, Rui Feng, Yi Wang, Y u
+Qiao, and Weidi Xie. Learning open-vocabulary semantic
+segmentation models from natural language supervision. In
+CVPR, 2023.
+2
+[49] Lihe Y ang, Bingyi Kang, Zilong Huang, Zhen Zhao, Xiao-
+gang Xu, Jiashi Feng, and Hengshuang Zhao. Depth any-
+thing V2. arXiv preprint arXiv:2406.09414, 2024.
+12
+[50] Shuai Zheng, Sadeep Jayasumana, Bernardino Romera-
+Paredes, Vibhav Vineet, Zhizhong Su, Dalong Du, Chang
+Huang, and Philip H. S. Torr. Conditional random ﬁelds as
+recurrent neural networks. In ICCV, 2015.
+3
+[51] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ADE20K dataset. In CVPR, 2017.
+5, 8
+[52] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic un-
+derstanding of scenes through the ADE20K dataset. IJCV,
+2019.
+5, 8
+[53] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from CLIP. In ECCV, 2022. 2, 4, 6, 7, 15
+[54] Dengyong Zhou, Olivier Bousquet, Thomas Navin Lal, Ja-
+son Weston, and Bernhard Sch ¨olkopf. Learning with local
+and global consistency. In NeurIPS, 2003. 2, 3
+9803

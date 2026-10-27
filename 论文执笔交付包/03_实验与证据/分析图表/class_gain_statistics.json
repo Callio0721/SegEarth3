@@ -1,0 +1,111 @@
+{
+  "all_remote_classes": {
+    "n": 63,
+    "improved": 48,
+    "harmed": 15,
+    "pearson": -0.2294268385179109,
+    "spearman": -0.17732334869431643,
+    "mean_delta": 3.7690167887254717,
+    "bins": [
+      {
+        "name": "below_30",
+        "count": 17,
+        "baseline_mean": 14.231933146832569,
+        "delta_mean": 7.030474234195574,
+        "delta_median": 1.6328592193223317
+      },
+      {
+        "name": "30_to_60",
+        "count": 22,
+        "baseline_mean": 45.31034373553318,
+        "delta_mean": 3.8189713541737977,
+        "delta_median": 2.3474087949695495
+      },
+      {
+        "name": "60_and_above",
+        "count": 24,
+        "baseline_mean": 76.49444630018424,
+        "delta_mean": 1.4130260798565173,
+        "delta_median": 0.8605474482844997
+      }
+    ]
+  },
+  "without_oem_background": {
+    "n": 62,
+    "improved": 47,
+    "harmed": 15,
+    "pearson": -0.19318197099655987,
+    "spearman": -0.15449119891214022,
+    "mean_delta": 2.8574611353884345,
+    "bins": [
+      {
+        "name": "below_30",
+        "count": 16,
+        "baseline_mean": 14.045412229714477,
+        "delta_mean": 3.7020371678564357,
+        "delta_median": 1.5829219224970488
+      },
+      {
+        "name": "30_to_60",
+        "count": 22,
+        "baseline_mean": 45.31034373553318,
+        "delta_mean": 3.8189713541737977,
+        "delta_median": 2.3474087949695495
+      },
+      {
+        "name": "60_and_above",
+        "count": 24,
+        "baseline_mean": 76.49444630018424,
+        "delta_mean": 1.4130260798565173,
+        "delta_median": 0.8605474482844997
+      }
+    ]
+  },
+  "without_background_or_clutter": {
+    "n": 55,
+    "improved": 41,
+    "harmed": 14,
+    "pearson": -0.12548540907098282,
+    "spearman": -0.10584415584415587,
+    "mean_delta": 2.8309263817135455,
+    "bins": [
+      {
+        "name": "below_30",
+        "count": 14,
+        "baseline_mean": 14.361922478961844,
+        "delta_mean": 3.022288550335977,
+        "delta_median": 1.5631963468343852
+      },
+      {
+        "name": "30_to_60",
+        "count": 19,
+        "baseline_mean": 44.87219662831099,
+        "delta_mean": 4.246299066080546,
+        "delta_median": 3.4268111718314955
+      },
+      {
+        "name": "60_and_above",
+        "count": 22,
+        "baseline_mean": 76.25570466641484,
+        "delta_mean": 1.4867831379095897,
+        "delta_median": 0.8605474482844997
+      }
+    ]
+  },
+  "sources": [
+    {
+      "path": "logs/joint_role_view_profile_v1_full_4b5363f/summary/joint_role_view_classes.csv",
+      "sha256": "bf448297244d48bfb7b3c848e7b3fe2de2ee6a8dba3fd6a16a4f22d7615d9945"
+    },
+    {
+      "path": "logs/uavid_joint_role_view_v1_full_f51f712/summary/joint_role_view_classes.csv",
+      "sha256": "f7521c0da6b48625a9e69cfa10599a7c8d7d6f61c0611cf7f68e8168632df2d7"
+    },
+    {
+      "path": "logs/isaid_joint_p0_s3_i0_v1_full_b7dae83/summary/joint_role_view_classes.csv",
+      "sha256": "ce39f3d09043c1761f59ea2dd6af9ecda96b28a3de54a38eb02bc07bd5b82b67"
+    }
+  ],
+  "units": "IoU in percent; delta in percentage points",
+  "note": "Descriptive association, not a causal or significance claim. All plotted observations retained; display uses a marked y-axis break."
+}

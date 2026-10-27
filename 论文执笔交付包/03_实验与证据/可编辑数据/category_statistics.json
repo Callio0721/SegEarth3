@@ -1,0 +1,135 @@
+{
+  "n_dataset_class_pairs": 63,
+  "n_foreground": 55,
+  "group_definitions": {
+    "Water-related": [
+      "swimming pool",
+      "water"
+    ],
+    "Vegetation & land cover": [
+      "agricultural",
+      "bareland",
+      "barren",
+      "cropland",
+      "forest",
+      "grass",
+      "tree",
+      "vegetation"
+    ],
+    "Built structures": [
+      "bridge",
+      "building",
+      "facade",
+      "harbor",
+      "roof",
+      "store tank"
+    ],
+    "Movable objects": [
+      "car",
+      "helicopter",
+      "human",
+      "large vehicle",
+      "plane",
+      "ship",
+      "small vehicle",
+      "vehicle"
+    ],
+    "Transport surfaces": [
+      "pavement",
+      "road",
+      "roundabout"
+    ],
+    "Sports grounds": [
+      "baseball diamond",
+      "basketball court",
+      "ground track field",
+      "soccer ball field",
+      "tennis court"
+    ],
+    "Background / clutter": [
+      "background",
+      "clutter"
+    ]
+  },
+  "weighting": "Equal weight per dataset-class pair; not the eight-dataset macro mIoU.",
+  "role_reference": "Best Role-only profile in the matched source summaries.",
+  "view_increment": "Joint minus best Role-only; not a factorial interaction.",
+  "interaction": "Same candidate/admission/operator: m11-m10-m01+m00, copied from verified summaries.",
+  "source_sha256": {
+    "logs/joint_role_view_profile_v1_full_4b5363f/summary/joint_role_view_classes.csv": "bf448297244d48bfb7b3c848e7b3fe2de2ee6a8dba3fd6a16a4f22d7615d9945",
+    "logs/uavid_joint_role_view_v1_full_f51f712/summary/joint_role_view_classes.csv": "f7521c0da6b48625a9e69cfa10599a7c8d7d6f61c0611cf7f68e8168632df2d7",
+    "logs/isaid_joint_p0_s3_i0_v1_full_b7dae83/summary/joint_role_view_classes.csv": "ce39f3d09043c1761f59ea2dd6af9ecda96b28a3de54a38eb02bc07bd5b82b67"
+  },
+  "groups": [
+    {
+      "category_group": "Water-related",
+      "n": 4,
+      "positive_joint": 3,
+      "baseline_mean": 59.98790285164295,
+      "role_delta_mean": 3.14593979085953,
+      "joint_delta_mean": 5.6477512435895525,
+      "joint_minus_role_mean": 2.5018114527300224,
+      "joint_delta_median": 6.36353644934481
+    },
+    {
+      "category_group": "Vegetation & land cover",
+      "n": 15,
+      "positive_joint": 14,
+      "baseline_mean": 50.55403206604607,
+      "role_delta_mean": 2.8269364966549886,
+      "joint_delta_mean": 4.949317044488181,
+      "joint_minus_role_mean": 2.1223805478331927,
+      "joint_delta_median": 1.9181081049073612
+    },
+    {
+      "category_group": "Built structures",
+      "n": 11,
+      "positive_joint": 7,
+      "baseline_mean": 55.45525266936943,
+      "role_delta_mean": 1.5920429901326052,
+      "joint_delta_mean": 2.477801915029851,
+      "joint_minus_role_mean": 0.8857589248972456,
+      "joint_delta_median": 0.7623824368961465
+    },
+    {
+      "category_group": "Movable objects",
+      "n": 11,
+      "positive_joint": 7,
+      "baseline_mean": 53.10184737548502,
+      "role_delta_mean": -0.021069893911058978,
+      "joint_delta_mean": 1.486037849529565,
+      "joint_minus_role_mean": 1.507107743440624,
+      "joint_delta_median": 0.4740314628579938
+    },
+    {
+      "category_group": "Transport surfaces",
+      "n": 9,
+      "positive_joint": 6,
+      "baseline_mean": 55.00623038569317,
+      "role_delta_mean": 1.4254080125219177,
+      "joint_delta_mean": 1.2600064460268243,
+      "joint_minus_role_mean": -0.16540156649509344,
+      "joint_delta_median": 1.9393927913749973
+    },
+    {
+      "category_group": "Sports grounds",
+      "n": 5,
+      "positive_joint": 4,
+      "baseline_mean": 8.76357738852025,
+      "role_delta_mean": 0.343091497841337,
+      "joint_delta_mean": 0.785578985633819,
+      "joint_minus_role_mean": 0.442487487792482,
+      "joint_delta_median": 0.30616457654569146
+    },
+    {
+      "category_group": "Background / clutter",
+      "n": 8,
+      "positive_joint": 7,
+      "baseline_mean": 42.92162294722546,
+      "role_delta_mean": 6.639948920153737,
+      "joint_delta_mean": 10.218388336932467,
+      "joint_minus_role_mean": 3.57843941677873,
+      "joint_delta_median": 1.5563779437051615
+    }
+  ]
+}

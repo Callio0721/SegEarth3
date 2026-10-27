@@ -1,0 +1,975 @@
+=== PAGE 1 ===
+ReAttnCLIP: Training-Free Open-Vocabulary Remote Sensing Image
+Segmentation via Re-defined Attention in CLIP
+Xin Niu1,2,3*† Manqi Zhao5* Dongsheng Jiang5* Yingying Wu4 Bing Su1,2,3‡
+1Gaoling School of Artificial Intelligence, Renmin University of China
+2Beijing Key Laboratory of Research on Large Models and Intelligent Governance
+3Engineering Research Center of Next-Generation Intelligent Search and Recommendation, MOE
+4BeiJing China-Power Information Technology Co.,Ltd 5Huawei Technologies Co., Ltd
+niuxin@ruc.edu.cn, 933475@gmail.com, dongsheng jiang@outlook.com
+smile.cherokee@gmail.com, subingats@gmail.com
+Abstract
+Remote sensing image segmentation is essential for appli-
+cations such as natural disaster monitoring and precision
+agriculture. Open-vocabulary segmentation improves flexi-
+bility by removing fixed category constraints, enabling more
+fine-grained scene understanding. However, unlike CLIP’s
+pretraining objective that emphasizes global image–text
+alignment, segmentation requires discriminative patch-level
+representations for accurate pixel-wise prediction. Con-
+sequently, the quality of attention maps in the final trans-
+former layers is critical for modeling interactions among
+spatial regions. Existing methods often produce subop-
+timal representations when capturing the complex spatial
+structures of remote sensing imagery. To address this is-
+sue, we refine CLIP’s attention mechanism through three
+modifications: (1) replacing patch-to-patch attention with
+intermediate-layer feature similarities to better preserve
+spatial structure; (2) leveraging intermediate-layer atten-
+tion for class-to-patch alignment to reduce classification
+interference; and (3) disabling the [CLS] token’s self-
+attention to mitigate bias. Experiments on multiple remote
+sensing benchmarks, including building and road extrac-
+tion datasets, show that our method achieves state-of-the-
+art performance among training-free approaches.
+1. Introduction
+Remote sensing image segmentation plays a crucial role in
+various fields, such as environmental monitoring, disaster
+assessment, urban planning, and more [12]. Traditional re-
+*These authors contributed equally.
+†Work done during an internship at Huawei.
+‡ Corresponding author.
+CLIP
+CLIP
+CLIP
+/
+S
+N+1
+0
+(a) RCS 
+(b) SCSA 
+(c) Ours 
+Attn.
+Attn.
+Attn.
+Figure 1. Comparison between the proposed method and exist-
+ing approaches. (a) Residual Cross Attention (RCS); (b) Self-
+Cross Self-Attention (SCSA); (c) the proposed Refine Attention.
+Wherein Attn. denotes the attention map.
+mote sensing image segmentation methods typically rely on
+extensive pixel-level annotations for training [39], which
+can address some segmentation challenges to a certain ex-
+tent. Although effective in controlled scenarios, these meth-
+ods show limited adaptability to the inherent complexi-
+ties of remote sensing images, such as heterogeneous land-
+scapes, extreme scale variations, and complex target distri-
+butions, leading to compromised generalization capabilities
+[16]. Furthermore, these methods struggle to meet the dy-
+namic real-world demands, as frequently emerging unan-
+notated categories make the traditional closed-vocabulary
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+24980
+
+
+=== PAGE 2 ===
+paradigm inadequate.
+To mitigate these constraints, Open-V ocabulary Segmen-
+tation has emerged, integrating semantic reasoning to seg-
+ment arbitrary objects via natural language descriptions
+without category-specific retraining . This paradigm re-
+duces dependency on exhaustive annotated datasets and ac-
+commodates unseen categories. Nevertheless, most existing
+open-vocabulary methods [8, 26, 38, 41] still require fine-
+tuning with curated data, introducing deployment bottle-
+necks and performance inconsistencies in practical remote
+sensing applications, especially in scenarios where anno-
+tated resources are scarce.
+With the advancement of training-free segmentation
+methods [1, 23, 34], they bypass the optimization of specific
+datasets by leveraging large-scale pre-trained models, offer-
+ing a paradigm shift. These methods directly extract trans-
+ferable features from the base models, significantly reduc-
+ing or eliminating training overhead. Despite the progress
+made in certain fields, the dependence of most models on
+the training process restricts the application of training-free
+methods in real-world scenarios. To address this shortcom-
+ing, numerous improvements based on the CLIP [28] (Con-
+trastive Language-Image Pretraining) model have gained
+widespread attention in recent years.
+CLIP’s image-text pre-training excels in overall image
+understanding, but its operations are at the image level,
+which fundamentally misaligns with the pixel-level dis-
+criminative features required for segmentation. This dis-
+crepancy is particularly prominent in the remote sensing
+field, where complex scene distributions, extreme scale
+variations, and heterogeneous landscapes demand fine-
+grained feature representations. Current adaptation meth-
+ods typically use attention mechanisms to derive dense fea-
+tures, generating token embeddings by re-calculating the
+query-key (RCS) or key-key (SCSA) attention map [19].
+By treating attention maps as monolithic entities and focus-
+ing on restructuring rather than component-wise analysis,
+these methods fail to balance global semantics and local de-
+tails, leading to suboptimal representations for remote sens-
+ing imagery.
+In this paper, we innovatively conduct a comprehensive
+analysis of CLIP’s attention mechanisms for remote sensing
+segmentation, decomposing their influence into three inter-
+connected dimensions (As show in Fig. 1): (1) the similar-
+ity calculation between patch tokens, modeling inter-region
+relationships; (2) the composition of the[CLS] token, cap-
+turing global information; and (3) the [CLS] token’s con-
+tribution to patch tokens, revealing its impact on local re-
+gions during segmentation. Our method strategically re-
+calibrates these elements, enabling precise open-vocabulary
+segmentation without training, while directly addressing the
+inherent complexity of remote sensing.
+In summary, our contributions are as follows:
+• We provide the first detailed analysis of how CLIP’s at-
+tention map components impact remote sensing image
+segmentation, focusing on three key elements: patch to-
+ken similarity, the[CLS] token composition, and its con-
+tribution to patch tokens.
+• We propose a novel approach to effectively extract high-
+quality dense features from CLIP’s attention map for
+pixel-level image segmentation, addressing the challenge
+of transforming CLIP’s image-level features into dense,
+pixel-wise representations.
+• We conducted experiments on ten public remote sensing
+datasets, achieving state-of-the-art performance with an
+average gain of 1.7% on open-vocabulary segmentation
+and 1.1% on object extraction tasks.
+2. Related Work
+2.1. Vision-Language Model
+Vision-language models [6, 10, 15, 27] establish connec-
+tions between visual and textual modalities, and these
+models are typically pretrained on large-scale image-text
+datasets [29]. Among these models, CLIP is one of the most
+widely adopted. CLIP is a model trained using contrastive
+learning on a large collection of image-text pairs, enabling
+it to perform zero-shot retrieval tasks effectively. Specifi-
+cally, the classification result is obtained by computing the
+similarity between the output [CLS] token of the vision
+encoder and the embedding produced by the text encoder.
+However, due to the limitations of its pretraining strategy,
+the model can only perform image-level alignment with
+text. It cannot be directly applied to pixel-level alignment
+tasks, such as segmentation or object detection. Many ex-
+isting methods [31, 36] have attempted to modify the CLIP
+model to enhance its fine-grained feature extraction capa-
+bilities while preserving its strong generalization ability.
+2.2. Open-Vocabulary Natural Image Segmentation
+Open-vocabulary segmentation aims to detect and label im-
+age regions based on a list of vocabulary terms. Apply-
+ing CLIP to dense prediction tasks presents challenges.
+MaskCLIP [11, 43] highlights that CLIP’s image features
+are primarily determined by the value (V) component in
+the attention mechanism, proposing to replace the query
+(Q) and key (K) matrices with a 1 ×1 convolution. While
+CLIP’s direct output for segmentation often leads to subop-
+timal performance, it still provides useful guidance. CLIP
+Surgery [21] suggests refining these coarse predictions us-
+ing prompts like points or boxes, which are then input into
+segmentation models like SAM [17].
+SCLIP [32] analyzes CLIP’s final attention block and
+shows that query-query similarity improves dense visual
+representations by capturing relationships between patch to-
+kens of the same category. NACLIP [13] refines this with
+24981
+
+
+=== PAGE 3 ===
+a Gaussian kernel to enhance similarity measurements be-
+tween patch tokens. ClearCLIP [18] removes residual con-
+nections in CLIP’s final block to reduce noise, improving
+patch embeddings. In contrast, CLIPTrase [30] explores in-
+termediate layer outputs, using clustering to generate high-
+quality masks for guiding segmentation. ResCLIP [40]
+demonstrates that intermediate layer attention maps can sig-
+nificantly enhance patch token representations.
+2.3. Open-Vocabulary Remote Sensing Image Seg-
+mentation
+Although numerous methods have adapted CLIP for seg-
+mentation, most are developed for natural images, as CLIP
+is pretrained on large-scale natural image–text pairs. When
+applied to remote sensing imagery, these approaches often
+suffer from severe domain discrepancies. To address this is-
+sue, several training-based open-vocabulary remote sensing
+segmentation methods, such as OVRS [5] and GSNet [41],
+have been proposed to improve performance through task-
+specific learning. In contrast, SegEarth-OV [20] attempts to
+bridge the gap between CLIP pretraining and downstream
+segmentation by introducing a learnable upsampling mod-
+ule and a heuristic strategy to reduce the influence of the
+[CLS] token on patch tokens. However, existing methods
+generally treat the attention map as a whole without analyz-
+ing its internal components. In this work, we conduct an
+in-depth analysis of the attention computation process and
+introduce targeted refinements for each component of the
+attention map.
+3. Preliminaries
+3.1. Dense Visual Feature Extraction with CLIP
+CLIP is a vision–language model trained on large-scale
+image–text pairs, consisting of an image encoder and a text
+encoder. The image encoder adopts a ViT-B/16 architecture
+that partitions an image I∈RH×W ×3 into N = H
+16×W
+16
+patches. A classification token is prepended to form
+X = [xcls, x1, . . . , xN ]∈R(N +1)×d. (1)
+Self-attention is computed as
+Attention(Q, K, V ) = softmax
+ QK ⊤
+√
+d
+
+V, (2)
+where Q = XW Q, K = XW K, and V = XW V , produc-
+ing the attention map
+A = softmax
+ QK ⊤
+√
+d
+
+. (3)
+While CLIP uses xcls for global representation, dense
+prediction relies on patch tokens x1, . . . , xN . Therefore,
+analyzing the attention map is crucial for effectively lever-
+aging these spatial tokens.
+3.2. Alleviating the Impact of Global Representa-
+tions
+All patch tokens in CLIP interact with the [CLS] token
+via self-attention, introducing global information that can
+reduce their usefulness for dense prediction. SegEarth-OV
+mitigates this by subtracting the [CLS] embedding from
+each patch:
+X = [x cls, x1, . . . , xN ]∈R(N +1)×d, (4)
+˜xi = xi−xcls, i = 1, . . . , N. (5)
+The resulting patch features ˜X = [˜x1, . . . , ˜xN ] are less in-
+fluenced by global context, improving local discriminabil-
+ity.
+4. Method
+In this section, we decompose the attention map into three
+distinct components and analyze the influence of each on
+the patch token representations. For each component, we
+further propose targeted optimization strategies to enhance
+the quality of the resulting dense features. Following the
+setup of SegEarth-OV [20], we also use SimFeatUp as the
+upsampling module. The overview is shown in Fig. 2.
+4.1. Motivation for Attention Map Analysis
+Consider the standard attention update in the final CLIP
+transformer block:
+X = AV, V = [vCLS, v1, v2, . . . , v196], (6)
+where A∈R197×197 denotes the attention map and V the
+value matrix. Expanding row-wise, the output of the i-th
+patch token can be written as
+xi = Ai0vCLS +
+196X
+j=1
+Aijvj. (7)
+From Eq. (7), each patch embedding xi receives informa-
+tion from two sources: the global [CLS] token (via Ai0)
+and other patch tokens (via the patch–patch submatrix of
+A).
+Prior studies[20] have shown that the [CLS] token can
+introduce global bias in dense prediction tasks, degrading
+patch-level representations. To mitigate this, we adopt two
+complementary strategies: (1) zeroing the first column of
+the attention map to block direct [CLS] influence, and (2)
+subtracting a reconstructed [CLS] component to eliminate
+residual effects.
+Based on these observations, we decompose the atten-
+tion map into three interpretable parts: (i) [CLS]→patch at-
+tention, (ii) patch→[CLS] attention, and(iii) patch↔patch
+attention. This decomposition enables explicit control and
+analysis of distinct information flows in CLIP’s attention,
+leading to more localized and precise dense predictions.
+24982
+
+
+=== PAGE 4 ===
+A photo of
+{tree}.
+Clip Text
+Encoder
+Proj.
+Matmul
+V
+Last Attn.
+Clip Image Encoder
+...
+ReAttn.
+SimFeatUp
+Pipeline of  ReAttnCLIP: 
+...
+Cosine Similarity
+Substract
+⼀
+⼀
+[CLS] Token
+Patch Token
+... ...
+CLIP Image Encoder
+Self-Attn.
+Self-Attn.
+Self-Attn.
+... ...
+CLIP Image Encoder
+Block
+Block
+Block
+0
+Reconstruction 
+Attn.
+Rotation
+Reverse
+rotation
+Figure 2. Overview of ReAttnCLIP. ReAttnCLIP enhances dense feature representation by strategically modifying the attention map in
+CLIP’s final block, decomposing it into three components. The second row illustrates the construction of Patch–Patch relationships and
+the formation of the [CLS] token. The right half of the first row demonstrates how the [CLS] token’s contribution to patch tokens is set
+to zero. Additionally, SimFeatUp, a trained upsampling module specifically designed for remote sensing images, further improves feature
+resolution and segmentation performance.
+4.2. Patch-to-Patch Similarity
+For a standard ViT, the attention map is 197×197, and
+removing the first row and column for the [CLS] token
+yields a 196×196 matrix of patch-patch similarities. Re-
+cent works have proposed strategies to improve these maps:
+SegEarth-OV combines Query-Query, Key-Key, and Value-
+Value similarities via a weighted sum for enhanced atten-
+tion:
+A = α·(QQ⊤) + β·(KK ⊤) + γ·(V V ⊤), (8)
+where Q, K, V denote the query, key, and value matrices,
+and α, β, γ are weighting coefficients.
+The advantage of Query-Query similarity lies in its sym-
+metric structure, which avoids discrepancies introduced by
+separate projections in standard Query-Key attention. This
+reduces projection-induced bias and enhances the reliabil-
+ity of token relationships, which is particularly beneficial
+for dense prediction tasks such as segmentation.
+Motivated by these insights, we further simplify the at-
+tention computation by removing all learnable projections
+and directly measuring similarity between raw patch em-
+beddings:
+Attentionraw
+i,j = x⊤
+i xj
+√
+d
+, (9)
+where xi, xj are the original patch embeddings. This
+projection-free approach provides an interpretable baseline
+to assess the intrinsic geometric relationships in the embed-
+ding space for segmentation.
+We further explore features from intermediate CLIP lay-
+ers and visualize attention maps generated by different
+strategies, as illustrated in Fig. 3. The results show that
+computing attention directly from patch token embeddings
+achieves competitive performance.
+Image RCS
+SCSA 𝑋𝑋𝑇
+Figure 3. From left to right and top to bottom, the figure visualizes
+RCS, SCSA and XX ⊤.
+Remote sensing images often present significant varia-
+tions in object orientation, making robust feature extrac-
+tion challenging. To address this, we apply rotational
+augmentation by rotating each image at multiple angles
+(e.g., 0◦, 90◦, 180◦, 270◦), extracting patch embeddings
+24983
+
+
+=== PAGE 5 ===
+from each rotation, and computing the corresponding sim-
+ilarity matrices for each rotation. Specifically, for each se-
+lected layer k∈K, we compute the patch embeddings sim-
+ilarity as follows:
+S(r,k) = X (r,k)X (r,k)⊤
+, (10)
+where X (r,k)∈RN ×d represents the patch embeddings for
+the r-th rotation at layer k.
+The final rotation-enhanced similarity is obtained by
+weighted aggregation across all rotations and averaging
+over layers:
+Srot = 1
+|K|
+X
+k∈K
+X
+r
+λr·S(r,k), (11)
+where λr denotes the weight for each rotation, andK is the
+set of selected layers. The averaging over layers k ensures
+that the rotation-enhanced similarity captures information
+across multiple layers.
+The overall similarity matrix is then computed by com-
+bining the rotation-enhanced similarity with attention maps
+from selected layers:
+S = α·Srot +
+X
+l∈L
+βl·A(l), (12)
+where A(l) denotes the attention map from layer l (which
+corresponds to the Query-Key attention map), andL is the
+set of selected layers. Srot represents the similarity derived
+from XX T attention maps, which captures the pairwise
+similarities between patch embeddings.
+4.3. CLS Token Reconstruction
+When adapting CLIP to dense prediction tasks, the [CLS]
+token is typically discarded, and only patch tokens are used.
+However, during pretraining, patch tokens interact with the
+[CLS] token, leading to patch tokens encoding significant
+global context. To mitigate this, SegEarth-OV subtracts the
+final-layer [CLS] token embedding from each patch token
+to remove global bias. In fact, patch tokens also carry infor-
+mation from other categories during this attention compu-
+tation process. The [CLS] token in the final layer carries
+only a small amount of category information and does not
+encompass information from all categories.
+As shown in Fig. 4, we visualize the similarity between
+patch tokens based on their representations derived from the
+value projection in the final-layer self-attention. It can be
+observed that the selected patch token corresponds to the
+“vegetation” category; however, the region associated with
+“building” is also activated. This indicates that the patch
+token carries information from multiple categories. Fur-
+thermore, we visualize the similarity between the output
+[CLS] token and the text embeddings. The results show
+(a) Similarity of patch tokens (b) Similarity of output [CLS] token and text
+Figure 4. Visualization of the similarities between patch tokens
+from the final transformer layer and the similarities between text
+embeddings and [CLS] tokens derived from different layers.
+that the [CLS] token constructed using attention maps
+from intermediate layers contains more diverse category in-
+formation.
+2 4 6 8 10 12
+Layer
+3.50
+3.75
+4.00
+4.25
+4.50
+4.75
+5.00
+5.25Entropy
+Entropy of [CLS] Attention Over Patch T okens (per Layer)
+Entropy
+Figure 5. We visualized the entropy of the attention maps of the
+[CLS] token across different layers, which represents the extent
+of interaction between the [CLS] token and the other patch to-
+kens.
+As shown in Fig. 5, we visualize the entropy of the atten-
+tion maps to examine the interactions between the [CLS]
+token and the other patch tokens across different layers. It
+can be observed that as the layer depth increases, the en-
+tropy gradually decreases, indicating that the attention of
+the [CLS] token shifts towards a subset of patch tokens.
+Based on our observations, the [CLS] token embedding at
+this stage may contain only a limited amount of informa-
+tion.
+Inspired by this, we propose reconstructing the global
+representation by aggregating the attention distributions
+from intermediate layers. Specifically, for each selected in-
+termediate layer l∈L, we extract the entire first row of the
+attention map A(l)∈R(N +1)×(N +1), corresponding to the
+attention weights from the [CLS] token to all tokens, in-
+cluding itself. The average of these rows across the selected
+layers forms a composite attention vector:
+¯A(l)
+0,: = 1
+|L|
+X
+l∈L
+A(l)
+0,:, (13)
+where ¯A(l)
+0,:∈RN +1 denotes the mean attention weights
+24984
+
+
+=== PAGE 6 ===
+Table 1. Comparison Results on Open-V ocabulary Remote Sensing Segmentation Datasets (mIoU).
+Methods OpenEarthMap LoveDA iSAID Potsdam Vaihingen UA Vidimg UDD5 VDD Average
+CLIP (ICML21) 12.0 12.4 7.5 14.5 10.3 10.9 9.5 14.2 11.4
+MaskCLIP (ECCV22) 25.1 27.8 14.5 31.7 24.7 28.6 32.4 32.9 27.2
+SCLIP (ECCV24) 29.3 30.4 16.1 36.6 28.4 31.4 38.7 37.9 31.1
+GEM (CVPR24) 33.9 31.6 17.7 36.5 24.7 33.4 41.2 39.5 32.3
+ClearCLIP (ECCV24) 31.0 32.4 18.2 40.9 27.3 36.2 41.8 39.3 33.4
+ResCLIP (CVPR25) 34.3 29.6 8.8 42.6 27.8 36.0 41.9 39.6 32.6
+SegEarth-OV (CVPR25) 40.3 36.9 21.7 47.1 29.1 42.5 50.6 45.3 39.2
+Ours 41.1 37.0 23.2 48.7 29.9 44.0 53.7 49.7 40.9
+from the [CLS] token to all tokens (including itself), av-
+eraged over the selected intermediate layers. This vector is
+then used as a refined global attention distribution for down-
+stream debiasing operations.
+This strategy yields a global representation that inte-
+grates both spatial and semantic information across the net-
+work’s depth, providing a more comprehensive and robust
+debiasing reference for downstream tasks.
+4.4. CLS-to-Patch Attention Influence
+The [CLS] token’s contribution to each patch is given by
+the first column of the attention matrix, reflecting its influ-
+ence on patch representations. Such global-to-local interac-
+tions can introduce undesired bias at the patch level.
+As noted above, the [CLS] token already biases patch
+embeddings during pretraining. We therefore set this con-
+tribution to zero to further reduce its effect on local features.
+Aref ine[i, 0] = 0, for i = 1, 2, . . . , N, (14)
+where Aref ine∈R(N +1)×(N +1) is the redefined attention
+matrix, rather than the attention map, and N is the number
+of patch tokens.
+To summarize, we redefine the structure of the attention
+map in the last block of CLIP by explicitly decomposing
+it into three distinct components corresponding to different
+spatial regions within the attention matrix:
+Aref ine =
+ ¯A(l)
+0,0 ¯A(l)
+0,1:196
+0 S
+
+, (15)
+where S∈RN ×N denotes the patch-to-patch similarity
+matrix (i.e., the lower-right submatrix), ¯A(l)
+0,: ∈R1×N +1
+represents the attention from the [CLS] token to all patch
+tokens (i.e., the first row excluding the top-left element).
+5. Experiment
+5.1. Datasets and Metrics
+To validate the effectiveness of the proposed method, we
+conduct evaluations on three tasks: open-vocabulary se-
+mantic segmentation of remote sensing images, building ex-
+traction, and road extraction. Specifically, we evaluate our
+method on eight publicly available datasets for the open-
+vocabulary segmentation task, and on one dataset each for
+the building and road extraction tasks. Overall, our method
+is assessed on ten datasets across three distinct tasks.
+Datasets. For the open-vocabulary segmentation task,
+we select eight publicly available datasets, namely Open-
+EarthMap [37], LoveDA [33], iSAID [35], Potsdam, Vai-
+hingen, UA Vid [24], UDD5 [7], and VDD [4]. For building
+extraction and road extraction tasks, we selected one dataset
+for each, namely WHUSAT.II [14] and Massachusetts [25].
+Metrics. We follow prior work [22] by adopting the
+Intersection-over-Union (IoU) as the evaluation metric and
+apply it consistently across all models.
+5.2. Implementation Details
+We adopt ViT/B as the backbone model. All input images
+are resized to 448×448 before being fed into the CLIP im-
+age encoder. During inference, we apply a sliding window
+strategy to preserve model performance. Specifically, we
+use a window size of 224×224 to slide across the image
+and then stitch the predicted patches together to form the
+final segmentation result of the original image. For the text
+input, we follow OpenAI’s approach by averaging the em-
+beddings generated from 80 different templates. For the pa-
+rameter l, we define it to be between layers 6 and 9, its value
+is determined for each dataset based on the entropy map of
+the [CLS] token. λ0 is set to 1, andλi for i∈{1,2, 3}is set
+to 0.4.K contains layers 9 to 11. The parameter α is set to
+0.2. All experiments were conducted on a single NVIDIA
+V100 GPU.
+5.3. Compared with state-of-the-art methods
+We compare our approach against six state-of-the-art
+training-free open-vocabulary segmentation methods across
+three tasks: CLIP [28], MaskCLIP [43], SCLIP [32], GEM
+[2], ClearCLIP [18], ResCLIP[40] and SegEarth-OV [20].
+Semantic segmentation. The results on semantic seg-
+mentation datasets are presented in Table 1. Our method
+achieves the new state-of-the-art performance across all
+eight datasets. Compared with the current state-of-the-art
+24985
+
+
+=== PAGE 7 ===
+Table 2. Comparison Results on Remote Sensing Building/Road
+Extraction Datasets (mIoU).
+Methods WHUSAT.II Massachusetts Average
+CLIP 3.5 4.9 4.2
+MaskCLIP 14.0 10.6 12.3
+SCLIP 21.0 7.4 14.2
+GEM 13.6 5.1 9.4
+ClearCLIP 20.8 6.4 13.6
+ResCLIP 14.8 4.9 9.9
+SegEarth-OV 28.4 11.5 20.0
+Ours 29.7 12.4 21.1
+method SegEarth-OV . Our method achieves an improve-
+ment of 3.1% and 4.4% in mIoU on the UDD5 and VDD
+datasets, respectively. On the remaining six datasets, our
+method also achieves improvements of approximately 1%
+or more. The performance improvement on the LoveDA
+dataset is limited to 0.1%. This is mainly because the im-
+ages in this dataset are generally blurry and contain mostly
+small objects. Since we use a ViT backbone pre-trained
+on natural images, there exists a noticeable domain gap be-
+tween natural and remote sensing imagery, which restricts
+the effectiveness of our method on this particular dataset.
+Image OursGt SegEarth-OV
+Figure 6. Qualitative Comparison of Segmentation Results. The
+visualization results are presented from left to right as the original
+image, ground truth, our method, and the current state-of-the-art
+method.
+Building/Road extraction. To evaluate the generalization
+ability of the proposed method, we further validate it on two
+distinct object extraction datasets. In the remote sensing do-
+main, road extraction is generally more challenging due to
+the irregular and highly variable shapes of roads, particu-
+larly for training-free approaches. Nevertheless, our method
+achieves approximately 1% improvement over the current
+state-of-the-art on the road extraction dataset.
+Qualitative Results. The qualitative results are shown in
+Fig. 6. It can be observed that our method yields segmenta-
+tion maps that are more consistent with the ground truth.
+Specifically, our approach better preserves object bound-
+aries and captures fine-grained details, such as narrow roads
+and small structures, which are often over-smoothed or mis-
+classified by SegEarth-OV .
+5.4. Ablation Study and Analysis
+Ablation Study of Different Modules. We conducted ab-
+lation studies to evaluate the effectiveness of the proposed
+method, with results shown in Table 3. Enabling the P-P
+(Patch-to-Patch Similarity) module alone consistently im-
+proves performance across all three datasets, emphasizing
+the importance of patch-level similarity modeling. Incor-
+porating the CLS token adjustment further enhances perfor-
+mance by reconstructing a more informative global repre-
+sentation. The CLS-Patch module, which reduces the global
+token’s residual influence on patch tokens, also provides ad-
+ditional benefits when applied independently.
+Table 3. Exploring the effectiveness of the proposed different com-
+ponents. We conducted experiments to validate the results of dif-
+ferent components. P-P represents the similarity between patch
+tokens, CLS refers to the construction of the [CLS] token, and
+CLS-Patch denotes the contribution of the [CLS] token to the
+patch tokens.
+P-P CLS CLS-Patch UDD5 VDD WHUSAT.II
+50.4 45.3 28.4
+✓ 53.1 47.8 29.0
+✓ 52.5 46.8 28.9
+✓ 51.5 46.7 28.8
+✓ ✓ ✓ 53.7 49.7 29.5
+Ablation Study on the P-P Module. The experimental re-
+sults demonstrate that the P-P module is crucial for perfor-
+mance. We further investigate the impact of different com-
+putation strategies within the P-P module, as shown in Table
+4. Computing similarity using XX ⊤ yields the most sig-
+nificant improvement, with a 2.8% increase on the UDD5
+dataset. Additionally, rotation operations consistently en-
+hance performance across all datasets, with the largest gain
+observed on the VDD dataset, where small objects benefit
+from rotation. To further enrich the attention map, we incor-
+porate additional attention maps from intermediate Query-
+Key computations, leading to further performance gains.
+Ablation study on different layers. As shown in Table 5,
+we investigate the impact of different layer selections for
+the XXT Fusion strategy. The results indicate that varying
+24986
+
+
+=== PAGE 8 ===
+Table 4. Ablation study on the P-P module. We investigate the
+impact of different computation strategies.
+XX⊤ QK⊤ Rotation UDD5 VDD WHUSAT.II
+50.4 45.3 28.4
+✓ 53.2 46.7 29.1
+✓ 52.7 47.5 28.7
+✓ ✓ 53.4 48.8 29.3
+✓ ✓ ✓ 53.7 49.7 29.5
+the input layers leads to only marginal differences in perfor-
+mance on both the UDD5 and VDD datasets, demonstrating
+the robustness of the proposed fusion mechanism. To bal-
+ance accuracy and computational efficiency, we adopt the
+fusion of layers 9 to 11 as our default setting.
+Table 5. Analysis of layer fusion strategies.
+Fusion Ways Layers UDD5 VDD
+XXT Fusion
+7 → 9 53.7 49.6
+7 → 10 53.7 49.6
+7 → 11 53.7 49.7
+8 → 11 53.8 49.6
+9 → 11 53.7 49.7
+10 → 11 53.4 49.8
+Complexity Analysis. As shown in Table 6, our method
+achieves the highest overall segmentation performance
+(40.9 Average) while maintaining a reasonable balance be-
+tween inference latency and computational cost. Although
+the latency and FLOPs are moderately higher than those of
+previous methods, the substantial improvement in accuracy
+demonstrates that our approach effectively enhances model
+capability without excessive computational overhead.
+Table 6. Comparison of inference latency and computational cost
+(GFLOPs) across different methods.
+Method Inference Latency GFLOPS Average
+MaskCLIP 9.5 ms 12.2 27.2
+ClearCLIP 20.0 ms 11.7 33.4
+ResCLIP 70.2 ms 10.4 32.6
+SegEarth-OV 22.8 ms 27.8 39.2
+Ours 52.3 ms 60.2 40.9
+Plug and Play. Table 7 shows that integrating our plug-
+and-play module into existing open-vocabulary segmenta-
+tion methods consistently boosts performance across mul-
+tiple remote sensing datasets. Notably, when applied to
+CLIP-based frameworks such as MaskCLIP, SCLIP, and
+ClearCLIP, the module yields substantial improvements,
+with increases of up to 9.5% in the average score, demon-
+strating its general effectiveness across different baseline
+models.
+Table 7. Effect of the proposed plug-and-play module on open-
+vocabulary remote sensing segmentation.
+Methods UDD5 VDD Potsdam Average
+MaskCLIP 32.4 32.9 31.7 32.3
++ Ours 42.5 40.4 42.5 41.8↑9.5
+SCLIP 38.7 37.9 36.6 37.7
++ Ours 43.0 40.7 42.9 42.2↑4.5
+ClearCLIP 39.3 31.0 40.9 37.1
++ Ours 48.4 45.5 44.3 46.1↑9.0
+Results on natural image datasets. Table 8 presents
+a comparison of open-vocabulary segmentation methods
+on three natural image datasets: Stuff[3], ADE20K[42],
+and Cityscapes[9]. For each baseline method—MaskCLIP,
+SCLIP, and ClearCLIP—the table shows performance both
+before and after integrating our plug-and-play module. The
+improvements achieved by our module are highlighted in
+green in the Average column, illustrating consistent gains
+across all datasets and demonstrating its effect on enhanc-
+ing segmentation accuracy for each method.
+Table 8. Performance comparison of open-vocabulary segmenta-
+tion methods on natural images.
+Methods Stuff ADE20K Cityscapes Average
+MaskCLIP 16.4 9.8 12.6 12.9
++ Ours 22.1 16.6 29.0 22.6 ↑9.7
+SCLIP 21.1 14.6 29.1 21.6
++ Ours 23.4 16.8 30.8 23.7 ↑2.1
+ClearCLIP 23.9 16.7 30.0 23.5
++ Ours 24.2 17.3 31.2 24.2 ↑0.7
+6. Conclusion
+We introduce a novel framework for open-vocabulary seg-
+mentation of remote sensing images by utilizing atten-
+tion maps derived from CLIP. A comprehensive analy-
+sis is conducted to examine the impact of various com-
+ponents within CLIP’s attention mechanism on segmenta-
+tion accuracy, along with a methodology to extract high-
+quality dense features for pixel-level segmentation. Specif-
+ically, we investigate the evolution of attention patterns
+across network layers and their role in enhancing spatial lo-
+calization. Extensive experiments on multiple benchmark
+datasets demonstrate that our method achieves state-of-the-
+art performance and exhibits strong generalization across
+diverse data sources. The effectiveness and robustness of
+attention-based strategies for efficient remote sensing im-
+age segmentation are thereby validated.
+24987
+
+
+=== PAGE 9 ===
+Acknowledgments
+This work was supported in part by the National Natural
+Science Foundation of China No. 62376277, the Public
+Computing Cloud of Renmin University of China and the
+Fund for Building World-Class Universities (Disciplines) of
+Renmin University of China.
+References
+[1] Luca Barsellotti, Roberto Amoroso, Lorenzo Baraldi, and
+Rita Cucchiara. Fossil: Free open-vocabulary semantic seg-
+mentation through synthetic references retrieval. InProceed-
+ings of the IEEE/CVF Winter Conference on Applications of
+Computer Vision, pages 1464–1473, 2024. 2
+[2] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and
+Hilde Kuehne. Grounding everything: Emerging localiza-
+tion properties in vision-language transformers. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 3828–3837, 2024. 6
+[3] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. In Proceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 1209–1218, 2018. 8
+[4] Wenxiao Cai, Ke Jin, Jinyan Hou, Cong Guo, Letian Wu,
+and Wankou Yang. Vdd: Varied drone dataset for semantic
+segmentation. Journal of Visual Communication and Image
+Representation, 109:104429, 2025. 6
+[5] Qinglong Cao, Yuntian Chen, Chao Ma, and Xiaokang Yang.
+Open-vocabulary high-resolution remote sensing image se-
+mantic segmentation. IEEE Transactions on Geoscience and
+Remote Sensing, 2025. 3
+[6] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. In Pro-
+ceedings of the IEEE/CVF international conference on com-
+puter vision, pages 9650–9660, 2021. 2
+[7] Yu Chen, Yao Wang, Peng Lu, Yisong Chen, and Guoping
+Wang. Large-scale structure from motion with semantic con-
+straints of aerial images. In Chinese Conference on Pattern
+Recognition and Computer Vision (PRCV), pages 347–359.
+Springer, 2018. 6
+[8] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-
+seg: Cost aggregation for open-vocabulary semantic seg-
+mentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 4113–
+4123, 2024. 2
+[9] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. In Proceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 3213–3223, 2016. 8
+[10] Timoth ´ee Darcet, Maxime Oquab, Julien Mairal, and Pi-
+otr Bojanowski. Vision transformers need registers. arXiv
+preprint arXiv:2309.16588, 2023. 2
+[11] Zheng Ding, Jieke Wang, and Zhuowen Tu. Open-
+vocabulary universal image segmentation with maskclip.
+arXiv preprint arXiv:2208.08984, 2022. 2
+[12] FAO. Guidelines on the Use of Remote Sensing Products to
+Improve Agricultural Crop Production Forecast Statistics in
+Sub-Saharan African Countries. UN, 2018. 1
+[13] Sina Hajimiri, Ismail Ben Ayed, and Jose Dolz. Pay attention
+to your neighbours: Training-free open-vocabulary semantic
+segmentation. In 2025 IEEE/CVF Winter Conference on Ap-
+plications of Computer Vision (WACV), pages 5061–5071.
+IEEE, 2025. 2
+[14] Shunping Ji, Shiqing Wei, and Meng Lu. Fully convolutional
+networks for multisource building extraction from an open
+aerial and satellite imagery data set. IEEE Transactions on
+geoscience and remote sensing, 57(1):574–586, 2018. 6
+[15] Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc Le, Yun-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representa-
+tion learning with noisy text supervision. In International
+conference on machine learning, pages 4904–4916. PMLR,
+2021. 2
+[16] Xufeng Jiang, Nan Zhou, and Xiang Li. Few-shot segmen-
+tation of remote sensing images using deep metric learning.
+IEEE Geoscience and Remote Sensing Letters, 19:1–5, 2022.
+1
+[17] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. In Proceedings of the IEEE/CVF international confer-
+ence on computer vision, pages 4015–4026, 2023. 2
+[18] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+ence. In European Conference on Computer Vision, pages
+143–160. Springer, 2024. 3, 6
+[19] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Proxyclip: Proxy
+attention improves clip for open-vocabulary segmentation.
+In European Conference on Computer Vision, pages 70–88.
+Springer, 2024. 2
+[20] Kaiyu Li, Ruixun Liu, Xiangyong Cao, Xueru Bai, Feng
+Zhou, Deyu Meng, and Zhi Wang. Segearth-ov: Towards
+training-free open-vocabulary segmentation for remote sens-
+ing images. In Proceedings of the Computer Vision and Pat-
+tern Recognition Conference, pages 10545–10556, 2025. 3,
+6
+[21] Yi Li, Hualiang Wang, Yiqun Duan, Jiheng Zhang, and Xi-
+aomeng Li. A closer look at the explainability of con-
+trastive language-image pre-training. Pattern Recognition,
+162:111409, 2025. 2
+[22] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. In Proceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+7061–7070, 2023. 6
+[23] Yuqi Lin, Minghao Chen, Kaipeng Zhang, Hengjia Li, Ming-
+ming Li, Zheng Yang, Dongqin Lv, Binbin Lin, Haifeng
+24988
+
+
+=== PAGE 10 ===
+Liu, and Deng Cai. Tagclip: A local-to-global framework
+to enhance open-vocabulary multi-label classification of clip
+without training. In Proceedings of the AAAI Conference on
+Artificial Intelligence, pages 3513–3521, 2024. 2
+[24] Ye Lyu, George V osselman, Gui-Song Xia, Alper Yilmaz,
+and Michael Ying Yang. Uavid: A semantic segmentation
+dataset for uav imagery. ISPRS journal of photogrammetry
+and remote sensing, 165:108–119, 2020. 6
+[25] V olodymyr Mnih. Machine learning for aerial image label-
+ing. University of Toronto (Canada), 2013. 6
+[26] Hongwei Niu, Jie Hu, Jianghang Lin, Guannan Jiang, and
+Shengchuan Zhang. Eov-seg: Efficient open-vocabulary
+panoptic segmentation. In Proceedings of the AAAI Con-
+ference on Artificial Intelligence, pages 6254–6262, 2025. 2
+[27] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 2
+[28] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. In International conference on machine learning, pages
+8748–8763. PmLR, 2021. 2, 6
+[29] Christoph Schuhmann, Romain Beaumont, Richard Vencu,
+Cade Gordon, Ross Wightman, Mehdi Cherti, Theo
+Coombes, Aarush Katta, Clayton Mullis, Mitchell Worts-
+man, et al. Laion-5b: An open large-scale dataset for training
+next generation image-text models. Advances in neural in-
+formation processing systems, 35:25278–25294, 2022. 2
+[30] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. In European Conference on Com-
+puter Vision, pages 139–156. Springer, 2024. 3
+[31] Lin Sun, Jiale Cao, Jin Xie, Xiaoheng Jiang, and Yanwei
+Pang. Cliper: Hierarchically improving spatial represen-
+tation of clip for open-vocabulary semantic segmentation.
+arXiv preprint arXiv:2411.13836, 2024. 2
+[32] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethink-
+ing self-attention for dense vision-language inference. In
+European Conference on Computer Vision, pages 315–332.
+Springer, 2024. 2, 6
+[33] Junjue Wang, Zhuo Zheng, Ailong Ma, Xiaoyan Lu, and
+Yanfei Zhong. Loveda: A remote sensing land-cover dataset
+for domain adaptive semantic segmentation. arXiv preprint
+arXiv:2110.08733, 2021. 6
+[34] Yuan Wang, Rui Sun, Naisong Luo, Yuwen Pan, and Tianzhu
+Zhang. Image-to-image matching via foundation models: A
+new perspective for open-vocabulary semantic segmentation.
+In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 3952–3963, 2024. 2
+[35] Syed Waqas Zamir, Aditya Arora, Akshita Gupta, Salman
+Khan, Guolei Sun, Fahad Shahbaz Khan, Fan Zhu, Ling
+Shao, Gui-Song Xia, and Xiang Bai. isaid: A large-scale
+dataset for instance segmentation in aerial images. In Pro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition workshops, pages 28–37, 2019. 6
+[36] Monika Wysocza ´nska, Micha ¨el Ramamonjisoa, Tomasz
+Trzci´nski, and Oriane Sim ´eoni. Clip-diy: Clip dense infer-
+ence yields open-vocabulary semantic segmentation for-free.
+In Proceedings of the IEEE/CVF Winter Conference on Ap-
+plications of Computer Vision, pages 1403–1413, 2024. 2
+[37] Junshi Xia, Naoto Yokoya, Bruno Adriano, and Clifford
+Broni-Bediako. Openearthmap: A benchmark dataset for
+global high-resolution land cover mapping. In Proceed-
+ings of the IEEE/CVF Winter Conference on Applications of
+Computer Vision, pages 6254–6264, 2023. 6
+[38] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. Sed: A simple encoder-decoder for open-
+vocabulary semantic segmentation. In Proceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 3426–3436, 2024. 2
+[39] Tianyu Yan, Zifu Wan, and Pingping Zhang. Fully trans-
+former network for change detection of remote sensing im-
+ages. In Proceedings of the Asian Conference on Computer
+Vision, pages 1691–1708, 2022. 1
+[40] Yuhang Yang, Jinhong Deng, Wen Li, and Lixin Duan.
+Resclip: Residual attention for training-free dense vision-
+language inference. In Proceedings of the Computer Vision
+and Pattern Recognition Conference, pages 29968–29978,
+2025. 3, 6
+[41] Chengyang Ye, Yunzhi Zhuge, and Pingping Zhang. To-
+wards open-vocabulary remote sensing image semantic seg-
+mentation. In Proceedings of the AAAI Conference on Arti-
+ficial Intelligence, pages 9436–9444, 2025. 2, 3
+[42] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ade20k dataset. In Proceedings of the IEEE conference on
+computer vision and pattern recognition, pages 633–641,
+2017. 8
+[43] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. In European conference on computer
+vision, pages 696–712. Springer, 2022. 2, 6
+24989

@@ -1,0 +1,570 @@
+[
+  {
+    "name": "SegEarth-OV",
+    "source": "参考论文/08_遥感域专门化与泛化/SegEarth-OV_2410.01768.pdf",
+    "pages": 15,
+    "headings": [
+      [
+        1,
+        "1. Introduction"
+      ],
+      [
+        2,
+        "2. Related Work"
+      ],
+      [
+        3,
+        "3. Preliminaries"
+      ],
+      [
+        3,
+        "3.1. CLIP"
+      ],
+      [
+        3,
+        "3.2. FeatUp"
+      ],
+      [
+        4,
+        "4. Method"
+      ],
+      [
+        4,
+        "4.1. SimFeatUp"
+      ],
+      [
+        5,
+        "4.2. Alleviating global bias"
+      ],
+      [
+        5,
+        "5. Experiments"
+      ],
+      [
+        5,
+        "5.1. Dataset"
+      ],
+      [
+        6,
+        "5.2. Setup"
+      ],
+      [
+        6,
+        "5.3. Comparison to State-of-the-art"
+      ],
+      [
+        7,
+        "5.4. Ablation Study and Analysis"
+      ],
+      [
+        8,
+        "6. Conclusion"
+      ]
+    ],
+    "render_page": 5
+  },
+  {
+    "name": "TMPA",
+    "source": "参考论文/07_测试时适应校准与可靠性诊断/TMPA_CVPR2026.pdf",
+    "pages": 11,
+    "headings": [
+      [
+        1,
+        "1. Introduction"
+      ],
+      [
+        3,
+        "2. Related Work"
+      ],
+      [
+        4,
+        "3. Method"
+      ],
+      [
+        4,
+        "3.1. Overview of TMPA"
+      ],
+      [
+        4,
+        "3.2. Context-Aware Text Prompt Generator"
+      ],
+      [
+        5,
+        "3.3. Visual-guided Test-Time Adaptation"
+      ],
+      [
+        6,
+        "4. Experiment"
+      ],
+      [
+        6,
+        "4.1. Dataset"
+      ],
+      [
+        6,
+        "4.2. Implementation Details"
+      ],
+      [
+        6,
+        "4.3. Comparison with State-of-the-art"
+      ],
+      [
+        7,
+        "4.4. Ablation Study"
+      ],
+      [
+        8,
+        "5. Conclusion"
+      ]
+    ],
+    "render_page": 5
+  },
+  {
+    "name": "ReAttnCLIP",
+    "source": "参考论文/03_视觉语言对齐与稠密表征/ReAttnCLIP_CVPR2026.pdf",
+    "pages": 10,
+    "headings": [
+      [
+        1,
+        "1. Introduction"
+      ],
+      [
+        2,
+        "2. Related Work"
+      ],
+      [
+        2,
+        "2.1. Vision-Language Model"
+      ],
+      [
+        2,
+        "2.2. Open-Vocabulary Natural Image Segmentation"
+      ],
+      [
+        3,
+        "2.3. Open-Vocabulary Remote Sensing Image Seg-"
+      ],
+      [
+        3,
+        "3. Preliminaries"
+      ],
+      [
+        3,
+        "3.1. Dense Visual Feature Extraction with CLIP"
+      ],
+      [
+        3,
+        "3.2. Alleviating the Impact of Global Representa-"
+      ],
+      [
+        3,
+        "4. Method"
+      ],
+      [
+        3,
+        "4.1. Motivation for Attention Map Analysis"
+      ],
+      [
+        4,
+        "4.2. Patch-to-Patch Similarity"
+      ],
+      [
+        5,
+        "4.3. CLS Token Reconstruction"
+      ],
+      [
+        6,
+        "4.4. CLS-to-Patch Attention Influence"
+      ],
+      [
+        6,
+        "5. Experiment"
+      ],
+      [
+        6,
+        "5.1. Datasets and Metrics"
+      ],
+      [
+        6,
+        "5.2. Implementation Details"
+      ],
+      [
+        6,
+        "5.3. Compared with state-of-the-art methods"
+      ],
+      [
+        7,
+        "5.4. Ablation Study and Analysis"
+      ],
+      [
+        7,
+        "4. Computing similarity using XX ⊤ yields the most sig-"
+      ],
+      [
+        8,
+        "6. Conclusion"
+      ]
+    ],
+    "render_page": 4
+  },
+  {
+    "name": "GLA-CLIP",
+    "source": "参考论文/05_场景上下文多视野与跨图证据/GLA-CLIP_CVPR2026.pdf",
+    "pages": 11,
+    "headings": [
+      [
+        1,
+        "1. Introduction"
+      ],
+      [
+        2,
+        "2. Related Work"
+      ],
+      [
+        2,
+        "2.1. Open-Vocabulary Semantic Segmentation"
+      ],
+      [
+        2,
+        "2.2. Training-Free OVSS"
+      ],
+      [
+        3,
+        "3. Method"
+      ],
+      [
+        3,
+        "3.1. Preliminary"
+      ],
+      [
+        4,
+        "3.2. Key-Value Extension for Contextual Cue"
+      ],
+      [
+        4,
+        "3.3. Proxy Anchor for Stable Attention"
+      ],
+      [
+        5,
+        "3.4. Dynamic Normalization across Object Scales"
+      ],
+      [
+        5,
+        "4. Experiment"
+      ],
+      [
+        5,
+        "4.1. Experimental Settings"
+      ],
+      [
+        6,
+        "4.2. Comparison with State-of-the-Art Methods"
+      ],
+      [
+        7,
+        "5. Further Analysis"
+      ],
+      [
+        7,
+        "5.1. Ablation Study"
+      ],
+      [
+        7,
+        "5.2. Effect of Attention Stabilization"
+      ],
+      [
+        7,
+        "5.3. Object Scale via high confidence Tokens"
+      ],
+      [
+        8,
+        "5.4. Hyperparameter Sensitivity"
+      ],
+      [
+        8,
+        "5.5. Generalization Across Backbones"
+      ],
+      [
+        8,
+        "6. Conclusion & Limitation"
+      ]
+    ],
+    "render_page": 3
+  },
+  {
+    "name": "PEARL",
+    "source": "参考论文/03_视觉语言对齐与稠密表征/PEARL_CVPR2026.pdf",
+    "pages": 11,
+    "headings": [
+      [
+        1,
+        "1. Introduction"
+      ],
+      [
+        2,
+        "2. Related Work"
+      ],
+      [
+        3,
+        "3. Method"
+      ],
+      [
+        3,
+        "3.1. Preliminaries: Training-free OVSS"
+      ],
+      [
+        3,
+        "3.2. Procrustes Alignment in Self-Attention"
+      ],
+      [
+        4,
+        "3.3. Text-aware Laplacian Propagation"
+      ],
+      [
+        6,
+        "4. Experiments"
+      ],
+      [
+        6,
+        "4.1. Experimental Setup"
+      ],
+      [
+        6,
+        "4.2. Comparison with SOTA Methods"
+      ],
+      [
+        7,
+        "4.3. Ablation Studies"
+      ],
+      [
+        8,
+        "5. Conclusion"
+      ]
+    ],
+    "render_page": 4
+  },
+  {
+    "name": "OV-Stitcher",
+    "source": "参考论文/05_场景上下文多视野与跨图证据/OV-Stitcher_CVPRF2026.pdf",
+    "pages": 11,
+    "headings": [
+      [
+        1,
+        "1. Introduction"
+      ],
+      [
+        3,
+        "2. Related Works"
+      ],
+      [
+        3,
+        "2.1. Vision Language and Foundation Models"
+      ],
+      [
+        3,
+        "2.2. Open-Vocabulary Semantic Segmentation"
+      ],
+      [
+        3,
+        "3. Method"
+      ],
+      [
+        3,
+        "3.1. Preliminaries"
+      ],
+      [
+        4,
+        "3.2. Analysis for Existing Approach"
+      ],
+      [
+        4,
+        "3.3. Stitch Attention"
+      ],
+      [
+        5,
+        "3.4. Class-Biased Prompt Generation"
+      ],
+      [
+        5,
+        "4. Experiments"
+      ],
+      [
+        5,
+        "4.1. Experimental setup"
+      ],
+      [
+        6,
+        "4.2. Main Results"
+      ],
+      [
+        7,
+        "4.3. Ablation Study"
+      ],
+      [
+        8,
+        "5. Conclusion"
+      ],
+      [
+        9,
+        "6. Acknowledgments"
+      ]
+    ],
+    "render_page": 5
+  },
+  {
+    "name": "SegEarth-OV3",
+    "source": "参考论文/01_基础模型与OVSS主架构/SegEarth-OV3_2512.08730v2.pdf",
+    "pages": 13,
+    "headings": [
+      [
+        1,
+        "1 Introduction"
+      ],
+      [
+        2,
+        "2 Related Work"
+      ],
+      [
+        2,
+        "2.1 Training-based OVSS"
+      ],
+      [
+        2,
+        "2.2 Training-free OVSS"
+      ],
+      [
+        3,
+        "2.3 Remote Sensing OVSS"
+      ],
+      [
+        3,
+        "2.4 Remote Sensing OVCD"
+      ],
+      [
+        4,
+        "3 Methods"
+      ],
+      [
+        4,
+        "3.1 Preliminaries"
+      ],
+      [
+        4,
+        "3.2 SegEarth-OV3 Pipeline"
+      ],
+      [
+        5,
+        "3.3 Extension to OVCD"
+      ],
+      [
+        5,
+        "4 Experiments"
+      ],
+      [
+        5,
+        "4.1 Setup"
+      ],
+      [
+        6,
+        "4.2 Main Results"
+      ],
+      [
+        7,
+        "4.3 Ablation Studies"
+      ],
+      [
+        8,
+        "4.4 Performance on Specialized Images"
+      ],
+      [
+        8,
+        "4.5 Performance on OVCD Task"
+      ],
+      [
+        9,
+        "4.6 Generalization to 3D Point Cloud Segmentation"
+      ],
+      [
+        9,
+        "4.7 Performance on General Scene Datasets"
+      ]
+    ],
+    "render_page": 3
+  },
+  {
+    "name": "ProC-SAM3",
+    "source": "参考论文/02_文本概念表示与Prompt适配/ProC-SAM3_2606.21863.pdf",
+    "pages": 5,
+    "headings": [
+      [
+        1,
+        "I. INTRODUCTION"
+      ],
+      [
+        2,
+        "II. METHODOLOGY"
+      ],
+      [
+        3,
+        "III. EXPERIMENTS"
+      ],
+      [
+        5,
+        "IV. CONCLUSION"
+      ]
+    ],
+    "render_page": 3
+  },
+  {
+    "name": "ConceptBank",
+    "source": "参考论文/06_检索原型记忆与外部知识/ConceptBank_2602.06333.pdf",
+    "pages": 25,
+    "headings": [
+      [
+        1,
+        "1. Introduction"
+      ],
+      [
+        2,
+        "2. Method"
+      ],
+      [
+        2,
+        "2.1. Problem Formulation: Distribution Drift in OVS"
+      ],
+      [
+        3,
+        "2.2. CONCEPTBANK: Construction"
+      ],
+      [
+        4,
+        "2.3. CONCEPTBANK: Inference"
+      ],
+      [
+        5,
+        "3. Experiments"
+      ],
+      [
+        5,
+        "3.1. Experimental Setup"
+      ],
+      [
+        6,
+        "3.2. Comparison with State-of-the-Arts"
+      ],
+      [
+        7,
+        "3.3. Ablation Study"
+      ],
+      [
+        8,
+        "4. Related Work"
+      ],
+      [
+        8,
+        "5. Conclusion"
+      ]
+    ],
+    "render_page": 3
+  }
+]

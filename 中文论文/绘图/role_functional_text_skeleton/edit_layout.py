@@ -1,0 +1,51 @@
+from pathlib import Path
+p = Path(r"D:\论文\9.27论文\中文论文\绘图\role_functional_text_skeleton\make_layout.py")
+s = p.read_text(encoding="utf-8")
+s = s.replace('txt(60, 560, "slot 0 = retain anchor", size=8.2, color=GREY)', 'txt(215, 705, "slot 0 = anchor", size=8.0, color=GREY)')
+s = s.replace('txt(382, 775, "image + prompts", size=8.4, color=GREY, ha="center", rotation=0)', 'txt(382, 812, "image + prompts", size=8.2, color=GREY, ha="center", rotation=0)')
+s = s.replace('txt(202.5, 504, r"Selected profile  $\\pi=(P?,S?,I?)$", size=9.5, color=NAVY, ha="center")', 'txt(202.5, 504, r"Selected profile  $\\pi=(P?,S?,I?)$   →  (b)", size=8.8, color=NAVY, ha="center")')
+s = s.replace('# dashed profile handoff\nline([(202.5, 489), (202.5, 379)], color="#6685A6", lw=1.6, ls=(0, (4, 4)))\narrow(202.5, 395, 202.5, 379, color="#6685A6", lw=1.6, ls=(0, (4, 4)))\n', '# shared-profile bus in panel B\n')
+old = '''# local/context cards
+box(90, 145, 650, 172, fc="#F7FBFC", ec="#7BA4A1", lw=1.3, r=14)
+box(860, 145, 650, 172, fc="#FFF9F4", ec="#C99671", lw=1.3, r=14)
+image_placeholder(108, 199, 82, 76, "Local image")
+image_placeholder(878, 199, 82, 76, "Context image")
+txt(210, 297, "Local / native view", size=12.0, weight="bold")
+txt(210, 274, "Frozen SAM3 full grounding", size=9.4, color=SLATE)
+txt(210, 251, r"Role correction  $\\mathcal{R}_\\pi$", size=9.4, color=SLATE)
+txt(210, 228, r"class score  $G_{L,\\pi}$", size=9.4, color=SLATE)
+txt(980, 297, "Context / wider view", size=12.0, weight="bold")
+txt(980, 274, "Frozen SAM3 full grounding", size=9.4, color=SLATE)
+txt(980, 251, r"Role correction  $\\mathcal{R}_\\pi$", size=9.4, color=SLATE)
+txt(980, 228, r"class score  $G_{G,\\pi}$", size=9.4, color=SLATE)
+# same profile small tag
+pill(560, 158, 155, 25, "same  π  both views", "#EAF1FA", "#6685A6", size=8.2, weight="bold")
+pill(1315, 158, 155, 25, "same  π  both views", "#EAF1FA", "#6685A6", size=8.2, weight="bold")
+'''
+new = '''# local/context cards
+box(90, 145, 650, 172, fc="#F7FBFC", ec="#7BA4A1", lw=1.3, r=14)
+box(860, 145, 650, 172, fc="#FFF9F4", ec="#C99671", lw=1.3, r=14)
+image_placeholder(108, 199, 82, 76, "Local image")
+image_placeholder(878, 199, 82, 76, "Context image")
+txt(210, 297, "Local / native view", size=12.0, weight="bold")
+txt(980, 297, "Context / wider view", size=12.0, weight="bold")
+# mini computation paths inside the two view cards
+for x0, score, edge in [(210, r"$G_{L,\\pi}$", TEAL), (980, r"$G_{G,\\pi}$", ORANGE)]:
+    box(x0, 207, 120, 42, fc="#EEF3F7", ec="#8194A6", lw=1.1, r=8)
+    txt(x0+60, 228, "Frozen SAM3", size=9.4, weight="bold", ha="center")
+    txt(x0+60, 215, "full grounding", size=7.8, color=GREY, ha="center")
+    arrow(x0+120, 228, x0+145, 228, color=SLATE, lw=1.5)
+    box(x0+145, 207, 92, 42, fc="#EAF1FA", ec="#6685A6", lw=1.1, r=8)
+    txt(x0+191, 228, r"$\\mathcal{R}_\\pi$", size=12.0, color=NAVY, ha="center")
+    arrow(x0+237, 228, x0+262, 228, color=SLATE, lw=1.5)
+    box(x0+262, 207, 128, 42, fc="#F8FAFC", ec=edge, lw=1.2, r=8)
+    txt(x0+326, 228, score, size=11.0, color=edge, ha="center", weight="bold")
+    txt(x0+326, 214, "class score", size=7.6, color=GREY, ha="center")
+txt(210, 168, r"same $\\pi$ and the same role operator $\\mathcal{R}_\\pi$", size=8.2, color=GREY)
+txt(980, 168, r"same $\\pi$ and the same role operator $\\mathcal{R}_\\pi$", size=8.2, color=GREY)
+'''
+if old not in s:
+    raise SystemExit('old block not found')
+s = s.replace(old, new)
+p.write_text(s, encoding='utf-8')
+print('edited')

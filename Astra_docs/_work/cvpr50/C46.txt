@@ -1,0 +1,1210 @@
+=== PAGE 1 ===
+PEARL: Geometry Aligns Semantics for
+Training-Free Open-Vocabulary Semantic Segmentation
+Gensheng Pei1, Xiruo Jiang2, Xinhao Cai3, Tao Chen3, Yazhou Yao3, Byeungwoo Jeon1*
+1Department of Electrical and Computer Engineering, Sungkyunkwan University
+2School of Computing and Artificial Intelligence, Southwest Jiaotong University
+3School of Computer Science and Engineering, Nanjing University of Science and Technology
+https://github.com/PGSmall/PEARL
+Abstract
+Training-free open-vocabulary semantic segmentation
+(OVSS) promises rapid adaptation to new label sets
+without retraining. Yet, many methods rely on heavy post-
+processing or handle text and vision in isolation, leaving
+cross-modal geometry underutilized. Others introduce
+auxiliary vision backbones or multi-model pipelines, which
+increase complexity and latency while compromising design
+simplicity. We present PEARL,P rocrustesa lignment with
+text-awareL aplacian propagation, a compact two-step
+inference that follows an align-then-propagate principle.
+The Procrustes alignment step performs an orthogonal
+projection inside the last self-attention block, rotating keys
+toward the query subspace via a stable polar iteration. The
+text-aware Laplacian propagation then refines per-pixel
+logits on a small grid through a confidence-weighted,
+text-guided graph solve: text provides both a data-trust
+signal and neighbor gating, while image gradients preserve
+boundaries. In this work, our method is fully training-free,
+plug-and-play, and uses only fixed constants, adding
+minimal latency with a small per-head projection and
+a few conjugate-gradient steps. Our approach, PEARL,
+sets a new state-of-the-art in training-free OVSS with-
+out extra data or auxiliary backbones across standard
+benchmarks, achieving superior performance under both
+with-background and without-background protocols.
+1. Introduction
+Open-vocabulary semantic segmentation [39, 45, 67, 72, 73,
+77, 81] (OVSS) assigns a category to every pixel when the
+label set is specified at inference time through natural lan-
+guage. In the training-free setting, a frozen vision-language
+backbone provides dense visual features and text embed-
+*Corresponding author.
+CLIP NACLIP PEARL
+Query Query Query 
+Image @512px
+CLIP ViT-B/16
+Figure 1.Attention visualization at selected query points.We
+show an input resized to512×512using the CLIP ViT-B/16 vi-
+sion encoder. For each colored query, we compare the attention
+maps produced by CLIP [51], NACLIP [26], and our PEARL.
+CLIP exhibits diffuse and background-biased responses, while
+NACLIP improves localization but often fragments objects into
+isolated peaks. By performing Procrustes alignment in the last
+self-attention block, PEARL yields compact and object-consistent
+attention, suppresses background spill, and better preserves thin
+parts, resulting in stable focus with reduced grid artifacts.
+dings, and masks are obtained by matching patches to text
+prototypes without any task-specific optimization [5, 32].
+Early progress [7, 77] built on zero-shot scene parsing
+[47, 48] with word embeddings. The field accelerated
+with contrastive vision-language models (VLMs) such as
+CLIP [51] and ALIGN [27], paired with strong Trans-
+former backbones like ViT [21, 41, 61] and the DINO fam-
+ily [9, 46, 58]. Supervised segmentation remains a touch-
+stone for dense prediction quality, but OVSS aims to retain
+flexibility while avoiding retraining on every new label set.
+Training-based approaches [16, 39, 67, 72] convert these
+ingredients into dense predictors by learning decoders,
+adding lightweight adapters, or leveraging weak supervi-
+sion. Representative work attaches decoders to frozen or
+partially tuned backbones [37, 67, 72], adapts CLIP with
+mask-aware objectives or side modules [16, 39, 73], and
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+17927
+
+
+=== PAGE 2 ===
+exploits image labels, boxes, or captions to reduce mask
+annotation [10, 25, 38, 69–71, 78, 82]. A complementary
+line distills object-centric structure from self-supervised
+ViTs into CLIP-like architectures to inject stronger group-
+ing cues [5, 29, 66]. These routes can reach high accuracy,
+but require extra data and task-specific training.
+In parallel, the training-free paradigm keeps backbones
+frozen, improving inference only. A pioneering baseline,
+MaskCLIP [81], computes cosine similarity between dense
+CLIP features and text prompts. Subsequent work strength-
+ens this recipe along three directions. First, feature purifica-
+tion and re-alignment suppress outliers, rebuild patch corre-
+lations, or select informative attention heads [6, 28, 36, 54,
+74, 76]. Second, spatial refinement encourages coherence
+using classical mask refinement and neighbor-aware group-
+ing [1, 26, 34, 60, 65]. Third, object and context priors are
+imported through spectral cues or multi-model assemblies,
+e.g., distilling DINO-style structure [30, 35, 59] or lever-
+aging visual context graphs [32]. These approaches can be
+practical, though heavy post-processing or auxiliary com-
+ponents may increase complexity and latency.
+Two observations motivate our work. (i) Contrastive
+pretraining emphasizes global image-text agreement rather
+than dense prediction. Near the top of the vision encoder, a
+few background-dominated directions can steer token inter-
+actions, yielding patch geometry that is misaligned and spa-
+tially inconsistent for pixel-level decisions [36, 81]. When
+the geometry at the source is off, downstream smoothing
+treats symptoms rather than causes. (ii) Text is commonly
+used only as a classifier. It rarely governs how pixels ex-
+change information, even though relations in the text space
+suggest which categories should reinforce one another and
+which should remain separate [26, 32]. These two points
+suggest a simple strategy: first correct the geometry where
+attention scores are formed, then propagate semantics with
+guidance from both text relations and image boundaries.
+Following this strategy, we present PEARL, aProcrustes
+alignment with text-awareLaplacian propagation. The first
+step inserts an orthogonal Procrustes alignment into the last
+self-attention block. After weighted centering of queries
+and keys, a single input-dependent rotation aligns keys to
+the query subspace. This closed-form correction preserves
+magnitudes and angles while removing background-biased
+drift that destabilizes patch-text similarities. As shown in
+Fig. 1, attention maps at selected queries (using CLIP ViT-
+B/16) show that vanilla CLIP is diffuse and background-
+biased, while NACLIP [26] sharpens focus but fragments
+objects, our PEARL yields compact, object-consistent re-
+sponses that preserve thin structures. This suggests that
+aligning keys to queries before scoring stabilizes token ge-
+ometry and leads to cleaner masks. The second step refines
+the class-logit field on a compact grid using a text-aware
+Laplacian: a confidence-weighted data term trusts pixels
+with reliable evidence, while a text agreement prior gates
+neighbor links according to semantic relatedness. Image
+gradients protect boundaries, ensuring that refinement re-
+spects edges [1, 34]. Unlike class-agnostic smoothing, text
+guides both the data trust and the edges. Unlike heavy spec-
+tral or multi-backbone assemblies, the refinement is a single
+linear solve with modest cost [32].
+To summarize, our PEARL addresses the two weak-
+nesses above at their origin with two principled operators.
+Procrustes alignment repairs token geometry exactly where
+attention is computed, and text-aware Laplacian propaga-
+tion transforms language from a simple labeler into a struc-
+tural prior that guides how evidence spreads across the im-
+age. The two parts work together: the first enhances what
+attention sees, and the second organizes how pixels align.
+Across standard OVSS benchmarks, the approach achieves
+coherent masks for small objects, stable coverage for “stuff”
+regions, and strong accuracy among training-free methods,
+all without auxiliary backbones or extra supervision.
+2. Related Work
+From Closed-Set to Open-Vocabulary Semantic Seg-
+mentation.Classical semantic segmentation [12, 42, 68],
+built on pixel-annotated datasets (e.g., PASCAL VOC [23],
+MS COCO [40], ADE20K [79, 80], Cityscapes [17]), works
+well but is limited to aclosed setof categories. Extending
+them to new concepts requires costly re-annotation and re-
+training. To overcome this, the field has shifted towards
+OVSS. Early steps toward open settings used word embed-
+dings for zero-shot transfer [7, 77]. The move to open-
+vocabulary segmentation accelerated with the emergence of
+VLMs like CLIP [51] and ALIGN [27], which align images
+and text in a shared space. Yet CLIP is trained for global
+alignment, not dense prediction: patch features are often
+noisy and spatially imprecise. Most recent work, therefore,
+aims to recover spatially coherent, text-aware masks either
+by adapting the model with additional data or by reshap-
+ing the inference process. We take the latter route with our
+method, PEARL: a training-free, plug-and-playalign-then-
+propagatescheme that first correctsfeature geometryand
+then performstext-aware propagationentirely at inference.
+Training-Based OVSS.This family adapts pre-trained
+VLMs [24, 27, 49, 51] or VMs [9, 33, 46, 52] to produce
+dense masks, using additional data to fine-tune a decoder,
+add small adapters, or train with weak labels. Many meth-
+ods reduce the gap to dense prediction by learning on task
+data. Some attach a decoder to frozen or partially tuned
+VLMs [37, 67, 72], others adapt CLIP via mask-aware
+training or lightweight adapters [16, 39, 73], and a broad
+line leverages weaker supervision from image labels, boxes,
+or captions [10, 25, 38, 69–71, 78, 82]. A complementary
+trend fuses foundation models: object-centric signals from
+self-supervised ViTs (e.g., DINO [9, 46, 58]) are distilled or
+17928
+
+
+=== PAGE 3 ===
+aligned into CLIP [5, 29, 63, 66]. These approaches deliver
+strong accuracy but incur curation costs, training bias to-
+ward seen concepts, and additional compute requirements.
+By contrast, our proposed approach, PEARL, needs no ex-
+tra training or data and runs parameter-free inference, com-
+bining anorthogonal Procrustes alignmentin the last self-
+attention with atext-aware Laplacian propagationto keep
+the design simple while preserving generalization.
+Training-Free OVSS.Training-free paradigmdoes not
+trainanything new. It keeps backbones frozen and modifies
+only the inference procedure to obtain text-aware masks.
+A basic baseline computes cosine similarity between dense
+CLIP features and text prompts [81], then improves it along
+three directions. First, feature purification and re-alignment
+suppresses outlier/background tokens, rebuilds patch corre-
+lations, or selects informative attention heads [6, 13, 22, 28,
+31, 50, 54, 74, 76], with recent work targeting class redun-
+dancy and vision-language ambiguity [13]. Second, spa-
+tial refinement with locality priors enforces coherence using
+mask refinement techniques [1, 34], grouping and count-
+aware propagation [43, 60, 65], or neighbor/feedback-aware
+attention mechanism [2–4, 15, 26, 75]. Third, object-
+context fusion imports structure from stronger vision back-
+bones or multi-model pipelines (e.g., DINO [9], Diffu-
+sion [53], SAM [33]) for correspondences, prototypes, or
+prompt-based refinement [3, 4, 35, 36, 56]. Previous meth-
+ods are effective but often rely on multi-stage heuristics,
+intensive post-processing, or auxiliary backbones. In this
+work, we introduce PEARL, Procrustes alignment with
+text-aware Laplacian propagation, analign-then-propagate
+framework in which anorthogonal Procrustesstep fixes at-
+tention geometry and a confidence-weighted,text-guided
+Laplacianrefines logits on a small grid to yield coherent
+masks with a fully training-free, plug-and-play pipeline.
+3. Method
+3.1. Preliminaries: Training-free OVSS
+Vision Encoder.Training-free open-vocabulary semantic
+segmentation assigns pixels to natural-language concepts
+while keeping the vision-language backbone frozen. Let
+the input image beI∈R H×W×3 . A ViT vision encoder
+partitionsIinto non-overlapping patches of sizeP×P,
+yielding a grid ofH p ×W p patches withH p =H/Pand
+Wp =W/P. Denote byX∈R N×D the token matrix at
+the last Transformer block, withN= 1 +H pWp including
+theCLStoken, and writeD=J dforJheads of widthd.
+After layer normalization, the final block applies multi-
+head self-attention. For headj∈ {1, . . . , J}, linear projec-
+tions produceQ (j),K (j),V (j) ∈R N×d , and attention is
+computed as follows:
+A(j) =softmax
+ 
+d−1/2 Q(j)(K (j))⊤
+,
+Y (j) =A (j)V (j).
+(1)
+The head outputs are concatenated and projected,X ⋆ =
+Concat
+ 
+Y (1), . . . ,Y (J)
+W o ∈R N×D , and theH pWp
+patch rows ofX ⋆ are taken as per-patch featuresv[h, w]∈
+RD on the grid(h, w)∈ {1, . . . , H p} × {1, . . . , Wp}.
+Text Encoder.A frozen text encoder maps the label set
+Y={y c}C
+c=1 to unit-norm prototypest c ∈R D, stacked
+asT= [t ⊤
+1 ;. . .;t ⊤
+C ]∈R C×D. Patch-text matching then
+forms initial per-class logits on the patch grid by cosine-
+scaled similarityZ∈R Hp×Wp×C:
+Z[h, w, c] =α v[h, w]·t c
+∥v[h, w]∥2 ∥tc∥2
+, α=D −1/2. (2)
+When computed in a single pass,Zis bilinearly upsampled
+to image resolution, yielding ˆZ∈R H×W×C .
+Inference Stage.For high-resolution inputs, the imageIis
+covered byMoverlapping windows{ ˆIm}M
+m=1. Each win-
+dow is processed as in Eqs. (1) and (2) to obtain its up-
+sampled logits bZ (m) ∈R H×W×C in the image coordinate
+frame. The full-image logits are obtained by weighted fu-
+sion on overlaps and are represented as:
+bZ[h, w, c] =
+MX
+m=1
+ωm(h, w) bZ (m)[h, w, c], (3)
+wherePM
+m=1 ωm(h, w) = 1, andω m(h, w)are averaging
+or application-specific weights that vanish outside window
+m. The zero-shot segmentation map is then given by:
+S(I,Y)[h, w] = arg max
+c∈{1,...,C}
+bZ[h, w, c]. (4)
+Eqs. (1)-(4) describe a single, continuous pipeline: the
+last self-attention block generates patch features, language
+prototypes provide the semantic anchor, patch-text similar-
+ities define class scores, and pixel labels are followed by
+selection. This baseline presumes a compatible geometry
+between vision tokens and text prototypes at the patch level.
+In practice, the contrastive pretraining that prioritizes global
+alignment of theCLStoken often leaves patch interactions
+noisy and spatially inconsistent. The following sections op-
+erate exactly at these two points of fragility: the attention
+computation in Eq. (1) and the score field in Eq. (2).
+3.2. Procrustes Alignment in Self-Attention
+Patch-text scores in Eq. (2) assume that the patch features
+v[h, w]live in a geometry compatible with the text proto-
+types. Contrastive pretraining emphasizes global image-
+text alignment and the last self-attention in Eq. (1) can be
+dominated by a few background directions, which weakens
+local correspondence. Before forming scores inside the last
+block, align the key space to the query space by a single or-
+thogonal map computed per head and per input, as shown
+in Fig. 2. This preserves norms and angles while correcting
+the basis mismatch that creates unstable similarities.
+17929
+
+
+=== PAGE 4 ===
+Vision
+Encoder
+Text
+Encoder
+Prompt
+“cat”
+“…”
+“dog”
+Procrustes Alignment
+𝒔𝒑𝒂𝒄𝒆 X ′
+𝒔𝒑𝒂𝒄𝒆 𝑻
+𝒔𝒑𝒂𝒄𝒆 𝑿
+𝒔𝒑𝒂𝒄𝒆 𝑻
+Upsampling arg max
+Text-aware
+Laplacian 
+Propagation
+§3.2 PA§3.2 PA
+§3.3 TLP§3.3 TLP
+(a) PA (b) TLP
+Figure 2.Our PEARL framework withalign-then-propagate.Given an imageIand a label setY, a frozen ViT vision encoder yields
+patch tokens.Procrustes alignmentis inserted in the last self-attention block: for each head (Jheads), queries and keys are weighted-
+centered and the keys are orthogonally rotated toward the query subspace, producing geometry-corrected patch features. A frozen text
+encoder mapsYto unit-norm prototypesT. Patch-text cosine similarity gives initial logits eZ.Text-aware Laplacian propagationthen
+refines eZon a compact grid using a class graphGinduced byTand confidence weights, and the refined scores are upsampled to full
+resolutionF. The final segmentationSis obtained by selecting, at each pixel, the class with the highest score.
+Consider one headj(index omitted in matrices for clar-
+ity) with queries, keys, and valuesQ,K,V∈R N×d taken
+from the last block (please refer to §3.1). Tokens are first re-
+centered to remove global bias. Define nonnegative token
+weightsπ n ∝ ∥q n∥2 withPN
+n=1 πn = 1and optionally
+set theCLSweight to zero. With1∈R N×1 , the weighted
+centroids and centered clouds are computed as follows:
+µQ =
+NX
+n=1
+πnqn,µ K =
+NX
+n=1
+πnkn,
+Qc =Q−1µ ⊤
+Q,K c =K−1µ ⊤
+K.
+(5)
+An orthogonal Procrustes problem aligns keys to queries:
+R⋆ = arg min
+R∈O(d)
+∥KcR−Q c∥2
+F ⇐ ⇒R⋆ =U V ⊤, (6)
+whereK ⊤
+c Qc =UΣV ⊤. The optimizer is the orthogonal
+factor of the cross-covariance. It can also be obtained by
+a few Newton-Schulz iterations on the polar factor for an
+SVD-free implementation. Only keys are rotated and atten-
+tion is recomputed within the same block:
+fK=KR ⋆,
+eA=softmax
+ 
+d−1/2 QfK⊤
+,
+eY= eAV.
+(7)
+Across heads,{eY (j)}J
+j=1 are concatenated and projected as
+in §3.1 to yield fX ⋆ ∈R N×D . TheH pWp patch rows of
+fX ⋆ replacev[h, w]in Eq. (2), yielding Procrustes-aligned
+patch-text logits gived by:
+eZ[h, w, c] =α ev[h, w]·t c
+∥ev[h, w]∥2 ∥tc∥2
+, α=D −1/2. (8)
+This step acts where attention scores are formed.
+Weighted centering in Eq. (5) dampens the influence of
+high-norm background tokens and theCLSsummary, while
+the orthogonal map in Eq. (6) rotates the key basis toward
+the query basis without changing local magnitudes. The re-
+sult is a set of patch features whose inner products better
+reflect directional agreement in the query subspace, which
+stabilizes the downstream cosine similarities. The extra cost
+per head is a compactd×dSVD and twoN×dmultipli-
+cations, comparable to the baseline attention.
+3.3. Text-aware Laplacian Propagation
+Even with improved geometry, the score field can remain lo-
+cally noisy in regions with weak evidence or fine structures.
+A single refinement pass converts these scores into coherent
+masks by coupling image boundaries with relations induced
+by the text prototypes. Language serves not only as a clas-
+sifier but also as a structural prior that governs how labels
+propagate across neighboring patches.
+Let beZ∈R H×W×C be the upsampled logits from
+Eq. (8). They are averaged on a small grid of sizeH g ×W g
+(adaptive pooling), givingZ g ∈R C×H g×Wg. On each
+grid nodeiof a 4-connected graphG= (V,E), setp i =
+softmax
+ 
+Zg,i
+
+∈R C. Text prototypes define a class simi-
+larity that encodes semantic proximity:
+G=row-softmax
+ 
+T T ⊤/τs
+
++βI C, (9)
+whererow-softmaxapplies a softmax independently to
+each row,τ s >0is a temperature, andI C is theC×Ciden-
+tity. After adding the diagonal term, we re-normalize rows
+to sum to1. Confidence at nodeicombines peak probability
+with agreement to the text prior:
+γi = max
+c
+pi(c), u i =p ⊤
+i G pi,
+ρi =
+ 
+max{γi, ϵ}
+2 
+1 +u i
+
+,
+(10)
+17930
+
+
+=== PAGE 5 ===
+Table 1.Quantitative results of open-vocabulary semantic segmentation.“Extra data” denotes external datasets (e.g., CC3M [55],
+CC12M [11], RedCaps [20], COCO Captions [14, 40], and ImageNet-1K [19]), and “Extra backbone” lists auxiliary models. “Training-
+free” indicates no extra training. All metrics are mIoU (%). Best results are highlighted with bold, and second best with underlined .
+Method Pub. & Year Extra data Extra
+backbone
+Training
+free
+with background without background Avg.
+V21 PC60 Object V20 PC59 Stuff City ADE
+(a)Trained + Extra data
+GroupViT [69] CVPR’22 CC12M+RedCaps✗ ✗50.4 18.7 27.5 79.7 23.4 15.3 11.1 9.2 29.4
+TCL [10] CVPR’23 CC3M+CC12M✗ ✗51.2 24.3 30.4 77.5 30.3 19.6 23.1 14.9 33.9
+CoDe [64] CVPR’24 CC3M+RedCaps✗ ✗57.7 30.5 32.3 - - 23.9 28.9 17.7 -
+Trained + Extra data & backkbone
+SAM-CLIP [63] CVPR’24 Merged-41M SAMv1 (ViT-B/16)✗60.6 29.2 - - - 31.5- 17.1 -
+CLIP-DINOiser [66] ECCV’24 ImageNet-1K DINOv1 (ViT-B/16)✗62.1 32.4 34.8 80.9 35.9 24.6 31.7 20.0 40.3
+(b)Training-free + Extra data
+ReCo [57] NeurIPS’22 ImageNet-1K✗ ✓25.1 19.9 15.7 57.7 22.3 14.8 21.6 11.2 23.5
+FOSSIL [3] W ACV’24 COCO Captions✗ ✓- - - - 35.8 24.8 23.2 18.8 -
+Training-free + Extra data & backkbone
+FreeDA [4] CVPR’24 COCO Captions DINOv2 (ViT-B/14)✓51.7 32.6 24.4 77.1 37.1 24.9 34.0 19.5 37.7
+(c)Training-free + Extra backbone
+PnP-OVSS [43] CVPR’24✗BLIP (ViT-L/16)✓- - 36.2 51.3 28.0 17.9 - 14.2 -
+LaVG [30] ECCV’24✗DINOv1 (ViT-B/8)✓62.1 31.6 34.2 82.5 34.7 23.2 26.2 15.8 38.8
+ProxyCLIP∗ [35] ECCV’24✗DINOv2 † (ViT-B/14)✓58.6 33.8 37.4 83.0 37.2 25.4 33.9 19.7 41.1
+LPOSS∗ [59] CVPR’25✗DINOv1 (ViT-B/16)✓61.1 34.6 33.4 78.8 37.8 25.9 37.3 21.841.3
+CASS∗ [32] CVPR’25✗DINOv2 † (ViT-B/14)✓58.6 32.1 33.1 86.1 35.3 23.9 34.1 17.6 40.1
+CASS∗ [32] CVPR’25✗DINOv3 (ViT-B/16)✓ 62.3 34.0 36.0 87.637.6 25.4 36.2 18.8 42.2
+(d)Training-free + No extra data & backbone
+CLIP [51] ICML’21✗ ✗ ✓18.6 7.8 6.5 49.1 11.2 7.2 6.7 3.2 13.8
+MaskCLIP [81] ECCV’22✗ ✗ ✓38.3 23.6 20.6 74.9 26.4 16.4 12.6 9.8 27.9
+GEM [6] CVPR’24✗ ✗ ✓46.2 - - - 32.6 15.7 - - -
+CaR [60] CVPR’24✗ ✗ ✓48.6 13.6 15.4 73.7 18.4 - - 5.4 -
+CLIPtrase [54] ECCV’24✗ ✗ ✓50.9 29.9 43.681.0 33.8 22.8 21.3 16.4 32.7
+ClearCLIP [36] ECCV’24✗ ✗ ✓51.8 32.6 33.0 80.9 35.9 23.9 30.0 16.7 38.1
+SCLIP∗ [62] ECCV’24✗ ✗ ✓59.1 30.4 30.5 80.4 34.1 22.4 32.2 16.1 38.2
+NACLIP∗ [26] W ACV’25✗ ✗ ✓58.9 32.2 33.2 79.7 35.2 23.3 35.5 17.4 39.4
+SFP∗ [28] ICCV’25✗ ✗ ✓56.8 32.3 32.1 83.4 36.0 24.0 34.1 18.1 39.6
+PEARL (Ours)✗ ✗ ✓ 64.1 35.137.3 86.9 38.6 26.3 37.619.4 43.2
+Notes:“∗” denotes performance reproduced in this work. “†” indicates DINOv2 with registers [18]. Dashes (-) denote numbers not reported.
+whereϵ >0avoids vanishing weights. Neighboring nodes
+(i, j)∈ Ereceive an image edge strength and a text-
+consistency gate, which are formulated as follows:
+bimg
+ij = exp
+ 
+−κ∥∇I∥ ij
+
+,
+gij =clip [0,1]
+ 
+p⊤
+i G pj
+
+,
+aij =b img
+ij
+ 
+1 +λ g ij
+
+,
+(11)
+withκ >0andλ≥0. Here∥∇I∥ ij :=| ˜Ii − ˜Ij|denotes
+the grayscale difference on edge(i, j), and ˜I=Gray(I).
+LetLbe the weighted graph Laplacian ofG, defined by
+the weights{a ij}. Refined logits on the grid minimize a
+convex quadratic that balances data trust and smoothness
+along image- and text-consistent edges, which is given by:
+L(Fg) = 1
+2
+X
+i∈V
+ρi ∥Fg,i −Z g,i∥2
+2
++ τ
+2
+X
+(i,j)∈E
+aij ∥Fg,i −F g,j ∥2
+2, τ >0.
+(12)
+The resulting normal equations are:
+ 
+Dρ +τL
+
+Fg =D ρ Zg,D ρ = diag
+ 
+{ρi}
+
+, (13)
+which are symmetric positive definite when at least one
+ρi >0. A small, fixed number of conjugate-gradient it-
+erations suffices on the downsampled grid. The solution is
+then bilinearly upsampled toF∈R C×H×W and the final
+segmentation is obtained by:
+S(I,Y)[h, w] = arg max
+c∈{1,...,C}
+F[c, h, w]. (14)
+This construction turns language into structure: (i)
+Eq. (9) captures which classes tend to co-occur or be vi-
+sually close in the text space, (ii) Eq. (10) enhances the in-
+fluence of reliable nodes that agree with that prior, and (iii)
+Eq. (11) permits propagation mostly along boundaries that
+are weak in the image and strong in the text sense. Com-
+bined with the alignment in §3.2, the pipeline first fixes
+the geometry that produces the scores and then performs
+one principled propagation step, achieving coherent masks
+without training and with modest computational overhead.
+17931
+
+
+=== PAGE 6 ===
+Table 2.Quantitative results of open-vocabulary semantic segmentation using average pixel accuracy (pAcc, %). Rows are grouped
+by whether anextra vision backboneis used. Best results are highlighted with bold, and second best with underlined .
+Method Pub. & Year Extra
+backbone
+with background without background Avg.
+V21 PC60 Object V20 PC59 Stuff City ADE
+Training-freewithextra backbone
+LaVG [30] ECCV’24 DINOv1 (ViT-B/8) 89.348.7 74.8 91.1 58.9 39.1 68.5 37.0 63.4
+ProxyCLIP∗ [35] ECCV’24 DINOv2 † (ViT-B/14) 86.6 52.0 75.988.4 63.4 43.4 74.9 49.166.7
+CASS∗ [32] CVPR’25 DINOv2 † (ViT-B/14) 85.6 50.9 70.9 92.2 60.1 41.1 72.5 41.0 64.3
+CASS∗ [32] CVPR’25 DINOv3 (ViT-B/16) 88.1 53.675.5 93.862.3 42.0 75.245.6 67.0
+Training-freewithoutextra backbone
+CLIPtrase [54] ECCV’24✗78.6 52.1 50.1 89.7 58.9 38.9 63.4 38.6 59.1
+SCLIP∗ [62] ECCV’24✗87.6 49.2 74.3 91.0 58.3 38.4 72.7 38.7 63.8
+NACLIP∗ [26] W ACV’25✗87.1 51.2 75.3 89.2 59.8 39.3 71.7 45.2 64.9
+SFP∗ [28] ICCV’25✗85.3 53.671.3 91.9 60.7 41.3 71.7 43.8 65.0
+PEARL (Ours)–✗ 88.5 53.5 75.8 93.3 62.9 42.9 73.8 46.9 67.2
+Notes:“∗” denotes performance reproduced in this work. “†” indicates DINOv2 with registers [18].
+4. Experiments
+4.1. Experimental Setup
+Datasets.Evaluation follows the training-free OVSS pro-
+tocol on eight widely-used standard benchmarks covering
+settingswithandwithoutan explicit background class. The
+with backgroundgroup comprises Pascal VOC 21 (V21)
+with 21 categories [23], Pascal Context 60 (PC60) with 60
+categories [44], and COCO-Object (Object) with 80 ob-
+ject categories derived from MS-COCO [40]. Thewith-
+out backgroundgroup comprises Pascal VOC 20 (V20)
+with 20 categories [23], Pascal Context 59 (PC59) with 59
+categories [44], COCO-Stuff (Stuff) with 171 classes [8],
+Cityscapes (City) with 19 classes [17], and ADE20K (ADE)
+with 150 classes [79]. All results are reported on the offi-
+cial validation splits, using the public class-name lists and
+the standard ImageNet prompt templates [51] (e.g., “a photo
+of aclass”) without dataset-specific prompt engineering,
+in line with common practice [26, 28, 62].
+Implementation Details.PEARL is applied strictly at test
+time on a frozen vision-language backbone. Unless oth-
+erwise stated, we useCLIP ViT-B/16for both the vision
+and text encoders [51]. Two modular components are en-
+abled: (i)Procrustes alignmentin the last self-attention
+block, which computes a per-head, per-image orthogonal
+map to align keys to queries, and (ii)text-aware Laplacian
+propagation, which refines the class-logit map on a compact
+grid by solving a small symmetric positive-definite linear
+system with a fixed number of conjugate-gradient iterations
+before the final upsampling. By default, the grid size in
+§3.3 is set by(H g, Wg). we use(H g, Wg) = (224,224)
+for City, and(80,80)otherwise. The larger grid on City
+prevents oversmoothing of thin structures and fine-grained
+“stuff” detail in high-resolution scenes. No auxiliary back-
+bones, additional training, or external supervision are used.
+Additional experimental details, including model hyperpa-
+rameter settings, are provided in the appendix.
+Evaluation Protocol and Metric.Following the prior
+training-free OVSS protocol [26, 28, 36, 54, 62], input im-
+ages are resized to have a shorter side of336pixels (City
+uses560due to its higher base resolution). We adopt
+sliding-window inference with a224×224crop and stride
+112, following previous works [26, 28, 62]. All results are
+single-scale (no multi-scale, no flips). For fair compari-
+son,noDenseCRF [34] or PAMR [1] refinement is used in
+any reported number. Performance is measured primarily
+with mean Intersection-over-Union (mIoU), complemented
+by pixel accuracy (pAcc) for a broader assessment. All ex-
+periments are run on a single NVIDIA V100 (32 GB).
+4.2. Comparison with SOTA Methods
+Quantitative Results (mIoU).Table 1 presents a compre-
+hensive comparison under the training-free OVSS protocol.
+Among methods thatdo notuse auxiliary vision backbones,
+our method, PEARL, delivers the best average mIoU of
+43.2, clearly surpassing recent strong baselines such as NA-
+CLIP [26] (39.4) and SFP [28] (39.6). PEARL ranks first
+on V21 [23] (64.1), PC59 [44] (38.6), and City [17] (37.6),
+and remains competitive on V20 [23] (86.9), where the very
+best result (87.6) comes from a system thatdoesrely on a
+DINOv3 backbone [58]. Compared with training-free ap-
+proaches thatdoadd powerful backbones, PEARL is within
+striking distance of the best averages (e.g., CASS [32]
+with DINOv3 [58] at 42.2), despite using a single frozen
+CLIP encoder. Two exceptions are worth noting: on Ob-
+ject [40] and ADE [79], PEARL trails the very best num-
+bers by a small margin. For Object [40] (only “things”
+classes), methods that explicitly model background clean-
+ing or leverage DINO-style objectness have a slight advan-
+tage. PEARL does not use any background-cleaning heuris-
+tic. For ADE [79], the fine-grained, diverse taxonomy di-
+lutes text-vision agreement at the patch level. we find that
+generic CLIP prompts sometimes under-specify rare “stuff”
+categories, which limits zero-shot matching.
+17932
+
+
+=== PAGE 7 ===
+ImageNACLIPPEARLGT
+Pascal VOC Pascal Context MS-COCO Cityscapes ADE20K
+DS
+Figure 3.Qualitative results of open-vocabulary semantic segmentation.Results are shown on the Pascal VOC [23], Pascal Con-
+text [44], MS-COCO [40], Cityscapes [54], and ADE20K [79] datasets (DS), comparing PEARL (ours) with NACLIP [26] and SFP [28].
+All methods use CLIP ViT-B/16 [51], and no post-processing (e.g., PAMR [1] or DenseCRF [34]) is applied for a fair comparison.
+Quantitative Results (pAcc).Table 2 reports pixel ac-
+curacy and compares state-of-the-art training-free OVSS
+methods. PEARL achieves the best training-free no extra
+backbone average of67.2, and is consistently first or sec-
+ond across datasets, especially on V20 [23], PC59 [44],
+and City [17], indicating that Procrustes alignment sta-
+bilizes token geometry for “things”, while the text-aware
+Laplacian propagation improves coherence in “stuff” with-
+out post-processing. Where we lag slightly (PC60: 53.5vs.
+SFP [28] 53.6, ADE: 46.9vs.ProxyCLIP [35] 49.1), the
+gap stems from the absence of auxiliary DINO-like region
+grouping, which particularly benefits fine-grained, diverse
+“stuff” layouts (i.e., ADE [79]) and the broader class set
+in PC60 [44]. PEARL outperforms the top average pAcc
+(CASS [32] + DINOv3 [58] at 67.0) by0.2, while remain-
+ing strictly training-free and using no extra backbone.
+Qualitative Results.As shown in Fig. 3, we com-
+pare NACLIP [26] and PEARL across scenes from Pascal
+VOC/Context [23, 44], MS-COCO [40], Cityscapes [17],
+and ADE20K [79]. In this work, our PEARL consistently
+removes spurious “islands” and fills missing parts on
+foreground objects (e.g.,vehicles,animals,people). Inte-
+riors are smoother and contain fewer holes than with NA-
+CLIP [26]. Boundaries on large “stuff” (road,sky,wa-
+ter,facades) are also cleaner, especially around thin struc-
+tures such as poles and signs. These effects reflect the
+Procrustes alignment, which sharpens token geometry, fol-
+lowed by a single text-aware Laplacian propagation that
+performs class-conditioned smoothing. A recurring fail-
+ure appears in the last ADE20K [79] column. This con-
+fusion is common in training-free OVSS [5, 22, 29, 35, 74].
+Distant “trees” often form coarse, low-frequency textures
+that resemble “mountain” patterns, and CLIP [51] text pro-
+totypes place semantically related classes close in embed-
+ding space. Without task-specific training, richer multi-
+prompt context, or auxiliary depth/shape cues, the decision
+can skew toward the more generic terrain label.
+Table 3.Ablation analysis of key components,i.e., PA (cf. §3.2)
+and TLP (cf. §3.3).“BG” means the background class.
+Component with BG without BG Avg.
+PA TLPV21 PC60 Object V20 PC59 Stuff City ADE
+✗ ✗18.6 7.8 6.5 49.1 11.2 7.2 6.7 3.2 13.8
+✓ ✗59.2 33.0 34.3 85.0 35.3 24.5 35.0 17.9 40.6
+✗ ✓35.4 22.4 23.4 79.3 25.0 16.9 20.5 11.7 29.3
+✓ ✓ 64.1 35.1 37.3 86.9 38.6 26.3 37.6 19.4 43.2
+Table 4.Ablation analysis of plug-and-play TLP (cf. §3.3).
+Method with BG without BG Avg.
+V21 PC60 Object V20 PC59 Stuff City ADE
+SCLIP [62] 59.1 30.4 30.5 80.4 34.1 22.4 32.2 16.1 38.2
++TLP 63.4 34.5 36.2 85.7 37.5 25.7 35.9 18.7 42.2
+NACLIP [26] 58.9 32.2 33.2 79.7 35.2 23.3 35.5 17.4 39.4
++TLP 63.3 34.7 36.2 83.9 38.1 25.7 37.9 18.9 42.3
+SFP [28] 56.8 32.3 32.1 83.4 36.0 24.0 34.1 18.1 39.6
++TLP 58.8 34.1 35.0 85.3 38.1 25.8 35.8 19.4 41.5
+4.3. Ablation Studies
+We ablate the main components of PEARL,i.e.,Pro-
+crustes Alignment(PA) andText-aware Laplacian Propa-
+gation(TLP), along with its design and efficiency, reporting
+all results in mIoU. See the appendix for more details.
+Effect of PA and TLP.From Table 3,vanillaCLIP [51]
+is the baseline with both modules off. Enabling PA alone
+raises the average from 13.8 to40.6by fixing the place
+where attention is formed. PA rotates keys toward queries
+inside the last attention block so that patch features and text
+prototypes compare in a better coordinate system. Turn-
+ing on TLP alone improves the average to29.3by turning
+noisy scores into smoother and more coherent masks. TLP
+links pixels that agree in the text space and keeps boundaries
+where image edges are strong. Activating both delivers the
+best average of43.2with consistent gains with and without
+17933
+
+
+=== PAGE 8 ===
+Table 5.Ablation analysis of using different input image sizes.
+Size with BG without BG Avg.
+V21 PC60 Object V20 PC59 Stuff City ADE
+224px 59.1 33.1 36.1 86.1 36.4 24.9 29.5 17.7 40.4
+280px 61.1 34.4 37.4 86.8 37.8 26.0 32.6 19.2 41.9
+336px 64.1 35.1 37.3 86.9 38.6 26.3 33.9 19.4 42.7
+Table 6.Ablation analysis of using different CLIP backbones.
+Method CLIP with BG without BG Avg.
+V21 PC59 Stuff ADE
+SCLIP [62]
+ViT-B/32
+50.6 28.7 20.0 14.8 28.5
+NACLIP [26] 51.1 32.4 21.2 14.9 29.9
+SFP∗ [28] 50.1 31.9 21.3 15.7 29.8
+PEARL 54.5 34.7 23.3 16.6 32.3
+SCLIP [62]
+ViT-L/14
+44.4 25.2 17.6 10.9 24.5
+NACLIP [26] 52.2 32.1 21.4 17.3 30.8
+SFP∗ [28] 43.8 30.4 20.8 17.0 28.0
+PEARL 56.6 36.3 24.8 20.7 34.6
+Notes:“∗” denotes performance reproduced in this work.
+background. Typical improvements include V21 (59.2→
+64.1), PC59 (35.3→38.6), and City (35.0→37.6).
+TLP on Existing Training-Free Methods.Table 4 re-
+ports the effect of adding plug-and-play TLP to previous
+methods without changing backbones or prompts. TLP lifts
+SCLIP [62] from 38.2 to42.2, NACLIP [26] from 39.4 to
+42.3, and SFP [28] from 39.6 to41.5. Gains are larger on
+PC59, Stuff, and City, where class-conditioned propagation
+helps large regions while preserving thin structures.
+Input Resolution.Table 5 shows the results when inputs
+are resized to short sides of 224, 280, and 336 pixels forall
+datasets, including City [17]. The average increases from
+40.4 at 224px to 41.9 at 280px and to42.7at 336px. City
+improves from 29.5→32.6→33.9, and ADE from 17.7
+→19.2→19.4. Higher resolution gives more stable patch
+tokens for PA and clearer local edges for TLP. We adopt
+336px by default for a good accuracy-efficiency trade-off
+and to match prior training-free settings for fair comparison.
+Impact of CLIP Backbone.As summarized in Table 6,
+we present the ablation results for different CLIP back-
+bones,i.e., ViT-B/32 and ViT-L/14. PEARL is strongest
+within each group with averages of32.3(B/32) and34.6
+(L/14). On ADE, PEARL using ViT-L/14 reaches20.7,
+which is higher than our ViT-B/16 result reported else-
+where. ADE contains many fine-grained “stuff” regions and
+diverse scene layouts, and the longer context of L/14 helps
+TLP connect semantically related areas, while PA main-
+tains the geometry stability. On other datasets, the larger
+model tends to mix tokens more strongly and weakens lo-
+cal contrast at the patch level, thereby reducing the benefit
+of PA and making it harder to preserve boundaries. Across
+all benchmarks, ViT-B/16 remains the most reliable overall
+choice, as it effectively balances locality and global seman-
+/uni00000016/uni00000015/uni00000015/uni00000015/uni00000017/uni00000016/uni00000015/uni00000013
+/uni00000016/uni00000013/uni00000011/uni00000013
+/uni00000016/uni00000015/uni00000011/uni00000013
+/uni00000016/uni00000017/uni00000011/uni00000013
+/uni00000016/uni00000019/uni00000011/uni00000013/uni00000050/uni0000002c/uni00000052/uni00000038/uni00000003/uni0000000b/uni00000008/uni0000000c
+/uni00000026/uni0000004c/uni00000057/uni0000005c
+/uni00000014/uni00000019/uni0000001b/uni00000013/uni00000014/uni00000019/uni00000013
+/uni00000018/uni00000019/uni00000011/uni00000013
+/uni00000018/uni0000001b/uni00000011/uni00000013
+/uni00000019/uni00000013/uni00000011/uni00000013
+/uni00000019/uni00000015/uni00000011/uni00000013
+/uni00000019/uni00000017/uni00000011/uni00000013
+/uni00000039/uni00000015/uni00000014
+/uni00000014/uni00000019/uni0000001b/uni00000013/uni00000014/uni00000019/uni00000013
+/uni0000001b/uni00000017/uni00000011/uni00000013
+/uni0000001b/uni00000017/uni00000011/uni0000001b
+/uni0000001b/uni00000018/uni00000011/uni00000019
+/uni0000001b/uni00000019/uni00000011/uni00000017
+/uni00000039/uni00000015/uni00000013
+/uni00000014/uni00000019/uni00000019/uni00000017/uni00000014/uni00000019/uni00000013
+/uni00000014/uni00000019/uni00000011/uni00000013
+/uni00000014/uni00000019/uni00000011/uni0000001b
+/uni00000014/uni0000001a/uni00000011/uni00000019
+/uni00000014/uni0000001b/uni00000011/uni00000017
+/uni00000014/uni0000001c/uni00000011/uni00000015
+/uni00000024/uni00000027/uni00000028
+(a) Grid Size
+/uni00000031/uni00000024/uni00000026/uni0000002f/uni0000002c/uni00000033/uni00000033/uni00000024/uni00000033/uni00000028/uni00000024/uni00000035/uni0000002f/uni00000014/uni00000018/uni00000011/uni00000013
+/uni00000016/uni00000013/uni00000011/uni00000013
+/uni00000017/uni00000018/uni00000011/uni00000013
+/uni00000019/uni00000013/uni00000011/uni00000013/uni0000002f/uni00000044/uni00000057/uni00000048/uni00000051/uni00000046/uni0000005c/uni00000003/uni0000000b/uni00000050/uni00000056/uni00000012/uni0000004c/uni00000050/uni0000004a/uni0000000c
+/uni00000019/uni00000014/uni00000011/uni0000001c
+/uni00000015/uni00000017/uni00000011/uni00000013
+/uni00000017/uni0000001b/uni00000011/uni0000001a
+/uni00000031/uni00000024/uni00000026/uni0000002f/uni0000002c/uni00000033/uni00000033/uni00000024/uni00000033/uni00000028/uni00000024/uni00000035/uni0000002f/uni00000014/uni00000011/uni00000015/uni00000018
+/uni00000014/uni00000011/uni00000016/uni00000013
+/uni00000014/uni00000011/uni00000016/uni00000018
+/uni00000014/uni00000011/uni00000017/uni00000013/uni0000002a/uni00000033/uni00000038/uni00000003/uni00000030/uni00000048/uni00000050/uni00000011/uni00000003/uni0000000b/uni0000002a/uni00000025/uni0000000c
+/uni00000014/uni00000011/uni00000016/uni0000001a
+/uni00000014/uni00000011/uni00000016/uni00000015/uni00000014/uni00000011/uni00000016/uni00000015
+/uni00000031/uni00000024/uni00000026/uni0000002f/uni0000002c/uni00000033/uni00000033/uni00000024/uni00000033/uni00000028/uni00000024/uni00000035/uni0000002f/uni00000018/uni00000018/uni00000011/uni00000013
+/uni00000019/uni00000013/uni00000011/uni00000013
+/uni00000019/uni00000018/uni00000011/uni00000013/uni00000050/uni0000002c/uni00000052/uni00000038/uni00000003/uni0000000b/uni00000008/uni0000000c
+/uni00000018/uni0000001b/uni00000011/uni0000001c/uni00000018/uni0000001c/uni00000011/uni00000015
+/uni00000019/uni00000017/uni00000011/uni00000014
+(b) Efficiency
+Figure 4.Ablation analysis of (a) grid size and (b) efficiency.
+tics. At the same time, ViT-L/14 can be preferable on scenes
+dominated by broad “stuff” regions such as ADE.
+Grid Size & Efficiency.Fig. 4a shows mIoUvs. grid size:
+City peaks at 224, V21/V20 about 80, and ADE at 64. Both
+overly coarse and fine grids hurt accuracy or efficiency, so
+we set224for City and80for all other datasets to achieve
+a fair and simple setup. As shown in Fig. 4b, on V21 under
+this setting, PA already surpasses NACLIP, and adding TLP
+(PEARL) further improves mIoU to64.1, while reducing
+memory from 1.37 to 1.32 GB and latency from 61.9 to 48.7
+ms/img, yielding the best accuracy-efficiency trade-off.
+5. Conclusion
+We present PEARL, a training-free framework for open-
+vocabulary semantic segmentation that follows analign-
+then-propagaterecipe on a frozen vision-language back-
+bone. The first step applies an orthogonal Procrustes align-
+ment within the last self-attention block to align keys with
+the query subspace after weighted centering, thereby stabi-
+lizing token geometry for patch-text matching. The second
+step performs text-aware Laplacian propagation on a com-
+pact grid, where text prototypes provide both a confidence
+cue and a gate on neighbor links while image edges guide
+boundaries. Both methods are closed-form, parameter-free,
+and inexpensive, making the pipeline plug-and-play with
+CLIP-style inference. Across standard OVSS benchmarks,
+PEARL consistently improves coherence on small objects
+and preserves large “stuff” regions under a unified evalua-
+tion protocol, without auxiliary backbones or training.
+Limitation and Future Work.Performance depends on
+prompt quality and label names, very low-contrast bound-
+aries remain challenging, the grid size trades detail for cost,
+and the method is not instance-aware. These are common
+constraints in training-free OVSS and motivate future work
+on prompt calibration, adaptive grids, and instance cues.
+Acknowledgement.This work was supported by the National
+Natural Science Foundation of China (No. 62472222), Natural
+Science Foundation of Jiangsu Province (No. BK20240080), and
+in part by the Institute of Information & communications Tech-
+nology Planning & Evaluation (IITP) grant funded by the Korea
+government (MSIT) (No. RS-2024-00337489).
+17934
+
+
+=== PAGE 9 ===
+References
+[1] Nikita Araslanov and Stefan Roth. Single-stage semantic
+segmentation from image labels. InCVPR, pages 4253–
+4262, 2020. 2, 3, 6, 7
+[2] Sule Bai, Yong Liu, Yifei Han, Haoji Zhang, Yansong Tang,
+Jie Zhou, and Jiwen Lu. Self-calibrated clip for training-free
+open-vocabulary segmentation.TIP, 34:8271–8284, 2025. 3
+[3] Luca Barsellotti, Roberto Amoroso, Lorenzo Baraldi, and
+Rita Cucchiara. FOSSIL: Free open-vocabulary seman-
+tic segmentation through synthetic references retrieval. In
+WACV, pages 1464–1473, 2024. 3, 5
+[4] Luca Barsellotti, Roberto Amoroso, Marcella Cornia,
+Lorenzo Baraldi, and Rita Cucchiara. Training-free open-
+vocabulary segmentation with offline diffusion-augmented
+prototype generation. InCVPR, pages 3689–3698, 2024. 3,
+5
+[5] Luca Barsellotti, Lorenzo Bianchi, Nicola Messina, Fabio
+Carrara, Marcella Cornia, Lorenzo Baraldi, Fabrizio Falchi,
+and Rita Cucchiara. Talking to dino: Bridging self-
+supervised vision backbones with language for open-
+vocabulary segmentation. InICCV, pages 22025–22035,
+2025. 1, 2, 3, 7
+[6] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and
+Hilde Kuehne. Grounding everything: Emerging localiza-
+tion properties in vision-language transformers. InCVPR,
+pages 3828–3837, 2024. 2, 3, 5
+[7] Maxime Bucher, Tuan-Hung Vu, Matthieu Cord, and Patrick
+Perez. Zero-shot semantic segmentation. InNeurIPS, pages
+469–479, 2019. 1, 2
+[8] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. COCO-
+Stuff: Thing and stuff classes in context. InCVPR, pages
+1209–1218, 2018. 6
+[9] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. In
+ICCV, pages 9650–9660, 2021. 1, 2, 3
+[10] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learn-
+ing to generate text-grounded mask for open-world semantic
+segmentation from only image-text pairs. InCVPR, pages
+11165–11174, 2023. 2, 5
+[11] Soravit Changpinyo, Piyush Sharma, Nan Ding, and Radu
+Soricut. Conceptual 12m: Pushing web-scale image-text pre-
+training to recognize long-tail visual concepts. InCVPR,
+pages 3558–3568, 2021. 5
+[12] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos,
+Kevin Murphy, and Alan L Yuille. Deeplab: Semantic image
+segmentation with deep convolutional nets, atrous convolu-
+tion, and fully connected crfs.TPAMI, 40(4):834–848, 2017.
+2
+[13] Qi Chen, Lingxiao Yang, Yun Chen, Nailong Zhao, Jian-
+huang Lai, Jie Shao, and Xiaohua Xie. Training-free class
+purification for open-vocabulary semantic segmentation. In
+ICCV, pages 23124–23134, 2025. 3
+[14] Xinlei Chen, Hao Fang, Tsung-Yi Lin, Ramakrishna Vedan-
+tam, Saurabh Gupta, Piotr Doll ´ar, and C Lawrence Zitnick.
+Microsoft coco captions: Data collection and evaluation
+server.arXiv preprint arXiv:1504.00325, 2015. 5
+[15] Zhixiang Chi, Yanan Wu, Li Gu, Huan Liu, Ziqiang Wang,
+Yang Zhang, Yang Wang, and Konstantinos Plataniotis.
+Plug-in feedback self-adaptive attention in clip for training-
+free open-vocabulary segmentation. InICCV, pages 22815–
+22825, 2025. 3
+[16] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. CAT-Seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. InCVPR, pages 4113–4123, 2024. 1, 2
+[17] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. InCVPR,
+pages 3213–3223, 2016. 2, 6, 7, 8
+[18] Timothee Darcet, Maxime Oquab, Julien Mairal, and Piotr
+Bojanowski. Vision transformers need registers. InICLR,
+2024. 5, 6
+[19] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li,
+and Li Fei-Fei. Imagenet: A large-scale hierarchical image
+database. InCVPR, pages 248–255, 2009. 5
+[20] Karan Desai, Gaurav Kaul, Zubin Aysola, and Justin John-
+son. Redcaps: Web-curated image-text data created by the
+people, for the people.arXiv preprint arXiv:2111.11431,
+2021. 5
+[21] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is
+worth 16x16 words: Transformers for image recognition at
+scale. InICLR, 2021. 1
+[22] Songsong Duan, Xi Yang, and Nannan Wang. Dih-clip:
+Unleashing the diversity of multi-head self-attention for
+training-free open-vocabulary semantic segmentation. In
+ICCV, pages 22794–22803, 2025. 3, 7
+[23] Mark Everingham, SM Ali Eslami, Luc Van Gool, Christo-
+pher KI Williams, John Winn, and Andrew Zisserman. The
+pascal visual object classes challenge: A retrospective.IJCV,
+111(1):98–136, 2015. 2, 6, 7
+[24] Yuxin Fang, Wen Wang, Binhui Xie, Quan Sun, Ledell Wu,
+Xinggang Wang, Tiejun Huang, Xinlong Wang, and Yue
+Cao. EV A: Exploring the limits of masked visual representa-
+tion learning at scale. InCVPR, pages 19358–19369, 2023.
+2
+[25] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scal-
+ing open-vocabulary image segmentation with image-level
+labels. InECCV, pages 540–557, 2022. 2
+[26] Sina Hajimiri, Ismail Ben Ayed, and Jose Dolz. Pay attention
+to your neighbours: Training-free open-vocabulary semantic
+segmentation. InWACV, pages 5061–5071, 2025. 1, 2, 3, 5,
+6, 7, 8
+[27] Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc Le, Yun-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representation
+learning with noisy text supervision. InICML, pages 4904–
+4916, 2021. 1, 2
+[28] Shuo Jin, Siyue Yu, Bingfeng Zhang, Mingjie Sun, Yi Dong,
+and Jimin Xiao. Feature purification matters: Suppressing
+17935
+
+
+=== PAGE 10 ===
+outlier propagation for training-free open-vocabulary seman-
+tic segmentation. InICCV, pages 20291–20300, 2025. 2, 3,
+5, 6, 7, 8
+[29] Cijo Jose, Theo Moutakanni, Dahyun Kang, Federico
+Baldassarre, Timothee Darcet, Hu Xu, Daniel Li, Marc
+Szafraniec, Michael Ramamonjisoa, and Maxime Oquab.
+Dinov2 meets text: A unified framework for image- and
+pixel-level vision-language alignment.CVPR, pages 24905–
+24916, 2025. 2, 3, 7
+[30] Dahyun Kang and Minsu Cho. In defense of lazy visual
+grounding for open-vocabulary semantic segmentation. In
+ECCV, pages 143–164, 2024. 2, 5, 6
+[31] Seil Kang, Jinyeong Kim, Junhyeok Kim, and Seong Jae
+Hwang. Your large vision-language model only needs a few
+attention heads for visual grounding. InCVPR, pages 9339–
+9350, 2025. 3
+[32] Chanyoung Kim, Dayun Ju, Woojung Han, Ming-Hsuan
+Yang, and Seong Jae Hwang. Distilling spectral graph for
+object-context aware open-vocabulary semantic segmenta-
+tion. InCVPR, pages 15033–15042, 2025. 1, 2, 5, 6, 7
+[33] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. InICCV, pages 4015–4026, 2023. 2, 3
+[34] Philipp Kr ¨ahenb¨uhl and Vladlen Koltun. Efficient inference
+in fully connected CRFs with Gaussian edge potentials. In
+NeurIPS, pages 109–117, 2011. 2, 3, 6, 7
+[35] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. ProxyCLIP: Proxy
+attention improves CLIP for open-vocabulary segmentation.
+InECCV, pages 70–88, 2024. 2, 3, 5, 6, 7
+[36] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. ClearCLIP: De-
+composing CLIP representations for dense vision-language
+inference. InECCV, pages 143–160, 2024. 2, 3, 5, 6
+[37] Boyi Li, Kilian Q. Weinberger, Serge Belongie, Vladlen
+Koltun, and Ren ´e Ranftl. Language-driven semantic seg-
+mentation. InICLR, 2022. 1, 2
+[38] Liunian Harold Li, Pengchuan Zhang, Haotian Zhang, Jian-
+wei Yang, Chunyuan Li, Yiwu Zhong, Lijuan Wang, Lu
+Yuan, Lei Zhang, and Jenq-Neng Hwang. Grounded
+language-image pre-training. InCVPR, pages 10965–10975,
+2022. 2
+[39] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted CLIP. InCVPR, pages 7061–7070, 2023. 1, 2
+[40] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+Pietro Perona, Deva Ramanan, Piotr Doll´ar, and C. Lawrence
+Zitnick. Microsoft COCO: Common objects in context. In
+ECCV, pages 740–755, 2014. 2, 5, 6, 7
+[41] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng
+Zhang, Stephen Lin, and Baining Guo. Swin transformer:
+Hierarchical vision transformer using shifted windows. In
+ICCV, pages 10012–10022, 2021. 1
+[42] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully
+convolutional networks for semantic segmentation. In
+CVPR, pages 3431–3440, 2015. 2
+[43] Jiayun Luo, Siddhesh Khandelwal, Leonid Sigal, and
+Boyang Li. Emergent open-vocabulary semantic segmen-
+tation from off-the-shelf vision-language models. InCVPR,
+pages 4029–4040, 2024. 3, 5
+[44] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and se-
+mantic segmentation in the wild. InCVPR, pages 891–898,
+2014. 6, 7
+[45] Jishnu Mukhoti, Tsung-Yu Lin, Omid Poursaeed, Rui Wang,
+Ashish Shah, Philip H. S. Torr, and Ser-Nam Lim. Open
+vocabulary semantic segmentation with patch aligned con-
+trastive learning. InCVPR, pages 19413–19423, 2023. 1
+[46] Maxime Oquab, Timothee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, and Alaaeldin El-Nouby.
+DINOv2: Learning robust visual features without supervi-
+sion.arXiv preprint arXiv:2304.07193, 2023. 1, 2
+[47] Gensheng Pei, Fumin Shen, Yazhou Yao, Tao Chen, Xian-
+Sheng Hua, and Heng-Tao Shen. Hierarchical graph pattern
+understanding for zero-shot video object segmentation.TIP,
+32:5909–5920, 2023. 1
+[48] Gensheng Pei, Yazhou Yao, Fumin Shen, Dan Huang, Xing-
+guo Huang, and Heng-Tao Shen. Hierarchical co-attention
+propagation network for zero-shot video object segmenta-
+tion.TIP, 32:2348–2359, 2023. 1
+[49] Gensheng Pei, Tao Chen, Yujia Wang, Xinhao Cai, Xiangbo
+Shu, Tianfei Zhou, and Yazhou Yao. Seeing what mat-
+ters: Empowering clip with patch generation-to-selection. In
+CVPR, pages 24862–24872, 2025. 2
+[50] Gensheng Pei, Xiruo Jiang, Yazhou Yao, Xiangbo Shu,
+Fumin Shen, and Byeungwoo Jeon. Taming sam3 in the
+wild: A concept bank for open-vocabulary segmentation.
+arXiv preprint arXiv:2602.06333, 2026. 3
+[51] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, and Jack Clark. Learn-
+ing transferable visual models from natural language super-
+vision. InICML, pages 8748–8763, 2021. 1, 2, 5, 6, 7
+[52] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang
+Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman
+R¨adle, Chloe Rolland, Laura Gustafson, Eric Mintun, Junt-
+ing Pan, Kalyan Vasudev Alwala, Nicolas Carion, Chao-
+Yuan Wu, Ross Girshick, Piotr Dollar, and Christoph Feicht-
+enhofer. SAM 2: Segment anything in images and videos. In
+ICLR, 2025. 2
+[53] Robin Rombach, Andreas Blattmann, Dominik Lorenz,
+Patrick Esser, and Bj¨orn Ommer. High-resolution image syn-
+thesis with latent diffusion models. InCVPR, pages 10684–
+10695, 2022. 3
+[54] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. InECCV, pages 139–156, 2024. 2,
+3, 5, 6, 7
+[55] Piyush Sharma, Nan Ding, Sebastian Goodman, and Radu
+Soricut. Conceptual captions: A cleaned, hypernymed, im-
+age alt-text dataset for automatic image captioning. InACL,
+pages 2556–2565, 2018. 5
+17936
+
+
+=== PAGE 11 ===
+[56] Yuheng Shi, Minjing Dong, and Chang Xu. Harnessing vi-
+sion foundation models for high-performance, training-free
+open vocabulary segmentation. InICCV, pages 23487–
+23497, 2025. 3
+[57] Gyungin Shin, Weidi Xie, and Samuel Albanie. ReCo: Re-
+trieve and co-segment for zero-shot transfer. InNeurIPS,
+pages 33754–33767, 2022. 5
+[58] Oriane Sim ´eoni, Huy V V o, Maximilian Seitzer, Federico
+Baldassarre, Maxime Oquab, Cijo Jose, Vasil Khalidov,
+Marc Szafraniec, Seungeun Yi, Micha ¨el Ramamonjisoa,
+et al. Dinov3.arXiv preprint arXiv:2508.10104, 2025. 1,
+2, 6, 7
+[59] Vladan Stojni ´c, Yannis Kalantidis, Ji ˇr´ı Matas, and Giorgos
+Tolias. Lposs: Label propagation over patches and pixels
+for open-vocabulary semantic segmentation. InCVPR, pages
+9794–9803, 2025. 2, 5
+[60] Shuyang Sun, Runjia Li, Philip Torr, Xiuye Gu, and Siyang
+Li. CLIP as RNN: Segment countless visual concepts with-
+out training endeavor. InCVPR, pages 13171–13182, 2024.
+2, 3, 5
+[61] Hugo Touvron, Matthieu Cord, Matthijs Douze, Francisco
+Massa, Alexandre Sablayrolles, and Herv ´e J´egou. Training
+data-efficient image transformers & distillation through at-
+tention. InICML, pages 10347–10357, 2021. 1
+[62] Feng Wang, Jieru Mei, and Alan Yuille. SCLIP: Rethinking
+self-attention for dense vision-language inference. InECCV,
+pages 315–332, 2024. 5, 6, 7, 8
+[63] Haoxiang Wang, Pavan Kumar Anasosalu Vasu, Fartash
+Faghri, Raviteja Vemulapalli, Mehrdad Farajtabar, Sachin
+Mehta, Mohammad Rastegari, Oncel Tuzel, and Hadi
+Pouransari. Sam-clip: Merging vision foundation models to-
+wards semantic and spatial understanding. InCVPR, pages
+3635–3647, 2024. 3, 5
+[64] Ji-Jia Wu, Andy Chia-Hao Chang, Chieh-Yu Chuang,
+Chun-Pei Chen, Yu-Lun Liu, Min-Hung Chen, Hou-Ning
+Hu, Yung-Yu Chuang, and Yen-Yu Lin. Image-text co-
+decomposition for text-supervised semantic segmentation. In
+CVPR, pages 26794–26803, 2024. 5
+[65] Monika Wysoczanska, Micha ¨el Ramamonjisoa, Tomasz
+Trzci´nski, and Oriane Sim ´eoni. CLIP-DIY: CLIP dense in-
+ference yields open-vocabulary semantic segmentation for-
+free. InWACV, pages 1403–1413, 2024. 2, 3
+[66] Monika Wysoczanska, Oriane Simeoni, Micha ¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzcinski, and Patrick Perez.
+CLIP-DINOiser: Teaching CLIP a few DINO tricks for
+open-vocabulary semantic segmentation. InECCV, pages
+320–337, 2024. 2, 3, 5
+[67] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. SED: A simple encoder-decoder for open-
+vocabulary semantic segmentation. InCVPR, pages 3426–
+3436, 2024. 1, 2
+[68] Enze Xie, Wenhai Wang, Zhiding Yu, Anima Anandkumar,
+Jose M Alvarez, and Ping Luo. Segformer: Simple and ef-
+ficient design for semantic segmentation with transformers.
+InNeurIPS, pages 12077–12090, 2021. 2
+[69] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas Breuel, Jan Kautz, and Xiaolong Wang. GroupViT:
+Semantic segmentation emerges from text supervision. In
+CVPR, pages 18134–18144, 2022. 2, 5
+[70] Jilan Xu, Junlin Hou, Yuejie Zhang, Rui Feng, Yi Wang, Yu
+Qiao, and Weidi Xie. Learning open-vocabulary semantic
+segmentation models from natural language supervision. In
+CVPR, pages 2935–2944, 2023.
+[71] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+CVPR, pages 2955–2966, 2023. 2
+[72] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. InECCV, pages 736–753, 2022. 1, 2
+[73] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. InCVPR, pages 2945–2954, 2023. 1, 2
+[74] Xiwei Xuan, Ziquan Deng, and Kwan-Liu Ma. Reme:
+A data-centric framework for training-free open-vocabulary
+segmentation. InICCV, pages 20954–20965, 2025. 2, 3, 7
+[75] Yuhang Yang, Jinhong Deng, Wen Li, and Lixin Duan.
+Resclip: Residual attention for training-free dense vision-
+language inference. InCVPR, pages 29968–29978, 2025.
+3
+[76] Dengke Zhang, Fagui Liu, and Quan Tang. Corrclip: Recon-
+structing patch correlations in clip for open-vocabulary se-
+mantic segmentation. InICCV, pages 24677–24687, 2025.
+2, 3
+[77] Hang Zhao, Xavier Puig, Bolei Zhou, Sanja Fidler, and An-
+tonio Torralba. Open vocabulary scene parsing. InICCV,
+pages 2002–2010, 2017. 1, 2
+[78] Yiwu Zhong, Jianwei Yang, Pengchuan Zhang, Chunyuan
+Li, Noel Codella, Liunian Harold Li, Luowei Zhou, Xiyang
+Dai, Lu Yuan, and Yin Li. RegionCLIP: Region-based
+language-image pretraining. InCVPR, pages 16793–16803,
+2022. 2
+[79] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ADE20K dataset. InCVPR, pages 633–641, 2017. 2, 6,
+7
+[80] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ADE20K dataset.IJCV, 127:
+302–321, 2019. 2
+[81] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from CLIP. InECCV, pages 350–368, 2022. 1,
+2, 3, 5
+[82] Xingyi Zhou, Rohit Girdhar, Armand Joulin, Philipp
+Kr¨ahenb¨uhl, and Ishan Misra. Detecting twenty-thousand
+classes using image-level supervision. InECCV, pages 350–
+368, 2022. 2
+17937

@@ -1,0 +1,1010 @@
+=== PAGE 1 ===
+Direct Segmentation without Logits Optimization for Training-Free
+Open-Vocabulary Semantic Segmentation
+Jiahao Li1, Yang Lu1, Yachao Zhang1∗, Fangyong Wang2, Yuan Xie3, Yanyun Qu1*
+1Key Laboratory of Multimedia Trusted Perception and Efficient Computing, Ministry of Education of
+China, Xiamen University. 2Hanjiang National Laboratory. 3East China Normal University.
+lijiahao1@stu.xmu.edu.cn{luyang, yachaozhang, yyqu}@xmu.edu.cn
+Abstract
+Open-vocabulary semantic segmentation (OVSS) aims to
+segment arbitrary category regions in images using open-
+vocabulary prompts, necessitating that existing methods
+possess pixel-level vision-language alignment capability.
+Typically, this capability involves computing the cosine sim-
+ilarity,i.e., logits, between visual and linguistic features,
+and minimizing the distribution discrepancy between the
+logits and the ground truth (GT) to generate optimal log-
+its that are subsequently used to construct segmentation
+maps, yet it depends on time-consuming iterative training
+or model-specific attention modulation. In this work, we
+propose a more direct approach that eschews the logits-
+optimization process by directly deriving an analytic so-
+lution for the segmentation map. We posit a key hypoth-
+esis: the distribution discrepancy encodes semantic infor-
+mation; specifically, this discrepancy exhibits consistency
+across patches belonging to the same category but inconsis-
+tency across different categories. Based on this hypothesis,
+we directly utilize the analytic solution of this distribution
+discrepancy as the semantic maps. In other words, we re-
+formulate the optimization of the distribution discrepancy
+as deriving its analytic solution, thereby eliminating time-
+consuming iterative training, freeing us from model-specific
+attention modulation, and achieving state-of-the-art perfor-
+mance on eight benchmark datasets.
+1. Introduction
+Open-vocabulary semantic segmentation (OVSS) aims to
+recognize the category of each pixel using class-specific
+textual descriptions, and has garnered significant atten-
+tion [16, 25, 26, 38, 56]. Typically, prevailing approaches
+follow aniterative training paradigm[29, 34, 58]: they
+first compute cosine similarity between visual and linguistic
+features (termed logits), then iteratively minimize the dis-
+*Corresponding author. Code: https://github.com/liblacklucy/DSLO
+Figure 1. Compared with the logits-optimization methods seeking
+optimal solutions, we reformulate the problem as an analytical so-
+lution form. This reformulation confers three key advantages: in-
+dependence from GT annotations, elimination of time-consuming
+training, and freedom from model-specific modulation.
+crepancy between these logits and the ground truth (GT)
+distribution to obtain optimal logits, and finally apply an
+arg maxoperation to the optimal logits to generate segmen-
+tation maps. Despite achieving remarkable performance,
+these methods rely on GT annotations and time-consuming
+training processes. To alleviate these limitations, the pre-
+vailing unsupervised training-free methods employ anat-
+tention modulation paradigm[22, 23, 44]: they calibrate
+core self-attention computations to rectify fine-grained mis-
+alignment between visual and linguistic features, thereby
+constructing optimal logits for segmentation map gener-
+ation. Such attention modulation techniques intrinsically
+perform denoising on self-attention tensor, where the noise
+is typically data-agnostic yet model-specific,e.g., in most
+CLIP-based attention modulation [15, 44], which results in
+poor generalization to other foundation models.
+Both paradigms fundamentally converge on identical
+methodological core: prioritizing derivation of optimal log-
+its followed by construction of segmentation maps,i.e.,
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+13168
+
+
+=== PAGE 2 ===
+logits-optimization. This optimization aim to optimize the
+distribution discrepancy between logits and GT to obtain the
+optimal logits, a process that is either time-consuming or
+model-specific. On the contrary, we propose a more direct
+approach that circumvents the logits-optimization phase,
+eliminating the need to solve for optimal logits and directly
+obtaining the final segmentation maps. This design pro-
+vides three key advantages: independence from GT annota-
+tions, elimination of time-consuming iterative training, and
+freedom from model-specific attention modulation. Specifi-
+cally, we first propose a key hypothesize,i.e., homogeneous
+regions exhibit consistent discrepancy from logits to GT
+distributions, whereas heterogeneous regions manifest dis-
+tinct discrepancy. The hypothesis enables the distribution
+discrepancy to directly characterize semantic information.
+Therefore, as illustrated in Figure 1, our key idea lies in de-
+riving an analytical solution for the distribution discrepancy
+to obtain the segmentation maps directly, bypassing the
+time-consuming iterative training (or model-specific atten-
+tion modulation) required to solve the optimal logits prior
+to constructing the segmentation maps. In other words, we
+reformulate the optimization of the distribution discrepancy
+into the analytic solution of the distribution discrepancy.
+In this work, we first validate the feasibility of the key
+hypothesis via exploration experiments and then address the
+reformulation from two distinct perspectives (optimal path
+and maximum velocity), ultimately achieving state-of-the-
+art performance on eight OVSS benchmark datasets. Our
+principal contributions are as follows:
+• We propose a key hypothesis,i.e., the distributional dis-
+crepancy between logits and GT effectively reveals se-
+mantic characteristics, and validate its feasibility.
+• We propose a straightforward method that directly solves
+the distribution discrepancy to characterize segmentation
+maps without logits-optimization.
+• Our method achieves state-of-the-art performance on
+eight OVSS benchmark datasets without requiring time-
+consuming training or model-specific modulation.
+2. Related Works
+2.1. Open-vocabulary semantic segmentation
+OVSS primarily encompasses two distinct methodologies:
+1) transductive learning-based generative approaches [4, 7,
+14, 45, 48], and 2) inductive learning-driven discriminative
+methods [12, 39, 50, 58, 59]. Within transductive frame-
+works, generative techniques demand prior awareness of
+unseen categories in open-world environments. Given the
+theoretical inaccessibility of such priors, existing methods
+utilize open-vocabulary text embeddings to establish cross-
+modal connections between textual and visual domains,
+thereby generating these priors. These solutions [4, 14, 33]
+generate embeddings for novel categories by fusing visual
+embeddings with textual semantic representations derived
+from existing priors. Conversely, discriminative strate-
+gies utilize inductive mechanisms to deduce unseen cat-
+egories via knowledge acquired during training, circum-
+venting requirements for novel category priors. To acquire
+knowledge with potent representational capabilities, con-
+temporary state-of-the-art systems predominantly adopt ei-
+ther knowledge distillation [12, 28, 52, 54] or feature adap-
+tation approaches [21, 53, 59]. Knowledge distillation in-
+tegrates image-level discriminative capacities from vision-
+language models into mask-aware segmentation networks,
+whereas feature adaptation techniques directly adapt vision-
+language models (e.g., CLIP) as backbone architectures to
+convert image-level classification competencies into pixel-
+wise discriminative capabilities. Consequently, state-of-
+the-art research has focused on the adaptation mechanisms
+of CLIP for OVSS.
+2.2. CLIP adaptation for OVSS
+Existing CLIP adaptation approaches predominantly cat-
+egorize into three paradigms: 1) Joint Fine-tuning [9,
+17, 24]: This paradigm involves fine-tuning CLIP with
+segmentation-specific components to enhance dense predic-
+tion capabilities. For instance, CAT-Seg [8] implements
+cost-based CLIP fine-tuning, while MAFT [17] leverages
+attention bias for classification-oriented refinement. 2) Pre
+Fine-tuning[46, 47, 51]: This approach enhances CLIP’s
+alignment granularity through fine-grained vision-language
+contrastive learning. Specifically, CLIM [47] employs mo-
+saic augmentation to create composite images for region-
+text contrastive learning, whereas CLIPSelf [46] maxi-
+mizes cosine similarity between regional representations
+and corresponding crops. 3) Training-Free Adaptation[22,
+23, 41, 44]: This paradigm modulates CLIP’s final resid-
+ual attention layer or integrates vision foundation models
+(VFM)[32, 55] to boost alignment granularity. The omis-
+sion of residual connections in CLIP’s final layer signif-
+icantly enhances visual embedding granularity[22], moti-
+vating research into refined self-attention mechanisms for
+spatial alignment. This paradigm comprises two subcate-
+gories: a) VFM-proxy: This subcategory augments CLIP
+with VFMs’ dense representations. ProxyCLIP [23] sub-
+stitutes CLIP’s self-attention with DINO’s [55] visual self-
+similarity, and CASS [20] integrates DINO features via
+spectral graph distillation. b) Self-proxy: This subcategory
+constructs novel self-attention matrices from CLIP’s inter-
+nal embeddings. SCLIP [44] employs summed query-query
+and key-key attention matrices, while ClearCLIP [22] and
+NACLIP [15] respectively utilize query-query and key-key
+matrices as replacements.
+Ultimately, these methods fundamentally aim to opti-
+mize the discrepancy between the logits and GT distribu-
+tions to generate optimal logits, which are subsequently
+13169
+
+
+=== PAGE 3 ===
+Figure 2. Overview of the proposed method. The pipeline begins by computing the cosine similarity (Cos.) between vision-language
+features to obtain logits, followed by non-maximum suppression (NMS) and normalization (Norm.) to filter low-confidence patches. The
+core step involves calculating the distribution discrepancy between the normalized logits and the degenerate distribution map. This solved
+discrepancy is then upsampled to the original image resolution via joint bilateral upsampling (JBU) to obtain the discrepancy map. Finally,
+the semantic map is generated by applying anarg maxoperation to the discrepancy map.
+converted into final segmentation maps. Departing from
+these conventional approaches, we avoid optimizing the dis-
+tribution discrepancy and instead directly characterize seg-
+mentation maps by analytically solving for the discrepancy.
+3. Approach
+3.1. Problem definition
+Given an imageIand class-specific textual descriptions
+{Li}Nc
+i=1, whereL i denotes the textual description of the
+i-th class andN c represents the total number of classes.
+OVSS assigns each pixel inIto the class labelicorrespond-
+ing to the most semantically relevantL i withN c being dy-
+namic during inference.
+3.2. Overview
+Current methods aim to optimize the logits — defined as
+the cosine similarity between vision and language features
+— by minimizing the distribution discrepancy between the
+logits and GT distributions, thereby seeking the optimal log-
+its solutions:
+Q∗ = arg min
+Q
+D(P∥Q),M= arg max
+Nc
+(Q∗), (1)
+wherePandQdenote the GT and the logits distributions,
+respectively, andD(·)measures the distribution discrep-
+ancy, like the Kullback-Leibler (KL) divergence. The se-
+mantic mapsMare then derived by the optimal logits. We
+hypothesize that patches from identical classes exhibit con-
+sistent distribution discrepancy, while those from different
+classes manifest significant divergence. Building upon the
+hypothesis, we can directly employ the distribution discrep-
+ancyD(P∥Q)to obtain the semantic maps without logits-
+optimization process, thus reformulating the optimization
+formulation in Equation 1 into solving an analytic solution
+for the distribution discrepancy. However, since the GT dis-
+tributionPis unavailable during inference, our idea is to
+replace the GT distributionPwith an equivalent surrogate
+distribution. This enables quantifying the distribution dis-
+crepancy between the logits and this surrogate distribution
+to derive the semantic map:
+M= arg max
+Nc
+D(S∥Q), (2)
+whereSdenotes the surrogate distribution.
+Therefore, in this work, we focus on two key technical
+challenges: (1) which distribution to choose as the surro-
+gate distribution for GT; and (2) how to derive the ana-
+lytic solution for the distribution discrepancy. For the first
+challenge, we opt for a degenerate distribution as the sur-
+rogate; for the second challenge, we approach it from two
+distinct perspectives (optimal path and maximum velocity).
+The overview of our method is illustrated in Figure 2, de-
+picting our pipeline that first computes the cosine similarity
+(Cos.) between visual-language features to obtain the log-
+its, and applies non-maximum suppression (NMS) and nor-
+malization (Norm.) to obtain the normalized logits. Sub-
+sequently, we solve the distribution discrepancy from the
+logits distribution to a degenerate distribution. Finally, the
+solved distribution discrepancy undergoes joint bilateral up-
+sampling (JBU) to generate the discrepancy map, with the
+final segmentation result derived through anarg maxopera-
+tion. Compared to the existing logits-optimization methods
+seeking optimal solutions, we reformulate to an analytic so-
+lution form, achieving independence from GT annotations,
+elimination of time-consuming training, and freedom from
+model-specific modulation.
+3.3. Reformulation analysis
+The reformulation from the logits-optimization formulation
+in Equation 1 to the analytic solution in Equation 2 relies
+13170
+
+
+=== PAGE 4 ===
+on the hypothesis that distribution discrepancy effectively
+captures semantic information and that replacing the degen-
+erate distribution with the GT distribution is valid. Conse-
+quently, this section aims to analyze the feasibility of char-
+acterizing semantic maps through distribution discrepancy
+and to investigate the replacement of the degenerate distri-
+bution with the GT distribution.
+Specifically, we employ the KL divergence to quan-
+tify distribution discrepancyD(·)and examine three trans-
+mission scenarios: 1) from logits to GT distribution (i.e.,
+D(P∥Q)), 2) from logits to degenerate distribution (i.e.,
+D(S∥Q)), and 3) from GT to degenerate distribution (i.e.,
+D(S∥P)). The semantic maps are generated by apply-
+ing anarg maxoperation to these KL divergence measure-
+ments. As shown in Figure 3 (a), we present a quantita-
+tive comparison of semantic maps derived fromD(P∥Q)
+andD(S∥Q)across five benchmark datasets. Experimen-
+tal results demonstrate highly consistent quantitative per-
+formance for both scenarios across all datasets, indicating
+that the solution spaces for targeting the degenerate and GT
+distributions coincide. This confirms the feasibility of sub-
+stituting the GT distribution with the degenerate distribu-
+tion for direct solving the distribution discrepancy. Fur-
+thermore, visualization results forD(P∥Q)andD(S∥Q)
+in Figure 3 (b) indicate that regions of the identical classes
+exhibit highly consistent distribution discrepancy, confirm-
+ing our hypothesis regarding the consistency of distribution
+discrepancy across homogeneous regions and demonstrat-
+ing the ability of the distribution discrepancy to capture
+semantic information. ForD(S∥P), the distribution dis-
+crepancy visualization in Figure 3 (b) near-complete over-
+lap with the GT distribution, implying thatSandPoc-
+cupy antipodal positions in the feature space. While logits-
+optimization approaches optimize towards the GT endpoint,
+our methodology computes the distribution discrepancy to-
+wards the degenerate endpoint.
+In summary, although the KL divergency between the
+logits and the degenerate distribution can capture the se-
+mantic information, its quantitative performance remains
+limited. Therefore, the core challenge involves accurately
+measuring the distribution discrepancy from the logits to the
+degenerate distribution. We approach this challenge from
+two distinct perspectives: 1) solving the optimal transport
+path to quantify the distribution discrepancy, and 2) solving
+the maximum transport velocity to define this discrepancy.
+3.4. Optimal path
+In this section, we focus on solving the optimal transport
+path between the logits distribution and the degenerate dis-
+tribution. Intuitively, for regions of the same category,
+the degradation paths should exhibit consistency. Conse-
+quently, the optimal transport path can be leveraged to quan-
+tify the distribution discrepancy. To this end, we formulate
+Figure 3. Reformulation analysis results. (a) Performance compar-
+ison targeting the degenerate distributionSand the GT distribution
+Pdemonstrates that the equivalence of the two distributions. (b)
+KL divergence visualization across three transmission scenarios
+confirms distribution discrepancy’s capacity to capture semantic
+information.
+the problem of measuring the distribution discrepancy as an
+optimal transport task, specifically by seeking the optimal
+transformation from the logits to the degenerate distribu-
+tion, which corresponds to the optimal path between them.
+Given the normalized logitsf c ∈R N for thec-th cat-
+egory and the degenerate mapf t ∈R N , whereNde-
+notes the number of patches,f t follows a degenerate (uni-
+form) distribution,i.e.,f t = 1
+N 1N . Under Sinkhorn’s theo-
+rem [11], the problem of solving the optimal transport path
+pc ∈R N betweenf c andf t is formulated as:
+pc = Norm.(
+X
+i
+π∗
+i,j ·C i,j),(3)
+π∗ = min
+π
+X
+i,j
+Ci,jπi,j −ϵ
+X
+i,j
+πi,j(lnπ i,j −1), (4)
+whereπ ∗ ∈R N×N represents the optimal transport matrix
+fromf c tof t, andϵis regularization scalar.C∈R N×N
+denotes the cost matrix betweenf c andf t, which can
+be formulated as layer-wise averaged self-attention tensor:
+C=
+X
+b,h
+wb,hSb,h, (5)
+13171
+
+
+=== PAGE 5 ===
+whereS b,h andw b,h denote the self-attention tensor and
+scalar weight for theh-th head in theb-th transformer block,
+respectively. To calculate the optimal transport pathp c via
+Equation 3, we first solve Equation 4 to obtainπ ∗. Apply-
+ing Lagrange Multiplier method, we can directly solve the
+unique solution of Equation 4, which is as:
+π∗ = diag(µ)Kdiag(ν), (6)
+where the Gibbs kernel matrixK= exp(−C/ϵ), and
+µ∈R N ,ν∈R N denote two unknown scaling parame-
+ters. According to the law of conservation of mass, these
+two unknown parameters are subject to the following con-
+straints:
+µ⊙(Kν) =f c,ν⊙(K ⊤µ) =f t, (7)
+where⊙denotes element-wise product. And utilizing the
+Sinkhorn iteration algorithm, we updateµandνalter-
+nately:
+µ(l+1) ← f c
+Kν (l) ,ν (l+1) ← f t
+K⊤µ(l+1) , (8)
+whereldenotes the iteration index, andν (0) =1 N . There-
+fore, the optimal transport pathp c can be solved according
+to Equation 3, 6, and 8. Finally, we reshapep c to the down-
+sampled sizeh×wwithN=h·w, and then upscale it via
+JBU to the original image sizeH×Wto obtain the dis-
+crepancy mapm c. Thus, the output resultMis derived as:
+M= arg max
+c
+({mc}Nc
+c=1), c= 1,2, ..., N c. (9)
+3.5. Maximum velocity
+Intuitively, transport velocity plays a critical role in quanti-
+fying distribution discrepancy: for identical transport paths,
+reduced velocity prolongs transport duration, thereby am-
+plifying the overall discrepancy. In this section, we fo-
+cus on determining the transport velocity for the transi-
+tions from the logits to the degenerate distribution. Given
+that the degenerate distribution constitutes a special case
+of the stationary distribution, we formulate the velocity-
+determination task as a Markov process problem, specifi-
+cally by assessing the Markov process through which the
+logits converges to the stationary distribution.
+Inspired by [19], given a transition matrixT∈R N×N ,
+the Markov process can be defined as:
+f c(l) =f c(0) ·T l, l= 1,2, ... (10)
+whereldenotes the Markov chain step. Since layer-wise
+averaged self-attention tensors naturally capture inter-patch
+transition probabilities, they serve as candidates forT.
+However, Markov processes requireTto be a strictly posi-
+tive and irreducible, aperiodic stochastic matrix. To satisfy
+these conditions, we employ iterative proportional fitting
+(IPF) to transform the candidate self-attention tensor into
+a doubly stochastic form:
+T
+(k− 1
+2 )
+i,j ←
+T (k−1)
+i,j
+P
+u T (k−1)
+u,j
+,T (k+1)
+i,j ←
+T
+(k− 1
+2 )
+i,j
+P
+v T
+(k− 1
+2 )
+i,v
+, (11)
+wherek∈Z + represents the iterations, initialized with
+T (0) = P
+b,h wb,hSb,h. Typically,Tsatisfies the Markov
+requirements after15iterations. Asl→+∞, repeated
+application ofTdrivesf c(l) component-wise toward the
+stationary distribution,i.e.,f c(+∞) = 1
+N 1N . Given that
+patches of identical categories should converge to the sta-
+tionary distribution at equivalent Markov steps, we define
+the maximum transport velocityv c ∈R N for each patch as
+the reciprocal of its convergence steps:
+vc
+i = max{1
+l , l∈Z +|
+f c
+i
+(l) −f c
+i
+(l−1)
+ ≤τ}. (12)
+Equation 12 indicates that when the probability variation of
+patchibetween consecutive steps no longer changes with
+the Markov process, in other words, patchi’s probability
+variation falls below thresholdτ,i.e.,
+f c
+i
+(l) −f c
+i
+(l−1)
+ ≤
+τ, its convergence steplis identified; the reciprocal 1
+l then
+quantifies its maximum transport velocity. Finally, employ-
+ing the same upsampling scheme tov c as in Section 3.4
+yields the discrepancy mapm c, with the segmentation re-
+sults computed via Equation 9.
+4. Experiments
+4.1. Experiment Settings
+Datasets & Metric.Following the unsupervised training-
+free paradigm, we conduct evaluations on eight standard
+benchmark datasets: 1) the Pascal VOC2012 series [13]
+comprises two benchmarks,i.e., VOC21 with21categories
+and VOC20 with20categories, derived from VOC21 by ex-
+cluding the background category; 2) the Pascal Context se-
+ries [31] comprises two benchmarks,i.e., Context60 with
+60categories and Context59 with59categories, derived
+from Context60 by excluding the background category; 3)
+the COCO series [5] comprises COCO-Stuff with171cate-
+gories and COCO-Obj with81categories; 4) ADE20K [57]
+contains150categories; and 5) Cityscapes [10] contains
+19categories for autonomous driving. All experiments are
+evaluated using the mean Intersection-over-Union (mIoU).
+Implementation.All experiments are conducted using Py-
+Torch with MMSegmentation and diffusers. CLIP models
+with ViT-B/16 and ViT-L/14 architectures are employed to
+construct the logits. Inspired by diffusion-based segmenta-
+tion methods [19, 43], we utilize Stable Diffusion [36], par-
+ticularly version 2 (SD2), to extract the self-attention ten-
+sor. The model weights are sourced from the Hugging Face
+13172
+
+
+=== PAGE 6 ===
+Table 1. Quantitative evaluation on standard benchmarks (unit: %).†: Re-implementation with OpenAI’s weights.‡: Re-implementation
+with its DINO-B/16 variant.M.M.denotes model-specific modulation.I.T.denotes iterative training. Here, the best results are shown in
+bold and the second-best results are underlined.
+Model Logits Model Paradigm VOC21 Context60 COCO-Obj VOC20 Context59 COCO-Stuff Cityscapes ADE20K Avg.
+FreeDa [2] CLIP ViT-B/16 M.M. - - - 85.6 43.1 27.8 36.7 22.4 -
+CLIP [35] CLIP ViT-B/16 I.T. 18.6 7.8 6.5 49.1 11.2 7.2 6.7 3.2 13.8
+ReCo [40] CLIP ViT-B/16 M.M. 25.1 19.9 15.7 57.7 22.3 14.8 21.6 11.2 23.5
+MaskCLIP [58] CLIP ViT-B/16 I.T. 38.3 23.6 20.6 74.9 26.4 16.4 12.6 9.8 27.9
+GroupViT [51] CLIP ViT-B/16 I.T. 50.4 18.7 27.5 79.7 23.4 15.3 11.1 9.2 29.4
+CLIPtrase [37] CLIP ViT-B/16 M.M. 50.9 29.943.681.0 33.8 22.8 21.3 16.4 32.7
+TCL [6] CLIP ViT-B/16 I.T. 55.0 30.4 31.6 83.2 33.9 22.4 24.0 17.1 37.2
+CLIPSurgery [27] CLIP ViT-B/16 I.T. 55.2 30.3 29.7 77.5 33.4 22.2 33.1 16.1 37.2
+LaVG [18] CLIP ViT-B/16 M.M. 62.1 31.6 34.2 82.5 34.7 23.2 26.2 15.8 38.8
+GEM [3] CLIP ViT-B/16 I.T. 58.7 32.0 32.9 81.7 35.6 23.9 32.6 16.9 39.3
+CaR [42] CLIP ViT-B/16 M.M. 48.6 13.6 15.4 73.7 18.4 - - 5.4 -
+ClearCLIP [22] CLIP ViT-B/16 M.M. 51.8 32.6 33.0 80.9 35.9 23.9 30.0 16.7 38.1
+SCLIP [44] CLIP ViT-B/16 M.M. 59.1 30.4 30.5 80.4 34.1 22.4 32.2 16.1 38.2
+NACLIP [15] CLIP ViT-B/16 M.M. 58.9 32.2 33.2 79.7 35.2 23.3 35.5 17.4 39.4
+CLIP-DINOiser† [49] CLIP ViT-B/16 I.T. 62.1 32.4 34.8 80.9 35.9 24.6 31.7 20.0 40.3
+ProxyCLIP‡ [23] CLIP ViT-B/16 M.M. 59.1 35.2 36.2 78.2 38.8 26.2 38.1 19.6 41.4
+SC-CLIP [1] CLIP ViT-B/16 M.M. 64.6 36.8 37.7 84.3 40.1 26.6 41.0 20.1 43.9
+CASS [20] CLIP ViT-B/16 M.M. 65.8 36.7 37.8 87.8 40.2 26.7 39.4 20.4 44.4
+Ours
+- solve optimal path CLIP ViT-B/16 66.9 37.6 38.9 88.6 44.4 28.6 41.7 22.8 46.2
+- solve maximum velocityCLIP ViT-B/16 67.8 38.3 39.6 89.0 44.9 28.9 43.3 23.0 46.9
+CLIP [35] CLIP ViT-L/14 I.T. 10.3 4.5 4.4 19.9 5.7 3.2 3.2 1.9 6.6
+MaskCLIP [58] CLIP ViT-L/14 I.T. 24.8 9.7 10.2 30.1 13.0 9.0 12.1 7.1 14.5
+SCLIP [44] CLIP ViT-L/14 M.M. 44.4 22.3 24.9 70.6 25.2 16.5 21.3 10.9 29.5
+GEM [3] CLIP ViT-L/14 I.T. 45.2 25.5 28.3 83.7 28.1 19.2 27.1 13.2 33.8
+CLIPSurgery [27] CLIP ViT-L/14 I.T. 47.9 27.3 28.1 84.3 31.0 21.4 29.7 17.3 35.9
+PnP-OVSS [30] CLIP ViT-L/14 M.M. - - 36.2 51.3 28.0 17.9 - 14.2 -
+NACLIP [15] CLIP ViT-L/14 M.M. 52.1 28.7 29.9 78.6 32.1 21.4 31.4 17.3 36.4
+ClearCLIP [22] CLIP ViT-L/14 M.M. 48.6 28.0 28.6 84.8 31.5 21.2 32.1 16.9 36.5
+ProxyCLIP‡ [23] CLIP ViT-L/14 M.M. 58.1 34.1 37.4 82.0 37.3 25.5 38.1 21.2 41.7
+SC-CLIP [1] CLIP ViT-L/14 M.M. 65.0 36.9 40.5 88.3 40.6 26.9 41.3 21.7 45.2
+Ours
+- solve optimal path CLIP ViT-L/14 68.2 37.9 42.3 89.7 44.8 28.9 42.3 23.4 47.2
+- solve maximum velocityCLIP ViT-L/14 68.9 38.7 42.9 90.1 45.3 29.2 43.9 23.4 47.8
+transformers package. Noise-free latent features of images
+are directly encoded, and a single-step unconditional de-
+noising process is performed to extract self-attention ten-
+sors from each block. To ensure computational efficiency,
+experiments are conducted using 16-bit floating-point pre-
+cision. The regularization scalarϵis set to0.1. The number
+of iterations for Equation 8 is set to 50. The parameterτ
+is set to0.3. Existing approaches predominantly leverage
+sliding-window inference to enhance performance, whereas
+our method employs direct whole-image inference without
+requiring any post-processing.
+4.2. System level comparison
+We conduct quantitative evaluations on eight benchmark
+datasets to compare against existing OVSS methods. To en-
+sure experimental fairness, we perform evaluations on mod-
+els with two distinct scales: the CLIP base and large models.
+Existing methods involve time-consuming iterative train-
+ing and model-specific attention modulation paradigms. As
+shown in Table 1, the performance comparison across all
+benchmarks demonstrates that: (1) Our method achieves an
+average improvement of approximately2mIoU points on
+all benchmarks under both base and large scales. For in-
+stance, under the base scale, the optimal path and maximum
+velocity modes achieve mIoU improvements of+1.8%and
++2.5%mIoU over CASS [20], respectively. (2) Our ap-
+proach consistently ranks in the top two positions on nearly
+every benchmark. Specifically, our method achieves state-
+of-the-art performance on VOC21, Context60, VOC20,
+COCO-Stuff, and Cityscapes. (3) The maximum velocity
+mode exhibits marginal superiority over the optimal path
+mode, yielding mIoU gains of+0.7%and+0.6%under
+the base and large scale, respectively.
+Figure 4 displays visualizations of the outputs from each
+stage of our pipeline, including the normalized logits, dis-
+tribution discrepancies for both optimal path and maximum
+velocity modes, and the final segmentation maps. Com-
+parisons of these visualizations reveal two key observa-
+tions. First, the optimal path mode exhibits higher sensitiv-
+ity to intra-class high-frequency textures, whereas the max-
+imum velocity mode demonstrates stronger responsiveness
+13173
+
+
+=== PAGE 7 ===
+Figure 4. Visualization of outputs from each stage of our pipeline. We present the logits and distribution discrepancies for each category
+across the input image, segmentation maps, and GT. Predictions1and2represent the segmentation maps obtained by solving the optimal
+path and maximum velocity formulations, respectively. Visualization of both distribution discrepancies demonstrates that the optimal path
+mode is more sensitive to high-frequency regions than the maximum velocity mode. For instance, the visualization results from the optimal
+path mode in the second image can clearly depict the internal contours of the dog.
+to inter-class distinctions. Second, as a result, the optimal
+path mode occasionally fails to segment large background
+regions with inconsistent illumination (e.g., the staircase in
+the second image, which is mis-segmented into incorrect re-
+gions), whereas the maximum velocity mode precisely de-
+lineates inter-class boundaries.
+4.3. Ablation study
+Component analysis.Table 2 presents the quantita-
+tive analysis of each component’s contribution in the pro-
+posed method. We establish a baseline model (Row (I))
+that utilizes the CLIP base model to directly output raw
+vision-language features and compute their cosine similar-
+ity, termed raw logits; the final segmentation maps are ob-
+tained through anarg maxoperation and bilinear upsam-
+pling. Row (II) enhances Row (I) by computing the KL
+divergence map between the raw logits and the degenerate
+map, then applying the prior segmentation map acquisition
+process to this KL divergence map. Building upon Row
+(II), Row (III) incorporates NMS on the raw logits to mask
+low-confidence patches. Row (IV) further improves Row
+(III) by replacing bilinear upsampling with JBU. Rows (V)
+and (VI) modify Row (IV) by substituting the KL diver-
+gence map with the proposed optimal path map and max-
+imum velocity map, respectively. Finally, Row (VII) aug-
+ments Row (IV) through fusion of the optimal path map
+and maximum velocity map. The experimental results from
+component-wise performance comparisons reveal the fol-
+lowing insights: (1) Constructing distribution discrepancy
+yields performance improvements comparable to optimiz-
+ing logits; specifically, Row (II) achieves a significant aver-
+age increase of+8.9%in mIoU over the baseline. (2) The
+two proposed modes for constructing distribution discrep-
+ancy demonstrate exceptional performance, with respective
+gains of+22.2%and+23.0%in mIoU. (3) However, fus-
+ing the two distinct distribution discrepancy maps leads to
+performance degradation.
+Time step analysis.The number of denoising steps in
+diffusion models influences feature representations during
+encoding; while increasing these steps typically enhances
+generation quality in image synthesis tasks, its impact on
+constructing the maximum velocity map requires specific
+investigation. To quantify this effect, we conducted com-
+parative experiments across varying step configurations. As
+illustrated in Figure 5 (a), quantitative evaluation across five
+benchmark datasets demonstrates that fewer denoising steps
+yield superior performance. We hypothesize that this phe-
+nomenon stems from the encoding process avoiding noise
+injection, thereby ensuring deterministic feature extraction
+without addressing generative variability.
+Attention analysis.Self-attention tensors play a pivotal
+role in the proposed method’s pipeline; for instance, dur-
+ing the construction of the maximum velocity map, these
+tensors are utilized to formulate the transition matrix of
+Markov processes, which governs the generation of the
+maximum velocity map. In this evaluation, we quantita-
+13174
+
+
+=== PAGE 8 ===
+Figure 5. Quantitative evaluation of SD2 time step, attention resolution, thresholdτand foundation model on standard benchmarks is
+presented, with each metric represented by a distinct color (unit: %). Here, SD2 time step denotes the denoising step in SD2, and attention
+resolution refers to the input size of SD2. All comparisons were performed using the maximum velocity mode.
+Table 2. Effect of different components (unit: %).Baseline: ap-
+plyarg maxto the raw logits without optimization or analytical
+solution.KL: Kullback-Leibler (KL) divergence.O.P.: solving
+the optimal path.M.V .: solving the maximum velocity.
+ComponentsVOC21 COCO-Stuff Cityscapes ADE20K Avg.
+(I)Baseline 18.6 7.2 6.7 3.2 8.9
+(II) (I)+ KL 44.2 12.1 8.6 6.4 17.8
+(III) (II)+ NMS 45.9 13.0 9.6 7.7 19.1
+(IV) (III)+ JBU 46.3 13.3 10.1 8.8 19.6
+(V) (IV)+ O.P. 66.9 28.6 41.7 22.8 40.0
+(VI) (IV)+ M.V .67.8 28.9 43.3 23.0 40.8
+(VII) (V)+(VI) 64.9 26.8 41.4 20.5 38.4
+tively compare self-attention tensors derived from diverse
+foundation models, aggregation strategies across blocks in
+SD2, and the impact of resolution variations. The results
+demonstrate: (1) as shown in Figure 5 (d), SD2’s self-
+attention tensors outperform those from three ViT-based
+foundation models across five benchmark datasets for tran-
+sition matrix construction; (2) as presented in Table 3, ag-
+gregating SD2 self-attention tensors reveals that combining
+up0 and up1 blocks achieves optimal performance among
+six kinds of strategies; (3) as illustrated in Figure 5 (b),
+higher resolutions consistently yield superior performance.
+Thresholdτanalysis.During the construction of the max-
+imum velocity map, thresholdτdetermines the conver-
+gence time as the logits distribution approaches the degen-
+erate distribution; theoretically, higher thresholds acceler-
+ate convergence. This part examines the impact of thresh-
+old variations: as shown in Figure 4 (c), performance peaks
+atτ= 0.3and decreases monotonically with increasing
+threshold. We hypothesize that higher thresholds cause pre-
+mature degeneration, preventing the logits distribution from
+reaching the optimal degradation state.
+Logits-optimization analysis.Numerous methods directly
+modify the CLIP attention mechanism to optimize logits.
+We focus on comparing two mainstream approaches: trans-
+forming the original query-key computation into query-
+query mode and key-key mode, respectively. Quantita-
+Table 3. Effect of different strategy for our components (unit: %).
+q-q mean: the average attention tensor between queries across
+all layers.k-k mean: the average attention tensor between keys
+across all layers. All comparisons were performed using the max-
+imum velocity mode.
+Variants VOC21 COCO-Stuff Cityscapes ADE20K Avg.
+self-attention weight combination (down0,down1,up0,up1,up2)
+(I)(1,0,0,0,0) 62.1 24.6 37.5 17.6 35.5
+(II)(0,1,0,0,0) 63.3 26.1 40.1 18.5 37.0
+(III)(0,0,1,0,0) 65.0 26.7 41.9 19.6 38.3
+(IV)(0,0,0,1,0) 66.2 27.8 42.8 21.8 39.7
+(V)(0,0,0,0,1) 65.3 26.9 42.4 20.2 38.7
+(VI) (0,0,0.5,0.5,0)67.8 28.9 43.3 23.0 40.8
+training-free logits-optimization methods
+(I)origin 63.7 26.2 37.5 17.5 36.2
+(II)q-q mean 65.5 27.3 42.1 21.5 39.1
+(III) k-k mean 67.8 28.9 43.3 23.0 40.8
+tive comparisons in Table 3 demonstrate that these schemes
+yield improvements of2.9%and4.6%respectively com-
+pared to the original attention mechanism.
+5. Conclusion
+In this work, we propose a novel approach that bypasses
+the logits-optimization paradigm, which typically employs
+time-consuming iterative training or model-specific atten-
+tion modulation to minimize the discrepancy between log-
+its and GT distributions. Our approach directly calculates
+the distribution discrepancy to quantify segmentation maps.
+The efficacy of our method stems from a hypothesis foun-
+dation: the distribution discrepancy effectively captures se-
+mantic information. We first validate this hypothesis and
+then introduce a degenerate distribution as a surrogate for
+GT. And then, we devise two distinct modes for discrep-
+ancy construction: an optimal path map via optimal trans-
+port theory, and a maximum velocity map based on Markov
+processes. Comprehensive evaluations across eight bench-
+mark datasets demonstrate the effectiveness of our method.
+13175
+
+
+=== PAGE 9 ===
+Acknowledgments
+This work was supported in part by National Nat-
+ural Science Foundation of China under Grant
+62306165, 62376233, in part by Science and Tech-
+nology on Sonar Laboratory under grant 2024-JCJQ-
+LB-32/07, in part by State Grid Corporation Head-
+quarters Technology Project 52120025004V-463-
+FGS, in part by Fundamental Research Funds for
+the Central Universities under Grant 20720250031,
+in part by Xiaomi Young Talents Program award.
+References
+[1] Sule Bai, Yong Liu, Yifei Han, Haoji Zhang, and Yansong
+Tang. Self-calibrated clip for training-free open-vocabulary
+segmentation.arXiv preprint arXiv:2411.15869, 2024. 6
+[2] Luca Barsellotti, Roberto Amoroso, Marcella Cornia,
+Lorenzo Baraldi, and Rita Cucchiara. Training-free open-
+vocabulary segmentation with offline diffusion-augmented
+prototype generation. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+3689–3698, 2024. 6
+[3] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and
+Hilde Kuehne. Grounding everything: Emerging localiza-
+tion properties in vision-language transformers. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 3828–3837, 2024. 6
+[4] Maxime Bucher, Tuan-Hung Vu, Matthieu Cord, and Patrick
+P´erez. Zero-shot semantic segmentation.Advances in Neural
+Information Processing Systems, 32, 2019. 2
+[5] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. InComputer Vision
+and Pattern Recognition (CVPR), 2018 IEEE conference on.
+IEEE, 2018. 5
+[6] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learn-
+ing to generate text-grounded mask for open-world semantic
+segmentation from only image-text pairs. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 11165–11174, 2023. 6
+[7] Jiaxin Cheng, Soumyaroop Nandi, Prem Natarajan, and
+Wael Abd-Almageed. Sign: Spatial-information incorpo-
+rated generative network for generalized zero-shot seman-
+tic segmentation. InProceedings of the IEEE/CVF Inter-
+national Conference on Computer Vision, pages 9556–9566,
+2021. 2
+[8] Seokju Cho, Heeseong Shin, Sunghwan Hong, Seungjun
+An, Seungjun Lee, Anurag Arnab, Paul Hongsuck Seo,
+and Seungryong Kim. Cat-seg: Cost aggregation for
+open-vocabulary semantic segmentation.arXiv preprint
+arXiv:2303.11797, 2023. 2
+[9] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-
+seg: Cost aggregation for open-vocabulary semantic seg-
+mentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 4113–
+4123, 2024. 2
+[10] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. InProceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 3213–3223, 2016. 5
+[11] Marco Cuturi. Sinkhorn distances: Lightspeed computation
+of optimal transport.Advances in Neural Information Pro-
+cessing Systems, 26, 2013. 4
+[12] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 11583–11592, 2022. 2
+[13] M. Everingham, L. Van Gool, C. K. I. Williams, J. Winn, and
+A. Zisserman. The PASCAL Visual Object Classes Chal-
+lenge 2012 (VOC2012) Results, 2012. 5
+[14] Zhangxuan Gu, Siyuan Zhou, Li Niu, Zihan Zhao, and
+Liqing Zhang. Context-aware feature generation for zero-
+shot semantic segmentation. InProceedings of the 28th ACM
+International Conference on Multimedia, pages 1921–1929,
+2020. 2
+[15] Sina Hajimiri, Ismail Ben Ayed, and Jose Dolz. Pay attention
+to your neighbours: Training-free open-vocabulary semantic
+segmentation. In2025 IEEE/CVF Winter Conference on Ap-
+plications of Computer Vision (WACV), pages 5061–5071.
+IEEE, 2025. 1, 2, 6
+[16] Shuting He, Henghui Ding, and Wei Jiang. Primitive gener-
+ation and semantic-related alignment for universal zero-shot
+segmentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 11238–
+11247, 2023. 1
+[17] Siyu Jiao, Yunchao Wei, Yaowei Wang, Yao Zhao, and
+Humphrey Shi. Learning mask-aware clip representations
+for zero-shot segmentation.Advances in Neural Information
+Processing Systems, 36:35631–35653, 2023. 2
+[18] Dahyun Kang and Minsu Cho. In defense of lazy visual
+grounding for open-vocabulary semantic segmentation. In
+European Conference on Computer Vision, pages 143–164.
+Springer, 2024. 6
+[19] Markus Karmann and Onay Urfalioglu. Repurposing stable
+diffusion attention for training-free unsupervised interactive
+segmentation. InProceedings of the Computer Vision and
+Pattern Recognition Conference, pages 24518–24528, 2025.
+5
+[20] Chanyoung Kim, Dayun Ju, Woojung Han, Ming-Hsuan
+Yang, and Seong Jae Hwang. Distilling spectral graph for
+object-context aware open-vocabulary semantic segmenta-
+tion. InProceedings of the Computer Vision and Pattern
+Recognition Conference, pages 15033–15042, 2025. 2, 6
+[21] Hyeongjun Kwon, Taeyong Song, Somi Jeong, Jin Kim,
+Jinhyun Jang, and Kwanghoon Sohn. Probabilistic prompt
+learning for dense prediction. InProceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 6768–6777, 2023. 2
+[22] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+13176
+
+
+=== PAGE 10 ===
+ence. InEuropean Conference on Computer Vision, pages
+143–160. Springer, 2024. 1, 2, 6
+[23] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Proxyclip: Proxy
+attention improves clip for open-vocabulary segmentation.
+InEuropean Conference on Computer Vision, pages 70–88.
+Springer, 2024. 1, 2, 6
+[24] Jiahao Li, Yang Lu, Yuan Xie, and Yanyun Qu. Relation-
+ship prompt learning is enough for open-vocabulary seman-
+tic segmentation.Advances in Neural Information Process-
+ing Systems, 37:74298–74324, 2024. 2
+[25] Jiahao Li, Yang Lu, Yachao Zhang, Fangyong Wang, Yuan
+Xie, and Yanyun Qu. Novel category discovery with x-agent
+attention for open-vocabulary semantic segmentation. In
+Proceedings of the 33rd ACM International Conference on
+Multimedia, pages 2929–2938, 2025. 1
+[26] Peike Li, Yunchao Wei, and Yi Yang. Consistent structural
+relation learning for zero-shot segmentation.Advances in
+Neural Information Processing Systems, 33:10317–10327,
+2020. 1
+[27] Yi Li, Hualiang Wang, Yiqun Duan, and Xiaomeng Li. Clip
+surgery for better explainability with enhancement in open-
+vocabulary tasks.arXiv e-prints, pages arXiv–2304, 2023.
+6
+[28] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+7061–7070, 2023. 2
+[29] Xinyu Liu, Beiwen Tian, Zhen Wang, Rui Wang, Kehua
+Sheng, Bo Zhang, Hao Zhao, and Guyue Zhou. Delving into
+shape-aware zero-shot semantic segmentation. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 2999–3009, 2023. 1
+[30] Jiayun Luo, Siddhesh Khandelwal, Leonid Sigal, and
+Boyang Li. Emergent open-vocabulary semantic segmenta-
+tion from off-the-shelf vision-language models. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 4029–4040, 2024. 6
+[31] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and
+semantic segmentation in the wild. InIEEE Conference on
+Computer Vision and Pattern Recognition (CVPR), 2014. 5
+[32] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 2
+[33] Giuseppe Pastore, Fabio Cermelli, Yongqin Xian, Massimil-
+iano Mancini, Zeynep Akata, and Barbara Caputo. A closer
+look at self-training for zero-label semantic segmentation. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 2693–2702, 2021. 2
+[34] Jie Qin, Jie Wu, Pengxiang Yan, Ming Li, Ren Yuxi, Xue-
+feng Xiao, Yitong Wang, Rui Wang, Shilei Wen, Xin Pan,
+et al. Freeseg: Unified, universal and open-vocabulary image
+segmentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 19446–
+19455, 2023. 1
+[35] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. InInternational conference on machine learning, pages
+8748–8763. PmLR, 2021. 6
+[36] Robin Rombach, Andreas Blattmann, Dominik Lorenz,
+Patrick Esser, and Bj ¨orn Ommer. High-resolution image
+synthesis with latent diffusion models. InProceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 10684–10695, 2022. 5
+[37] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. InEuropean Conference on Com-
+puter Vision, pages 139–156. Springer, 2024. 6
+[38] Feihong Shen, Jun Liu, and Ping Hu. Conterfactual gen-
+erative zero-shot semantic segmentation.arXiv preprint
+arXiv:2106.06360, 2021. 1
+[39] Hengcan Shi, Son Duy Dao, and Jianfei Cai. Llmformer:
+Large language model for open-vocabulary semantic seg-
+mentation.International Journal of Computer Vision, 133
+(2):742–759, 2025. 2
+[40] Gyungin Shin, Weidi Xie, and Samuel Albanie. Reco: Re-
+trieve and co-segment for zero-shot transfer.Advances in
+Neural Information Processing Systems, 35:33754–33767,
+2022. 6
+[41] Vladan Stojni ´c, Yannis Kalantidis, Ji ˇr´ı Matas, and Giorgos
+Tolias. Lposs: Label propagation over patches and pixels
+for open-vocabulary semantic segmentation. InProceedings
+of the Computer Vision and Pattern Recognition Conference,
+pages 9794–9803, 2025. 2, 3
+[42] Shuyang Sun, Runjia Li, Philip Torr, Xiuye Gu, and Siyang
+Li. Clip as rnn: Segment countless visual concepts without
+training endeavor. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+13171–13182, 2024. 6
+[43] Junjiao Tian, Lavisha Aggarwal, Andrea Colaco, Zsolt Kira,
+and Mar Gonzalez-Franco. Diffuse attend and segment: Un-
+supervised zero-shot segmentation using stable diffusion. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 3554–3563, 2024. 5
+[44] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethink-
+ing self-attention for dense vision-language inference. In
+European Conference on Computer Vision, pages 315–332.
+Springer, 2024. 1, 2, 6
+[45] Jinglong Wang, Xiawei Li, Jing Zhang, Qingyuan Xu, Qin
+Zhou, Qian Yu, Lu Sheng, and Dong Xu. Diffusion model is
+secretly a training-free open vocabulary semantic segmenter.
+IEEE Transactions on Image Processing, 2025. 2
+[46] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Xiangtai Li,
+Wentao Liu, and Chen Change Loy. Clipself: Vision trans-
+former distills itself for open-vocabulary dense prediction.
+arXiv preprint arXiv:2310.01403, 2023. 2
+13177
+
+
+=== PAGE 11 ===
+[47] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Wentao
+Liu, and Chen Change Loy. Clim: Contrastive language-
+image mosaic for region representation. InProceedings of
+the AAAI Conference on Artificial Intelligence, pages 6117–
+6125, 2024. 2
+[48] Weijia Wu, Yuzhong Zhao, Mike Zheng Shou, Hong Zhou,
+and Chunhua Shen. Diffumask: Synthesizing images with
+pixel-level annotations for semantic segmentation using dif-
+fusion models.arXiv preprint arXiv:2303.11681, 2023. 2
+[49] Monika Wysocza ´nska, Oriane Sim´eoni, Micha¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzci ´nski, and Patrick P ´erez.
+Clip-dinoiser: Teaching clip a few dino tricks for open-
+vocabulary semantic segmentation. InEuropean Conference
+on Computer Vision, pages 320–337. Springer, 2024. 6
+[50] Yongqin Xian, Subhabrata Choudhury, Yang He, Bernt
+Schiele, and Zeynep Akata. Semantic projection network
+for zero-and few-label semantic segmentation. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 8256–8265, 2019. 2
+[51] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas Breuel, Jan Kautz, and Xiaolong Wang. Groupvit:
+Semantic segmentation emerges from text supervision. In
+Proceedings of the IEEE/CVF conference on computer vi-
+sion and pattern recognition, pages 18134–18144, 2022. 2,
+6
+[52] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. InEuropean Conference on Computer Vi-
+sion, pages 736–753. Springer, 2022. 2
+[53] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 2945–
+2954, 2023. 2
+[54] Seonghoon Yu, Paul Hongsuck Seo, and Jeany Son. Zero-
+shot referring image segmentation with global-local context
+features. InProceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition, pages 19456–
+19465, 2023. 2
+[55] Hao Zhang, Feng Li, Shilong Liu, Lei Zhang, Hang Su, Jun
+Zhu, Lionel M Ni, and Heung-Yeung Shum. Dino: Detr
+with improved denoising anchor boxes for end-to-end object
+detection.arXiv preprint arXiv:2203.03605, 2022. 2
+[56] Hang Zhao, Xavier Puig, Bolei Zhou, Sanja Fidler, and An-
+tonio Torralba. Open vocabulary scene parsing. InProceed-
+ings of the IEEE International Conference on Computer Vi-
+sion, pages 2002–2010, 2017. 1
+[57] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset.International
+Journal of Computer Vision, 127:302–321, 2019. 5
+[58] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. InEuropean Conference on Com-
+puter Vision, pages 696–712. Springer, 2022. 1, 2, 6
+[59] Ziqin Zhou, Yinjie Lei, Bowen Zhang, Lingqiao Liu, and
+Yifan Liu. Zegclip: Towards adapting clip for zero-shot se-
+mantic segmentation. InProceedings of the IEEE/CVF Con-
+ference on Computer Vision and Pattern Recognition, pages
+11175–11185, 2023. 2
+13178

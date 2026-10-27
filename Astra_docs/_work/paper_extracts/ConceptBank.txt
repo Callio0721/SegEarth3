@@ -1,0 +1,1665 @@
+=== PDF PAGE 1 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+Gensheng Pei 1 Xiruo Jiang 2 Yazhou Yao3 Xiangbo Shu 3 Fumin Shen 4 Byeungwoo Jeon 1
+Abstract
+The recent introduction of SAM3 has revolu-
+tionized Open-V ocabulary Segmentation (OVS)
+throughpromptable concept segmentation, which
+grounds pixel predictions in flexible concept
+prompts. However, this reliance on pre-defined
+concepts makes the model vulnerable: when vi-
+sual distributions shift (data drift) or conditional
+label distributions evolve (concept drift) in the
+target domain, the alignment between visual ev-
+idence and prompts breaks down. In this work,
+we present CONCEPTBANK, a parameter-free cal-
+ibration framework to restore this alignment on
+the fly. Instead of adhering to static prompts, we
+construct a dataset-specific concept bank from the
+target statistics. Our approach (i) anchors target-
+domain evidence via class-wise visual prototypes,
+(ii) mines representative supports to suppress out-
+liers under data drift, and (iii) fuses candidate
+concepts to rectify concept drift. We demonstrate
+that CONCEPTBANKeffectively adapts SAM3 to
+distribution drifts, including challenging natural-
+scene and remote-sensing scenarios, establishing
+a new baseline for robustness and efficiency in
+OVS. Code and model are available at https:
+//github.com/pgsmall/ConceptBank.
+1. Introduction
+Open-vocabulary segmentation (OVS) (Zhao et al., 2017;
+Zhou et al., 2022a; Xu et al., 2022b; Mukhoti et al., 2023)
+has fundamentally shifted visual recognition from closed-set
+taxonomies to language-driven generalization. By leverag-
+ing the semantic richness of contrastive vision-language
+models (VLMs) (Radford et al., 2021; Jia et al., 2021), mod-
+ern OVS approaches allow users to segment arbitrary cat-
+egories using free-form text. Among these, SAM3 (Carion
+1Department of Electrical and Computer Engineering,
+Sungkyunkwan University 2School of Computing and Artificial
+Intelligence, Southwest Jiaotong University 3School of Computer
+Science and Engineering, Nanjing University of Science and Tech-
+nology 4School of Computer Science and Engineering, University
+of Electronic Science and Technology of China.
+Preprint. February 9, 2026.
+Data Drift
+Concept Drift
+CONCEPTBANK
+(Shifted Visual Statistics - Remote Sensing)
+(Shifted Label Semantics - "Mouse")
+CONCEPTBANK
+Target-
+Calibrated
+Anchor
+Concept Bank
+Concept Bank
+(Shifted Visual Statistics - Remote Sensing)
+(Shifted Label Semantics - "Mouse")
+SAM3
+SAM3
+Target-
+Calibrated
+Anchor
+(e.g.,"animal 
+mouse")
+SAM3
+SAM3
+Source-Induced
+Prompt:
+building
+Source-Induced
+Prompt:
+animal or mouse
+(a)
+(b)
+Figure 1.Data drift and concept drift in SAM3.We contrast the
+segmentation outputs of vanilla SAM3 and our CONCEPTBANK
+under two failure patterns: (a)data drift(shifted visual statistics)
+and (b)concept drift(shifted label semantics). CONCEPTBANK
+restores prompt-mask alignment by replacing static source-induced
+prompts with target-calibrated anchors from a Concept Bank.
+et al., 2026) stands as a pivotal representative. Through its
+promptable concept segmentationmechanism, SAM3 does
+not merely classify regions; it steers the mask generation
+process directly via flexible concept prompts, offering a
+compelling vision of a reusable,segment-anythingfounda-
+tion model in the open-vocabulary segmentation regime.
+However, the promise of a universal, drop-in segmenter
+encounters a harsh reality when deployed in the wild: the as-
+sumption that a static text embedding (the prompt) remains
+a valid anchor for visual concepts across diverging domains
+is often flawed. While SAM3 possesses powerful generaliza-
+tion capabilities, its reliance on pre-defined concepts renders
+it vulnerable to distribution drifts. As illustrated in Fig. 1,
+this fragility manifests as two distinct yet interconnected
+failure patterns, as follows:
+• Data Drift( PS(X)̸=P D(X)): The visual statistics of
+the target domain D often diverge significantly from the
+source pre-training distribution S. For instance, in re-
+mote sensing or medical imaging, spectral characteristics,
+1
+arXiv:2602.06333v1  [cs.CV]  6 Feb 2026
+
+=== PDF PAGE 2 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+bird’s-eye viewpoints, and complex background textures
+perturb the geometry of the dense visual features (Kore
+et al., 2024). Since SAM3 relies on similarity-based
+matching, geometric distortions cause valid visual evi-
+dence to drift away from their corresponding text anchors,
+leading to segmentation collapse or hallucination.
+• Concept Drift( PS(Y|X)̸=P D(Y|X) ): The conditional
+semantics of a label are not immutable; they evolve with
+context (Lu et al., 2018). A class name such as “mouse”
+can denote a computer peripheral in one dataset but refer
+to a mammal in another domain, leading to incompatible
+label semantics despite sharing the same name. When a
+static prompt embedding carries a pre-training-dominant
+interpretation into a target domain governed by a different
+labeling rule, the model suffers from semantic misalign-
+ment, even if the visual features are robust.
+Current approaches to mitigate these shifts typically fall
+into two directions. On one hand,model fine-tuningor
+adapter learning can realign the visual backbone, but this
+sacrifices the training-free efficiency of foundation models,
+introduces bias toward the adapted domains, and requires
+additional optimization and compute (Xu et al., 2022b; Li
+et al., 2022a; Ghiasi et al., 2022; Xie et al., 2024; Cho et al.,
+2024; Luo et al., 2023; Wu et al., 2024; Barsellotti et al.,
+2025). On the other hand,prompt engineeringattempts to
+tweak the text side manually, but this is a blind process. It
+ignores the actual statistical distribution of the target data
+and often devolves into trial-and-error heuristics. Prompt
+learning methods improve conditioning when training is
+allowed (Zhou et al., 2022b; Khattak et al., 2023; Pratt et al.,
+2023), yet they still rely on an explicit optimization stage
+that is misaligned with the plug-and-play deployment goal.
+To bridge this gap, we argue for adata-centric calibration
+perspective. Rather than modifying the heavy visual back-
+bone or guessing the optimal text template, we propose to
+tamethe model (i.e., SAM3) by recalibrating its concept
+representations using the target data itself. If the visual
+evidence shifts, the linguistic anchors must shift to meet it.
+In this work, we presentCONCEPTBANK, arobust,
+parameter-freecalibration framework for restoring prompt-
+visual alignment on the fly. Instead of using static, pre-
+computed text embeddings, CONCEPTBANKconstructs a
+dataset-specific dictionary, a concept bank, directly derived
+from the target domain’s statistics (specifically, the support
+set of D). This bank acts as a dynamic interface between
+SAM3’s frozen knowledge and the specific nuances of the de-
+ployment environment. CONCEPTBANKoperates via three
+synergistic mechanisms: (i) it estimates class-wisevisual
+prototypesto anchor concepts in the target feature space;
+(ii) it appliesrepresentative support miningto reduce the
+influence of outliers under severe drift, aligning with robust-
+estimation principles; and (iii) it performsconcept fusionto
+synthesize calibrated query embeddings that better match
+the target labeling semantics. Crucially, CONCEPTBANK
+requires no gradient updates to SAM3. It functions as a plug-
+and-play module that strengthens a generic OVS model for
+distribution-shifted deployment. We demonstrate that this
+approach is not only conceptually well-motivated but also
+empirically effective, improving robustness from standard
+natural-scene benchmarks to remote-sensing imagery. Our
+main contributions are summarized as follows:
+• A drift-centric view of prompt-conditioned OVS is devel-
+oped by separatingdata driftfromconcept drift, clarify-
+ing why static prompts fail under cross-domain use.
+• We propose CONCEPTBANK, aparameter-freeframe-
+work tailored for SAM3 that efficiently builds a dataset-
+specific concept bank from target support statistics.
+• We introduce a three-stage construction pipeline compris-
+ingprototype estimation,representative support mining,
+andprototype-consistent concept fusionto stabilize cali-
+bration under appearance shifts and semantic relabeling.
+• Extensive experiments onnatural-sceneandremote-
+sensingbenchmarks show consistent gains over vanilla
+prompting and competitive performance against strong
+baselines in the presence of realistic distribution drift.
+2. Method
+2.1. Problem Formulation: Distribution Drift in OVS
+Open-vocabulary segmentation is considered on a labeled
+target-domain dataset D={(x i, yi)}N
+i=1 with N samples,
+where xi ∈ X denotes an image and yi ∈ {0,1} H×W×|C| is
+the corresponding set of category masks at spatial resolution
+H×W for C. The category set C is specified at inference
+time via language prompts (or concept queries), and the
+model is expected to generalize beyond the pre-training
+vocabulary. The samples are assumed to be drawn from an
+underlying target distributionP D.
+A pre-trained and frozen foundation model Φ (instantiated
+by SAM3) is adopted, consisting of a visual encoder ϕV :
+X →R d and a text encoder ϕT :T →R d. Such models
+follow amatch-and-segmentparadigm: given a prompt tc
+(e.g., “a photo of a [ class]”), a query embedding ec =
+ϕT (tc) conditions the mask predictor to produce a binary
+segmentationˆyc. This inference process is summarized as:
+ˆyc =f Φ(x,e c), c∈ C.(1)
+The key obstacle in transferring Φ from its pre-training envi-
+ronment S to the target domain is the misalignment between
+target visual evidence and source-induced language anchors.
+This paper characterizes the deployment difficulty as adual-
+driftphenomenon, includingdata drift( PS(X)̸=P D(X))
+andconcept drift( PS(Y|X)̸=P D(Y|X) ). Both forms of
+drift manifest as degraded cross-modal alignment, thereby
+reducing the reliability of prompt-conditioned masks.
+2
+
+=== PDF PAGE 3 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+ 
+Stage I: Target Prototype Estimation 
+GT Masks
+Masked 
+Pooling
+(Eq.4)
+Global
+Averaging
+(Eq.5)
+Class 
+Prototype
+Phase 1: ConceptBank Construction
+Stage II: Representative Support Mining
+Cosine Similarity
+Class Label
+Top-K
+Selection
+(Eq.6)
+Representative 
+Support Set
+Stage Ill: Prototype-Consistent Concept Fusion
+LLM
+Expansion
+Candidate 
+Embeddings
+Frozen
+SAM3
+ Dice Eval.
+(Eq.7)
+Scores
+Top-J &
+Soft Fusion
+(Eq.8)
+Scores
+Top-J &
+Soft Fusion
+(Eq.8)
+Frozen Text
+Encoder
+Frozen Text
+Encoder
+SoftmaxSoftmax
+Target-Calibrated
+  Embedding
+Target-Calibrated
+  Embedding
+Concept Bank B  
+(Matrix B)
+Retrieve
+Anchors
+Note: 
+Text Encoder     
+is bypassed here.
+Predicted 
+Segmentation    
+Predicted 
+Segmentation    
+Phase 2: ConceptBank Inference
+Frozen Visual 
+Target 
+Support Set
+Stage I: Target Prototype Estimation 
+GT Masks
+Encoder
+Masked 
+Pooling
+(Eq.4)
+Global
+Averaging
+(Eq.5)
+Class 
+Prototype
+Phase 1:Offline Concept Bank Construction
+Stage II: Representative Support MiningCosine
+Similarity
+Cosine
+Similarity
+Class Label
+Top-K
+Selection
+(Eq.6)
+Representative 
+Support Set
+Stage Ill: Prototype-Consistent Concept Fusion
+LLM
+Expansion
+Candidate 
+Embeddings
+Frozen
+SAM3
+ Dice Eval. Scores
+Top-J &
+Soft Fusion
+(Eq.8)
+Scores
+Top-J &
+Soft Fusion
+(Eq.8)
+Frozen Text
+Encoder
+Frozen Text
+Encoder
+SoftmaxSoftmax
+Target-Calibrated
+Embedding
+Target-Calibrated
+Embedding
+Concept Bank B  
+(Matrix M)
+Retrieve
+Anchors
+ (Target Domain)
+Frozen SAM3
+Foundation
+Model
+Test Image
+ Note:      (Text Encoder)
+is bypassed here.
+Note:      (Text Encoder)
+is bypassed here.
+Predicted 
+Segmentation    
+Predicted 
+Segmentation    
+Phase 2:Online Inference
+Crop 
+Embedding
+Images
+Frozen Visual 
+Encoder
+Frozen Visual 
+Encoder
+ 
+Target 
+Support Set
+Stage I: Target Prototype Estimation 
+GT Masks
+Masked 
+Pooling
+(Eq.4)
+Global
+Averaging
+(Eq.5)
+Class 
+Prototype
+Phase 1:Offline Concept Bank 
+Construction
+Stage II: Representative Support Mining
+Cosine Similarity
+Class Label
+Top-K
+Selection
+(Eq.6)
+Representative 
+Support Set
+Stage Ill: Prototype-Consistent Concept Fusion
+LLM
+Expansion
+Candidate 
+Embeddings
+Frozen
+SAM3
+ Dice Eval.
+Scores
+Top-J &
+Soft Fusion
+(Eq.8)
+Scores
+Top-J &
+Soft Fusion
+(Eq.8)
+Frozen Text
+Encoder
+Frozen Text
+Encoder
+SoftmaxSoftmaxTarget-Calibrated
+Embedding
+Target-Calibrated
+Embedding
+Concept Bank B  
+(Matrix M)
+Retrieve
+Anchors
+Frozen SAM3
+Foundation
+Model
+Note:      (Text Encoder)
+is bypassed here.
+Note:      (Text Encoder)
+is bypassed here.
+Predicted 
+Segmentation    
+Predicted 
+Segmentation    
+Phase 2:Online Inference
+Crop Embedding
+Images
+Frozen Visual 
+Encoder
+Frozen Visual 
+Encoder
+ (Target Domain)
+Test Image
+ (Target Domain)
+Test Image
+Foreground-aware 
+Embedding
+  Target 
+Support Set
+  Target 
+Support Set
+1
+Frozen SAM3
+Foundation
+Model
+Predicted 
+Segmentation    
+Predicted 
+Segmentation    
+Note:      (Text Encoder)
+is bypassed here.
+Note:      (Text Encoder)
+is bypassed here.
+Predicted 
+Segmentation    
+ (Target Domain)
+Test Image
+ (Target Domain)
+Test Image
+Figure 2.Illustration of the proposed CONCEPTBANKframework. Phase 1 (Construction §2.2)on target support set D:Stage I
+estimates class prototypes using frozen ϕV (masked pooling + class averaging);Stage IImines representative supports Rc via cosine
+TopK;Stage IIIfuses LLM-expanded texts with visual guidance to produce target-calibrated embeddings e∗
+c, forming Concept Bank B.
+Phase 2 (Inference §2.3)on target test set: plugBinto frozenSAM3for test segmentation, bypassing the text encoderϕ T .
+Data Drift.The marginal distribution of visual appearances
+shifts across domains (e.g., sensor characteristics, spectral
+responses, viewpoints, illumination, and background con-
+text). Even when the semantic definition of class c remains
+unchanged, the target visual representations ϕV (x) may
+move away from the source-induced query embedding eS
+c
+in the shared space, leading to weakened alignment:
+PS(X)̸=P D(X)⇒E x∼PD(X)[cos(ϕV (x),e S
+c )]↓.(2)
+Concept Drift.The conditional semantics of labels evolve
+across domains: the visual cues that support label c in S
+may differ from those in D. Consequently, a generic prompt
+embedding eS
+c can encode attributes that are irrelevant, am-
+biguous, or even contradictory under the target labeling rule,
+yielding a mis-specified language anchor:
+PS(Y|X)̸=P D(Y|X)⇒e ∗
+c ̸=e S
+c .(3)
+In this work, our goal is to construct a concept bank
+B={(c,e ∗
+c)}c∈C that storestarget-calibratedquery em-
+beddings. Under a fully frozen Φ, the problem reduces
+to selecting, for each class c, a query embedding e∗
+c that
+minimizes the target-domain segmentation risk induced by
+fΦ(·,e c) on the target-domain dataset D, thereby restoring
+cross-modal alignment without any parameter update.
+2.2. CONCEPTBANK: Construction
+The construction of CONCEPTBANKis a one-time, offline
+process performed on the support set (training split) of the
+target dataset. It follows a three-stage pipeline that progres-
+sively filters noise and realigns the modality gap.
+Stage I: Prototype Estimation.To alleviate data drift, we
+first need to understand where the target visual features lie
+in the shared embedding space. Relying on global image
+pooling is insufficient for segmentation tasks as it introduces
+background noise. Instead, we employMask-Pooled Crop
+Embeddings. For a ground-truth mask yc
+i of class c in image
+xi, we extract the specific object regionv. Let ψ(u;v)∈R d
+be the dense visual feature at pixel location u within this
+crop. We compute the foreground-aware embeddingz:
+z(v, y c
+i ) =Norm
+P
+u yc
+i (u)·ψ(u;v)P
+u yc
+i (u) +ϵ
+
+,(4)
+where Norm(·) denotes ℓ2 normalization and ϵ is a stability
+constant (set to 10−6 in this work). We then compute a
+global class prototype pc by averaging these embeddings
+across all instances of classcin the support set:
+pc =Norm
+
+ 1
+Nc
+X
+i,v
+z(v, y c
+i )
+
+ ,(5)
+where Nc denotes the number of available crops (instances)
+of class c in the support set. This prototype pc serves as the
+empirical centroid of the target visual distribution.
+Stage II: Representative Support Mining.Prototype esti-
+mation inStage Iprovides a coarse target anchor pc. How-
+ever, directly calibrating language on the full set of crops
+Vc is statistically fragile under severe drift. In practice, Vc
+can contain (i) long-tail appearances induced by domain
+shift, (ii) heavy occlusions and truncations, (iii) background-
+dominated crops due to imperfect instance extraction, and
+(iv) annotation noise. Such atypical samples act as high-
+leverage points in high-dimensional embedding spaces, and
+can dominate any downstream calibration procedure, yield-
+ing a language anchor that explains outliers rather than the
+3
+
+=== PDF PAGE 4 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+target “core” (Huber, 2011; Rousseeuw & Hubert, 2011;
+Hampel, 1974). Let Vc ={(v, y)} denote all available crops
+and their corresponding masks for class c in the support set.
+To obtain a stable and domain-representative evidence set,
+arepresentative support set Rc is constructed by retaining
+only crops that are most consistent with the target prototype:
+Rc =Top K(Vc; (v, y)7→cos(z(v, y),p c)),(6)
+where z(v, y) is the mask-pooled crop embedding in Eq.(4).
+Here TopK(Ω;g) returns the subset of Ω with the K largest
+scores underg(see Appendix A for the choice ofK). This
+step can be viewed as trimming the tail of the target em-
+bedding distribution and preserving a prototype-consistent
+core. Consequently, subsequent language calibration is con-
+ditioned on visually coherent, frequent target-domain evi-
+dence rather than being skewed by outliers underdata drift.
+Stage III: Prototype-Consistent Concept Fusion.Even
+with representative visual evidence, concept drift implies
+that the source-induced language anchor eS
+c may not de-
+scribe how class c is realized in the target domain. A key ob-
+servation is that this failure mode isfunctional: two prompts
+with similar embedding similarity can yield markedly dif-
+ferent masks. Therefore, prompt selection is formulated
+as choosing a query embedding that induces high-fidelity
+segmentation on the representative supportsR c.
+Concept Pooling.A pool of candidate prompts, Tc =
+{tc,1, . . . , tc,M }, is generated by expanding each class name
+into diverse textual descriptions. Specifically, an off-the-
+shelf LLM (e.g., GPT) generates synonyms and attribute-
+enriched variants conditioned on the dataset documentation
+(e.g., the original paper and label taxonomy), grounding the
+candidates in the dataset’s label definitions. Crucially, this
+step is constrained to text-level rewriting and rephrasing
+of the provided descriptions, without introducing any new
+visual concepts, and thus serves purely as non-parametric
+prompt augmentation. More details and quality-control pro-
+tocols are deferred to the Appendix A. Finally, the frozen
+text encoder maps each candidate to the shared space, yield-
+ing text prompt embeddingsE c ={ϕ T (t)|t∈ T c}.
+Concept Scoring.Each candidate embedding ec,m ∈E c
+is evaluated by the segmentation quality it induces on Rc.
+The score sc,m is defined as the average Dice coefficient
+over representative supports:
+sc,m = 1
+|Rc|
+X
+(v,y)∈R c
+Dice(f Φ(v,e c,m), y).(7)
+Instead of using cosine similarity as a static proxy, we pro-
+pose a prototype-consistent metric that evaluates candidate
+concepts via the functional behavior offΦ on target data. By
+grounding the ranking in the model’s operational context,
+our method effectively mitigatesconcept drift.
+Concept Fusion.Relying on a single prompt is often unsta-
+ble: different phrasings can lead to non-negligible perfor-
+mance variations even when they describe the same concept.
+Prompt ensembling has been widely used to mitigate such
+sensitivity by aggregating multiple semantically compatible
+prompts, improving robustness and generalization in vision-
+language transfer. Accordingly, an index set of high-scoring
+candidates is selected as Jc =Top J([M];m7→s c,m),
+where [M] ={1, . . . , M} , and Appendix A details the
+choice of J. The final calibrated embedding e∗
+c is obtained
+by temperature-scaled soft fusion overJ c:
+e∗
+c =
+X
+j∈Jc
+wc,j ·Norm(e c,j),
+wc,j = exp(sc,j/τ)P
+k∈Jc exp(sc,k/τ) ,
+(8)
+where τ controls the concentration of the mixture weights,
+serving as a standard smoothing mechanism for softmax-
+based aggregation (Hinton et al., 2015). This aggrega-
+tion yields a calibrated language anchor that remains task-
+consistent while reducing prompt-level variance, and the
+resulting pairs(c,e ∗
+c)constitute the concept bankB.
+2.3. CONCEPTBANK: Inference
+Once the concept bank B={(c,e ∗
+c)}c∈C is constructed on
+the target support set, inference in the target domain reduces
+to prompt-conditioned segmentation with target-calibrated
+query embeddings. During inference, the system retrieves
+{e∗
+c }c∈C from B and uses them as language anchors for
+mask prediction. Each e∗
+c already aggregates multiple can-
+didate descriptions throughStage III, so inference uses
+one consolidated embedding per class rather than multiple
+prompts. The text encoder ϕT is unnecessary in this phase,
+and B is stored as a compact embedding matrixB∈R |C|×d
+with one row per class. Given an input image x, the infer-
+ence model outputs masks via:
+ˆy=fΦ(x,{e ∗
+c }c∈C).(9)
+CONCEPTBANKkeeps the match-and-segment paradigm
+fΦ intact and only replaces generic source-induced prompts
+with target-calibrated anchors from B, yielding a plug-in
+correction for distribution drift without modifyingΦ.
+In this work, our CONCEPTBANKis aparameter-freeframe-
+work that adapts SAM3 for OVS: it never updates the param-
+eters of Φ and constructs B via forward-only evaluation and
+non-parametric aggregation on the target support set. During
+inference, CONCEPTBANKremains strictly feed-forward
+with Φ fully frozen. Since each e∗
+c consolidates multiple
+candidate descriptions offline and ϕT is bypassed, the run-
+time cost matches a single-prompt pipeline and improves
+over multi-prompt ensembling baselines. No gradient-based
+updates or support samples are used during inference. The
+additional cost is storingB, which scales linearly with|C|.
+4
+
+=== PDF PAGE 5 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+Table 1.Quantitative comparison of OVS on natural-scene datasets.“Parameter-free” denotes methods without learnable parameters or
+gradient-based optimization. Metric values are mIoU (%). bold and underlined indicate the best and second-best results, respectively.
+Method Pub. & Year Backbone (Size) with background without backgroundAvg.V21 PC60 COCO-O V20 PC59 COCO-S City ADE
+Training-based
+GroupViT (Xu et al., 2022a) CVPR’22 GroupViT (ViT-S/16) 50.4 18.7 27.5 79.7 23.4 15.3 11.1 9.2 29.4
+TCL (Cha et al., 2023) CVPR’23 CLIP 51.2 24.3 30.4 77.5 30.3 19.6 23.1 14.9 33.9
+SegCLIP (Luo et al., 2023) ICML’23 CLIP 52.6 24.7 27.5 - - - - - -
+CoDe (Wu et al., 2024) CVPR’24 CLIP 57.7 30.5 32.3 - - 23.9 28.9 17.7 -
+SAM-CLIP (Wang et al., 2024b) CVPR’24 CLIP + SAM (ViT-B/16) 60.6 29.2 - - - 31.5 - 17.1 -
+CLIP-DINOiser (Wysoczanska et al., 2024) ECCV’24 CLIP + DINO (ViT-B/16) 62.1 32.4 34.8 80.9 35.9 24.6 31.7 20.0 40.3
+Talk2DINO (Barsellotti et al., 2025) ICCV’25 CLIP + DINOv2†(ViT-B/14) 65.8 37.7 45.1 88.5 42.4 30.2 38.1 22.5 46.3
+Parameter-free
+CLIP (Radford et al., 2021) ICML’21 CLIP 18.6 7.8 6.5 49.1 11.2 7.2 6.7 3.2 13.8
+FreeDA (Barsellotti et al., 2024) CVPR’24 CLIP + DINOv2 (ViT-B/14) 51.8 35.3 36.3 84.3 39.7 25.7 34.1 20.8 41.0
+GEM (Bousselham et al., 2024) CVPR’24 CLIP 46.2 - - - 32.6 15.7 - - -
+CaR (Sun et al., 2024) CVPR’24 CLIP 48.6 13.6 15.4 73.7 18.4 - - 5.4 -
+LaVG (Kang & Cho, 2024) ECCV’24 CLIP + DINO (ViT-B/8) 62.1 31.6 34.2 82.5 34.7 23.2 26.2 15.8 38.8
+ProxyCLIP (Lan et al., 2024a) ECCV’24 CLIP + DINOv2 †(ViT-B/14) 58.6 33.8 37.4 83.0 37.2 25.4 33.9 19.7 41.1
+CLIPtrase (Shao et al., 2024) ECCV’24 CLIP 50.9 29.9 43.6 81.0 33.8 22.8 21.3 16.4 32.7
+ClearCLIP (Lan et al., 2024b) ECCV’24 CLIP 51.8 32.6 33.0 80.9 35.9 23.9 30.0 16.7 38.1
+SCLIP∗(Wang et al., 2024a) ECCV’24 CLIP 59.1 30.4 30.5 80.4 34.1 22.4 32.2 16.1 38.2
+NACLIP∗(Hajimiri et al., 2025) W ACV’25 CLIP 58.9 32.2 33.2 79.7 35.2 23.3 35.5 17.4 39.4
+LPOSS (Stojni´c et al., 2025) CVPR’25 CLIP + DINO (ViT-B/16) 61.1 34.6 33.4 78.8 37.8 25.9 37.3 21.8 41.3
+CASS∗(Kim et al., 2025) CVPR’25 CLIP + DINO (ViT-B/8) 65.8 36.7 37.8 87.8 40.2 26.7 39.4 20.4 44.4
+DIH-CLIP (Duan et al., 2025) ICCV’25 CLIP 64.2 36.0 37.4 84.9 39.7 26.7 40.2 19.6 43.6
+SFP (Jin et al., 2025) (Jin et al., 2025) ICCV’25 CLIP 63.9 37.2 37.9 84.5 39.9 26.4 41.1 20.8 44.0
+CorrCLIP (Zhang et al., 2025) ICCV’25 CLIP (ViT-L/14) + DINO (ViT-B/8) + SAM2 (Hiera-L) 76.7 44.9 49.4 91.5 50.834.0 51.1 30.7 53.6
+Trident (Shi et al., 2025) ICCV’25 CLIP + DINO (ViT-B/16) + SAM (ViT-B/16) 67.1 38.6 41.1 84.5 42.2 28.3 42.9 21.9 45.8
+ReME (Xuan et al., 2025) ICCV’25 CLIP + DINOv2 (ViT-L/14) + SAM (ViT-L/16) 82.2 44.6 48.293.253.1 33.3 59.0 28.2 55.2
+RF-CLIP (Li et al., 2026b) AAAI’26 CLIP 67.2 37.9 39.1 87.0 41.4 27.5 43.0 21.0 45.5
+SAM3∗(Carion et al., 2026) ICLR’26 SAM3 (PE-L+/14) 81.946.1 65.4 88.9 50.0 33.362.331.857.5
+CONCEPTBANK(Ours)- SAM3 (PE-L+/14) 87.156.5 67.9 97.463.0 46.4 75.143.367.1
+Notes:Unless otherwise specified, CLIP uses ViT-B/16 (Dosovitskiy et al., 2021). “ ∗” denotes results reproduced in our work. “ †”
+indicates DINOv2 equipped with registers (Darcet et al., 2024). “-” indicates results are not reported or applicable in the original paper.
+3. Experiments
+3.1. Experimental Setup
+Datasets.Experiments follow the standard OVS setting on
+eight natural-scene datasets, including protocolswithand
+withouta background category. Thewith-backgroundsub-
+set includes Pascal VOC 21 (V21, 21 classes) (Everingham
+et al., 2015), Pascal Context 60 (PC60, 60 classes) (Mot-
+taghi et al., 2014), and COCO-Object (COCO-O, 80 ob-
+ject classes from MS-COCO) (Lin et al., 2014). The
+without-backgroundsubset includes Pascal VOC 20 (V20,
+20 classes) (Everingham et al., 2015), Pascal Context 59
+(PC59, 59 classes) (Mottaghi et al., 2014), COCO-Stuff
+(COCO-S, 171 classes) (Caesar et al., 2018), Cityscapes
+(City, 19 classes) (Cordts et al., 2016), and ADE20K (ADE,
+150 classes) (Zhou et al., 2017). Unless stated otherwise,
+results are reported on the official validation splits using the
+public class-name lists. To probe distribution drift in OVS
+beyond natural-scene imagery, experiments additionally in-
+clude four remote-sensing datasets, each with an explicit
+background class: LoveDA (7 classes) (Wang et al., 2021),
+Potsdam (ISPRS, 2012a) (6 classes), Vaihingen (ISPRS,
+2012b) (6 classes), and iSAID (16 classes) (Waqas Zamir
+et al., 2019). These aerial benchmarks exhibit pronounced
+shifts in acquisition conditions and visual statistics (e.g.,
+viewpoint, scale, and sensor characteristics), offering a chal-
+lenging evaluation setting for distribution drift in OVS.
+Implementation and Evaluation Details.All experiments
+use the official SAM3 (Carion et al., 2026) model with the
+PE-L+ (Bolya et al., 2025) backbone and the default config-
+uration, while keeping Φ fully frozen. Inputs are resized to
+1008×1008 , matching the native SAM3 resolution. Unlike
+CLIP-style OVS pipelines, generic prompt templates (e.g.,
+“a photo of a [class]”) are not used. Category names serve
+as the base prompts. For concept bank construction, we use
+GPT to generate synonyms and attribute-enriched descrip-
+tions for each class conditioned on the dataset’s original
+paper and label definitions. The prompts used for this gen-
+eration are provided in the Appendix D, and we restrict the
+generation to text-level rewriting without introducing new
+visual concepts (cf. §2.2-Stage III). During inference, each
+class uses a single calibrated embedding e∗
+c from B and
+bypasses the text encoder ϕT . All results are single-scale,
+without test-time augmentation, multi-scale or flip evalua-
+tion, and without post-processing or refinement (e.g., Dense-
+CRF (Kr¨ahenb¨uhl & Koltun, 2011) or PAMR (Araslanov
+& Roth, 2020)). All experiments are run on four NVIDIA
+V100 GPUs (32 GB). Following prior works (Wang et al.,
+2024a; Hajimiri et al., 2025; Lan et al., 2024a), performance
+is measured by mean Intersection-over-Union (mIoU).
+5
+
+=== PDF PAGE 6 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+Table 2.Quantitative comparison of OVS on remote-sensing datasets.“Parameter-free” denotes methods without learnable parameters
+or gradient-based optimization. Metric values are mIoU (%). bold and underlined indicate the best and second-best results, respectively.
+Method Pub. & Year Backbone (Size) with background Avg.LoveDA Potsdam Vaihingen iSAID
+Training-based
+SAN (Xu et al., 2023) CVPR’23 CLIP (ViT-L/14@336px) 25.3 37.3 39.2 49.6 37.9
+Cat-Seg (Cho et al., 2024) CVPR’24 CLIP (ViT-L/14@336px) 28.6 35.8 42.3 53.3 40.0
+SkySense-O (Zhu et al., 2025) CVPR’25 CLIP (ViT-L/14@512px) 38.3 54.1 51.6 43.9 47.0
+RSKT-Seg (Li et al., 2026a) AAAI’26 CLIP (ViT-L/14@336px) + RemoteCLIP‡(ViT-B/16) + DINO (ViT-B/32) 33.2 38.4 42.754.342.2
+Parameter-free
+CLIP (Radford et al., 2021) ICML’21 CLIP 12.4 15.6 10.8 7.5 11.6
+MaskCLIP (Zhou et al., 2022a) ECCV’22 CLIP 27.8 33.9 29.9 14.5 26.5
+GEM (Bousselham et al., 2024) CVPR’24 CLIP 31.6 39.1 36.4 17.7 31.2
+ProxyCLIP (Lan et al., 2024a) ECCV’24 CLIP + DINOv2 †(ViT-B/14) 34.3 49.0 47.5 21.8 38.2
+SCLIP∗(Wang et al., 2024a) ECCV’24 CLIP 30.4 39.6 35.9 16.1 30.5
+SegEarth-OV∗(Li et al., 2025a) CVPR’25 CLIP 36.9 48.5 40.0 21.7 36.8
+CorrCLIP∗(Zhang et al., 2025) ICCV’25 CLIP + DINO (ViT-B/8) + SAM2 (Hiera-L) 36.9 51.9 47.0 25.5 40.3
+SAM3∗(Carion et al., 2026) ICLR’26 SAM3 (PE-L+/14) 35.6 54.1 49.1 17.7 39.1
+CONCEPTBANK(Ours)- SAM3 (PE-L+/14) 49.4 60.5 63.035.4 52.1
+Notes:Unless otherwise specified, CLIP uses ViT-B/16 (Dosovitskiy et al., 2021). “ ∗” denotes results reproduced in our work. “ †”
+indicates DINOv2 equipped with registers. “‡” indicates RemoteCLIP (Liu et al., 2024), a CLIP-based remote sensing foundation model.
+GTOurs
+V21 PC60 COCO-O Cityscapes ADE20K
+V20 PC59 COCO-S
+Figure 3.Qualitative comparison results of open-vocabulary segmentationon natural-scene datasets. Zoom in for best view.
+3.2. Comparison with State-of-the-Arts
+Quantitative Results (Natural-Scene).Table 1 reports re-
+sults on eight natural-scene benchmarks under the OVS pro-
+tocol. Most existing methods rely on CLIP-based represen-
+tations, either through direct prompt matching or by pairing
+CLIP with auxiliary vision backbones (e.g., DINO/SAM).
+SAM3 serves as a particularly strong baseline. Even with-
+out calibration, it surpasses all CLIP-based pipelines on
+average (57.5 mIoU) and rivals the strongest parameter-
+heavy methods, such as ReME (Xuan et al., 2025), high-
+lighting the advantage of promptable mask decoding backed
+by a strong visual foundation. However, SAM3 is not fully
+“wild-ready”: on taxonomy- and context-heavy datasets (e.g.,
+PC60, PC59, and ADE), generic source-induced prompts
+still misalign with target-domain semantics due to distribu-
+tion drift, leaving substantial headroom. CONCEPTBANK
+directly bridges this gap by replacing generic prompts with
+target-calibrated anchors stored in a concept bank. Build-
+ing on the same frozen SAM3, CONCEPTBANKimproves
+performance across all datasets, achieving the best overall
+average of67.1mIoU. The largest gains appear on PC60
+(+10.4), PC59 (+13.0), and City (+12.8), suggesting that
+these datasets are most susceptible to distribution-drift ef-
+fects on prompt-conditioned masks. Since CONCEPTBANK
+introduces no architectural changes or parameter updates to
+Φ, these improvements are attributed solely to concept-level
+calibration, effectively tamingSAM3for OVS in the wild.
+Quantitative Results (Remote-Sensing).Table 2 presents
+results on four remote-sensing benchmarks, where distribu-
+tion drift is more severe due to acquisition and scale differ-
+ences. CLIP-based pipelines remain the dominant paradigm,
+and even training-based remote-sensing methods or CLIP
+variants augmented with additional backbones show lim-
+ited transferability across datasets. In this regime, SAM3
+again provides a strong starting point, achieving an average
+mIoU of 39.1 and already outperforming most CLIP-based
+baselines. Yet, it still shows clear room for improvement
+on drift-heavy categories and scenes (notably LoveDA and
+iSAID). CONCEPTBANKconsistently strengthens SAM3 un-
+der these drifts. Built on the same frozen backbone and
+decoder, CONCEPTBANKattains the best average of52.1
+mIoU, improving over SAM3 by +13.0on average. The
+performance gains are substantial on all datasets, includ-
+ing LoveDA (+13.8), Potsdam (+6.4), Vaihingen (+13.9),
+and iSAID (+17.7). Consequently, our CONCEPTBANK
+achieves the best performance on three out of four bench-
+marks while remaining clearly ahead on the overall aver-
+age. These quantitative results substantiate the indispens-
+ability of concept bank calibration for remote-sensing open-
+vocabulary segmentation, specifically for counteracting se-
+mantic misalignment between source prompts and bridging
+the severe distributional drift from natural pre-training data.
+6
+
+=== PDF PAGE 7 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+Potsdam V aihingen iSAID
+GTOurs
+LoveDA
+Figure 4.Qualitative comparison results of open-vocabulary
+segmentationon remote-sensing datasets. Zoom in for best view.
+Table 3.Component analysis of CONCEPTBANK(cf. §2.2). NS
+andRSdenote Natural-Scene and Remote-Sensing benchmarks.
+Variant Stage Avg. mIoU
+I II III NS RS
+VanillaSAM3(classname only) 57.5 39.1
++ Prompt Expansion 58.0 ∆0.5 42.2∆3.1
++ Prototype Anchoring✓60.1 ∆2.6 45.5∆6.4
++ Representative Mining✓ ✓62.8 ∆5.3 48.2∆9.1
+CONCEPTBANK(Full) ✓ ✓ ✓ 64.7∆7.2 52.1∆13.0
+Qualitative Results.As shown in Fig. 3, CONCEPTBANK
+predictions align closely with GT masks across eight natural-
+scene benchmarks with diverse taxonomies. The masks es-
+sentially preserve scene-level layout and class extents, with
+most deviations concentrated on fine structures and ambigu-
+ous boundaries. Fig. 4 further illustrates CONCEPTBANKon
+four remote-sensing datasets, whose overhead viewpoints
+and scale patterns differ markedly from natural scenes. Our
+method still produces coherent large-area land-cover and
+man-made regions, while remaining errors mostly occur on
+small objects, thin boundaries, and cluttered areas where
+visually similar classes are challenging to separate. Over-
+all, these qualitative results support CONCEPTBANKas a
+concept-level calibration framework that improves prompt-
+conditioned masks without modifying the frozenSAM3.
+3.3. Ablation Study
+This section analyzes the proposed CONCEPTBANKto iso-
+late the effect of each design choice. All ablations follow
+the protocol in §3.1 with SAM3 kept frozen and identical
+data splits, and additional ablations are deferred to theSup-
+plementary Material(§A) due to space constraints.
+Component Analysis.Table 3 isolates the contribution
+of each stage in CONCEPTBANKby progressively en-
+abling Stages I-III. A plain SAM3 baseline already performs
+strongly on NS (57.5), yet drops on RS (39.1), reflecting the
+larger distribution drift. Naive prompt expansion without
+fusion brings only marginal improvement on NS (+0.5) but a
+clearer gain on RS (+3.1), suggesting that richer descriptions
+help but do not resolve misalignment by themselves. Adding
+Table 4.Ablation on prompt expansion strategies. NSandRS
+denote Natural-Scene and Remote-Sensing benchmarks.
+Variant Prompt Avg. mIoU
+Source NS RS
+VanillaSAM3(classname only) - 57.5 39.1
++ Prompt Expansion Gemini-3 Pro 57.8 ∆0.3 42.1∆3.0
+CONCEPTBANKGemini-3 Pro 64.3 ∆6.851.8∆12.7
++ Prompt Expansion GPT-5.2 58.0 ∆0.5 42.2∆3.1
+CONCEPTBANK GPT-5.2 64.7∆7.252.1∆13.0
+Table 5.Inference efficiency comparison.Relative FPS measures
+inference speed normalized to the single-promptSAM3baseline.
+Variant Text Encoder Relative FPS
+VanillaSAM3(classname only) On-the-fly 1.00×
+VanillaSAM3(prompt expansion) On-the-fly 0.18×
+CONCEPTBANK Bypassed 1.25×
+Stage I yields a larger and consistent boost, especially on RS
+(+6.4), indicating that grounding concepts in target visual
+statistics is critical under appearance drift. Stage II further
+improves both settings (NS: +5.3, RS: +9.1), supporting its
+role in filtering atypical or low-quality supports that desta-
+bilize calibration. Finally, Stage III provides an additional
+gain and delivers the best overall averages (NS: 64.7, RS:
+52.1), showing that consolidating high-scoring candidates
+into a single calibrated anchor is necessary to fully exploit
+the expanded concept pool. Overall, each stage contributes
+non-trivially, and the full pipeline achieves the most stable
+improvements across both benchmark families.
+Effect of Prompt Expansion and LLM Choice.Table 4
+reports prompt expansion and then evaluates it under CON-
+CEPTBANK. Prompt expansion alone is modest on Natural-
+Scene benchmarks (+0.3 with Gemini-3 Pro, +0.5 with GPT-
+5.2) and more noticeable on Remote-Sensing (+3.0/+3.1),
+but it remains far from closing the gap induced by drift.
+Once the same candidates are calibrated by CONCEPTBANK,
+performance rises sharply to64.3/51.8(Gemini-3 Pro) and
+64.7/52.1(GPT-5.2),i.e., +6.8/+12.7 and +7.2/+13.0 over
+vanilla SAM3. Equivalently, CONCEPTBANKcontributes an
+additional +6.5/+9.7 (Gemini-3 Pro) and +6.7/+9.9 (GPT-
+5.2) beyond prompt expansion, showing that the gains come
+from target-conditioned calibration rather than from richer
+text alone. The same pattern holds for both LLMs, indi-
+cating that our CONCEPTBANKis robust to the choice of
+generator, with GPT-5.2 giving a small but consistent edge.
+Inference Efficiency.Table 5 summarizes runtime through-
+putduring inference only. We report relative FPS for the
+online segmentation pipeline and exclude Concept Bank
+construction, which is a one-time offline cost discussed in
+the Appendix B. Vanilla SAM3 with a single class-name
+prompt sets the reference (1.00×), whereas evaluating mul-
+tiple prompts per class slows inference sharply (0.18×) due
+to repeated text encoding and per-prompt mask decoding. In
+7
+
+=== PDF PAGE 8 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+contrast, CONCEPTBANKretrieves pre-calibrated anchors
+from B and bypasses the text encoder entirely, so each class
+uses one consolidated embedding at runtime. This keeps
+the online procedure close to the single-prompt baseline
+and yields a modest speedup in practice (1.25 ×), while
+maintaining the same frozenΦand decoding path.
+4. Related Work
+Open-Vocabulary Segmentation and Foundation Models.
+Semantic segmentation has been historically studied in a
+closed-set regime with fully supervised architectures such
+as FCN (Long et al., 2015), DeepLab (Chen et al., 2017),
+and Transformer-based designs (Xie et al., 2021), evaluated
+on curated benchmarks (e.g., PASCAL VOC, MS-COCO,
+ADE20K, Cityscapes, COCO-Stuff). Moving beyond fixed
+taxonomies motivates open-vocabulary formulations, where
+early zero-shot transfer leveraged semantic embeddings and
+class descriptions (Zhao et al., 2017; Bucher et al., 2019).
+The modern surge is driven by vision-language models
+such as CLIP (Radford et al., 2021), ALIGN (Jia et al.,
+2021), and EV A (Fang et al., 2023), together with prompt
+design/learning strategies that improve text conditioning in
+downstream tasks (Zhou et al., 2022b; Khattak et al., 2023;
+Zhang et al., 2022; Pratt et al., 2023). In parallel, unified de-
+coders and multi-task segmentation frameworks broaden the
+interface for language-conditioned dense prediction (Zou
+et al., 2023a;b; Li et al., 2022a; Ghiasi et al., 2022; Li et al.,
+2022b; Zhong et al., 2022; Zhou et al., 2022c). Segment-
+anything style foundation models inject strong mask priors
+and promptable decoding into segmentation pipelines (Kir-
+illov et al., 2023; Ravi et al., 2025; Carion et al., 2026),
+and hybrid systems further couple these priors with VLM
+embeddings for semantic grounding (Wang et al., 2024b).
+A recurring bottleneck, however, is that cross-modal align-
+ment learned on pre-training environments can degrade un-
+der distribution drift, a phenomenon well documented in
+concept-drift and data-drift literature (Gama et al., 2014;
+Lu et al., 2018; Kore et al., 2024). This work addresses the
+same open-vocabulary interface but targets drift explicitly
+via a parameter-free concept bank that calibrates language
+anchors to target evidence while keepingΦfully frozen.
+Training-Based and Parameter-Free OVS under Distri-
+bution Drift.Training-based OVS methods adapt VLMs
+to dense prediction by learning mask-aware objectives, de-
+coders, or adapters on additional data (Xu et al., 2022b;
+Mukhoti et al., 2023; Luo et al., 2023; Cho et al., 2024; Xu
+et al., 2022a). Another strong direction fuses complemen-
+tary foundations,e.g., self-supervised ViTs (Caron et al.,
+2021; Oquab et al., 2023; Sim´eoni et al., 2025; Wang et al.,
+2022; Simeoni et al., 2023; Wang et al., 2023) and diffusion
+priors (Rombach et al., 2022; Karazija et al., 2024), to re-
+fine localization and objectness, often with distillation-style
+transfers (Hinton et al., 2015; Wysoczanska et al., 2024; Jose
+et al., 2025; Barsellotti et al., 2025). In contrast, parameter-
+free OVS keeps backbones frozen and improves inference
+by reweighting attention, reconstructing patch correlations,
+suppressing outliers, or enforcing spatial coherence (Zhou
+et al., 2022a; Lan et al., 2024a; Wang et al., 2024a; Hajimiri
+et al., 2025; Kim et al., 2025; Zhang et al., 2025; Kang
+et al., 2025; Xuan et al., 2025). These approaches can be
+effective but remain sensitive to drift because prompt se-
+mantics and visual evidence can become mismatched across
+domains (Tu et al., 2023; Gama et al., 2014; Lu et al., 2018;
+Kore et al., 2024). The issue is amplified in remote sensing,
+where sensor characteristics and viewing geometry induce
+large appearance shifts. Recent work, therefore, adapts OVS
+pipelines to aerial benchmarks using either training-based or
+foundation-model-heavy designs (Liu et al., 2024; Li et al.,
+2025a; Zhu et al., 2025; Li et al., 2026a). Robust estimation
+principles also emphasize the disproportionate impact of
+high-leverage outliers in high-dimensional settings, aligning
+with the need for representative evidence selection before
+any calibration. In this context, CONCEPTBANKdeparts
+from heuristic prompt ensembling by constructing a dataset-
+specific concept bank through prototype anchoring, rep-
+resentative support mining, and task-conditioned concept
+fusion, thereby strengthening SAM3 for open-vocabulary
+segmentation under realistic distribution drift.
+5. Conclusion
+This work studies why promptable open-vocabulary seg-
+mentation with SAM3 degrades under distribution drift
+and presents CONCEPTBANK, a parameter-free calibration
+framework that restores prompt-mask alignment through
+a dataset-specific concept bank. CONCEPTBANKkeeps
+the match-and-segment operator fΦ intact and calibrates
+only the language anchors using target-domain statistics. It
+estimates class-wise visual prototypes to anchor target evi-
+dence, mines representative supports to reduce the influence
+of outliers induced by data drift, and fuses candidate con-
+cepts to correct mis-specified prompts resulting from con-
+cept drift. Across natural-scene and remote-sensing bench-
+marks, CONCEPTBANKconsistently strengthens SAM3’s
+open-vocabulary segmentation, demonstrating that concept-
+level calibration is an effective and practical route to taming
+foundation segmentation models in the wild.
+Limitation and Future Work.Most current OVS methods
+remain constrained by fixed label taxonomies and static text
+prompts. When class definitions are ambiguous, overlap-
+ping, or evolve across datasets, the boundary between con-
+cept drift and annotation inconsistency becomes ill-posed,
+and even a calibrated concept bank cannot fully resolve
+inherently subjective labeling rules. We aim to generalize
+this concept-level calibration strategy to other multi-modal
+foundation models beyond segmentation.
+8
+
+=== PDF PAGE 9 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+Impact Statement
+This paper presents work whose goal is to enhance the ro-
+bustness and adaptability of open-vocabulary segmentation.
+There are many potential societal consequences of our work,
+none which we feel must be specifically highlighted here.
+References
+Araslanov, N. and Roth, S. Single-stage semantic segmenta-
+tion from image labels. InCVPR, pp. 4253–4262, 2020.
+Barsellotti, L., Amoroso, R., Cornia, M., Baraldi, L., and
+Cucchiara, R. Training-free open-vocabulary segmenta-
+tion with offline diffusion-augmented prototype genera-
+tion. InCVPR, pp. 3689–3698, 2024.
+Barsellotti, L., Bianchi, L., Messina, N., Carrara, F., Cornia,
+M., Baraldi, L., Falchi, F., and Cucchiara, R. Talking
+to dino: Bridging self-supervised vision backbones with
+language for open-vocabulary segmentation. InICCV, pp.
+22025–22035, 2025.
+Bolya, D., Huang, P.-Y ., Sun, P., Cho, J. H., Madotto, A.,
+Wei, C., Ma, T., Zhi, J., Rajasegaran, J., Rasheed, H.,
+et al. Perception encoder: The best visual embeddings
+are not at the output of the network.arXiv preprint
+arXiv:2504.13181, 2025.
+Bousselham, W., Petersen, F., Ferrari, V ., and Kuehne, H.
+Grounding everything: Emerging localization properties
+in vision-language transformers. InCVPR, pp. 3828–
+3837, 2024.
+Bucher, M., Vu, T.-H., Cord, M., and Perez, P. Zero-shot
+semantic segmentation. InNeurIPS, pp. 469–479, 2019.
+Caesar, H., Uijlings, J., and Ferrari, V . COCO-Stuff: Thing
+and stuff classes in context. InCVPR, pp. 1209–1218,
+2018.
+Carion, N., Gustafson, L., Hu, Y .-T., Debnath, S., Hu, R.,
+Suris, D., Ryali, C., Alwala, K. V ., Khedr, H., Huang, A.,
+et al. Sam 3: Segment anything with concepts. InICLR,
+2026.
+Caron, M., Touvron, H., Misra, I., J ´egou, H., Mairal, J.,
+Bojanowski, P., and Joulin, A. Emerging properties in
+self-supervised vision transformers. InICCV, pp. 9650–
+9660, 2021.
+Cha, J., Mun, J., and Roh, B. Learning to generate text-
+grounded mask for open-world semantic segmentation
+from only image-text pairs. InCVPR, pp. 11165–11174,
+2023.
+Chen, L.-C., Papandreou, G., Kokkinos, I., Murphy, K., and
+Yuille, A. L. Deeplab: Semantic image segmentation
+with deep convolutional nets, atrous convolution, and
+fully connected crfs.TPAMI, 40(4):834–848, 2017.
+Cho, S., Shin, H., Hong, S., Arnab, A., Seo, P. H., and
+Kim, S. Cat-seg: Cost aggregation for open-vocabulary
+semantic segmentation. InCVPR, pp. 4113–4123, 2024.
+Cordts, M., Omran, M., Ramos, S., Rehfeld, T., Enzweiler,
+M., Benenson, R., Franke, U., Roth, S., and Schiele, B.
+The cityscapes dataset for semantic urban scene under-
+standing. InCVPR, pp. 3213–3223, 2016.
+Darcet, T., Oquab, M., Mairal, J., and Bojanowski, P. Vision
+transformers need registers. InICLR, 2024.
+Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn,
+D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer,
+M., Heigold, G., Gelly, S., Uszkoreit, J., and Houlsby, N.
+An image is worth 16x16 words: Transformers for image
+recognition at scale. InICLR, 2021.
+Duan, S., Yang, X., and Wang, N. Dih-clip: Unleashing
+the diversity of multi-head self-attention for training-free
+open-vocabulary semantic segmentation. InICCV, pp.
+22794–22803, 2025.
+Everingham, M., Eslami, S. A., Van Gool, L., Williams,
+C. K., Winn, J., and Zisserman, A. The pascal visual
+object classes challenge: A retrospective.IJCV, 111(1):
+98–136, 2015.
+Fang, Y ., Wang, W., Xie, B., Sun, Q., Wu, L., Wang, X.,
+Huang, T., Wang, X., and Cao, Y . EV A: Exploring the
+limits of masked visual representation learning at scale.
+InCVPR, pp. 19358–19369, 2023.
+Gama, J., ˇZliobait˙e, I., Bifet, A., Pechenizkiy, M., and
+Bouchachia, A. A survey on concept drift adaptation.
+CSUR, 46(4):1–37, 2014.
+Ghiasi, G., Gu, X., Cui, Y ., and Lin, T.-Y . Scaling open-
+vocabulary image segmentation with image-level labels.
+InECCV, pp. 540–557, 2022.
+Hajimiri, S., Ayed, I. B., and Dolz, J. Pay attention to
+your neighbours: Training-free open-vocabulary semantic
+segmentation. InWACV, pp. 5061–5071, 2025.
+Hampel, F. R. The influence curve and its role in robust es-
+timation.Journal of the American Statistical Association,
+69(346):383–393, 1974.
+Hinton, G., Vinyals, O., and Dean, J. Distilling
+the knowledge in a neural network.arXiv preprint
+arXiv:1503.02531, 2015.
+Huber, P. J. Robust statistics. InInternational Encyclopedia
+of Statistical Science, pp. 1248–1251. Springer, 2011.
+9
+
+=== PDF PAGE 10 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+ISPRS. ISPRS 2D Semantic Labeling Challenge - Pots-
+dam. https://www.isprs.org/resources/
+datasets/benchmarks/UrbanSemLab/
+2d-sem-label-potsdam.aspx, 2012a.
+ISPRS. ISPRS 2D Semantic Labeling Challenge - Vai-
+hingen. https://www.isprs.org/resources/
+datasets/benchmarks/UrbanSemLab/
+2d-sem-label-vaihingen.aspx, 2012b.
+Jia, C., Yang, Y ., Xia, Y ., Chen, Y .-T., Parekh, Z., Pham, H.,
+Le, Q., Sung, Y .-H., Li, Z., and Duerig, T. Scaling up
+visual and vision-language representation learning with
+noisy text supervision. InICML, pp. 4904–4916, 2021.
+Jin, S., Yu, S., Zhang, B., Sun, M., Dong, Y ., and Xiao, J.
+Feature purification matters: Suppressing outlier propaga-
+tion for training-free open-vocabulary semantic segmen-
+tation. InICCV, pp. 20291–20300, 2025.
+Jose, C., Moutakanni, T., Kang, D., Baldassarre, F., Darcet,
+T., Xu, H., Li, D., Szafraniec, M., Ramamonjisoa, M., and
+Oquab, M. Dinov2 meets text: A unified framework for
+image- and pixel-level vision-language alignment.CVPR,
+pp. 24905–24916, 2025.
+Kang, D. and Cho, M. In defense of lazy visual grounding
+for open-vocabulary semantic segmentation. InECCV,
+pp. 143–164, 2024.
+Kang, S., Kim, J., Kim, J., and Hwang, S. J. Your large
+vision-language model only needs a few attention heads
+for visual grounding. InCVPR, pp. 9339–9350, 2025.
+Karazija, L., Laina, I., Vedaldi, A., and Rupprecht, C. Diffu-
+sion models for zero-shot open-vocabulary segmentation.
+InECCV, pp. 229–317, 2024.
+Khattak, M. U., Rasheed, H., Maaz, M., Khan, S., and Khan,
+F. S. Maple: Multi-modal prompt learning. InCVPR,
+2023.
+Kim, C., Ju, D., Han, W., Yang, M.-H., and Hwang, S. J.
+Distilling spectral graph for object-context aware open-
+vocabulary semantic segmentation. InCVPR, pp. 15033–
+15042, 2025.
+Kirillov, A., Mintun, E., Ravi, N., Mao, H., Rolland, C.,
+Gustafson, L., Xiao, T., Whitehead, S., Berg, A. C., Lo,
+W.-Y ., et al. Segment anything. InICCV, pp. 4015–4026,
+2023.
+Kore, A., Abbasi Bavil, E., Subasri, V ., Abdalla, M., Fine,
+B., Dolatabadi, E., and Abdalla, M. Empirical data drift
+detection experiments on real-world medical imaging
+data.Nature Communications, 15(1):1887, 2024.
+Kr¨ahenb¨uhl, P. and Koltun, V . Efficient inference in fully
+connected CRFs with Gaussian edge potentials. In
+NeurIPS, pp. 109–117, 2011.
+Lan, M., Chen, C., Ke, Y ., Wang, X., Feng, L., and Zhang,
+W. ProxyCLIP: Proxy attention improves CLIP for open-
+vocabulary segmentation. InECCV, pp. 70–88, 2024a.
+Lan, M., Chen, C., Ke, Y ., Wang, X., Feng, L., and Zhang,
+W. ClearCLIP: Decomposing CLIP representations for
+dense vision-language inference. InECCV, pp. 143–160,
+2024b.
+Li, B., Weinberger, K. Q., Belongie, S., Koltun, V ., and
+Ranftl, R. Language-driven semantic segmentation. In
+ICLR, 2022a.
+Li, B., Dong, H., Zhang, D., Zhao, Z., Gao, J., and Li, X.
+Exploring efficient open-vocabulary segmentation in the
+remote sensing. InAAAI, 2026a.
+Li, J., Lu, Y ., Zhang, Y ., Xie, Y ., Wang, F., Xie, Y ., and
+Qu, Y . Target refocusing via attention redistribution for
+open-vocabulary semantic segmentation: An explainabil-
+ity perspective. InAAAI, 2026b.
+Li, K., Liu, R., Cao, X., Bai, X., Zhou, F., Meng, D.,
+and Wang, Z. Segearth-ov: Towards training-free open-
+vocabulary segmentation for remote sensing images. In
+CVPR, pp. 10545–10556, 2025a.
+Li, K., Zhang, S., Deng, Y ., Wang, Z., Meng, D., and Cao,
+X. Segearth-ov3: Exploring sam 3 for open-vocabulary
+semantic segmentation in remote sensing images.arXiv
+preprint arXiv:2512.08730, 2025b.
+Li, L. H., Zhang, P., Zhang, H., Yang, J., Li, C., Zhong,
+Y ., Wang, L., Yuan, L., Zhang, L., and Hwang, J.-N.
+Grounded language-image pre-training. InCVPR, pp.
+10965–10975, 2022b.
+Lin, T.-Y ., Maire, M., Belongie, S., Hays, J., Perona, P.,
+Ramanan, D., Doll ´ar, P., and Zitnick, C. L. Microsoft
+COCO: Common objects in context. InECCV, pp. 740–
+755, 2014.
+Liu, F., Chen, D., Guan, Z., Zhou, X., Zhu, J., Ye, Q., Fu, L.,
+and Zhou, J. Remoteclip: A vision language foundation
+model for remote sensing.TGRS, 62:1–16, 2024.
+Long, J., Shelhamer, E., and Darrell, T. Fully convolutional
+networks for semantic segmentation. InCVPR, pp. 3431–
+3440, 2015.
+Lu, J., Liu, A., Dong, F., Gu, F., Gama, J., and Zhang, G.
+Learning under concept drift: A review.TKDE, 31(12):
+2346–2363, 2018.
+10
+
+=== PDF PAGE 11 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+Luo, H., Bao, J., Wu, Y ., He, X., and Li, T. SegCLIP: Patch
+aggregation with learnable centers for open-vocabulary
+semantic segmentation. InICML, pp. 23033–23044,
+2023.
+Mottaghi, R., Chen, X., Liu, X., Cho, N.-G., Lee, S.-W.,
+Fidler, S., Urtasun, R., and Yuille, A. The role of context
+for object detection and semantic segmentation in the
+wild. InCVPR, pp. 891–898, 2014.
+Mukhoti, J., Lin, T.-Y ., Poursaeed, O., Wang, R., Shah, A.,
+Torr, P. H. S., and Lim, S.-N. Open vocabulary semantic
+segmentation with patch aligned contrastive learning. In
+CVPR, pp. 19413–19423, 2023.
+Oquab, M., Darcet, T., Moutakanni, T., V o, H., Szafraniec,
+M., Khalidov, V ., Fernandez, P., Haziza, D., Massa,
+F., and El-Nouby, A. DINOv2: Learning robust
+visual features without supervision.arXiv preprint
+arXiv:2304.07193, 2023.
+Pratt, S., Covert, I., Liu, R., and Farhadi, A. What does a
+platypus look like? generating customized prompts for
+zero-shot image classification. InICCV, 2023.
+Radford, A., Kim, J. W., Hallacy, C., Ramesh, A., Goh,
+G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., and
+Clark, J. Learning transferable visual models from natural
+language supervision. InICML, pp. 8748–8763, 2021.
+Ravi, N., Gabeur, V ., Hu, Y .-T., Hu, R., Ryali, C., Ma, T.,
+Khedr, H., R¨adle, R., Rolland, C., Gustafson, L., Mintun,
+E., Pan, J., Alwala, K. V ., Carion, N., Wu, C.-Y ., Girshick,
+R., Dollar, P., and Feichtenhofer, C. SAM 2: Segment
+anything in images and videos. InICLR, 2025.
+Rombach, R., Blattmann, A., Lorenz, D., Esser, P., and
+Ommer, B. High-resolution image synthesis with latent
+diffusion models. InCVPR, pp. 10684–10695, 2022.
+Rousseeuw, P. J. and Hubert, M. Robust statistics for outlier
+detection.Wiley Interdisciplinary Reviews: Data Mining
+and Knowledge Discovery, 1(1):73–79, 2011.
+Shao, T., Tian, Z., Zhao, H., and Su, J. Explore the po-
+tential of clip for training-free open vocabulary semantic
+segmentation. InECCV, pp. 139–156, 2024.
+Shi, Y ., Dong, M., and Xu, C. Harnessing vision foun-
+dation models for high-performance, training-free open
+vocabulary segmentation. InICCV, pp. 23487–23497,
+2025.
+Simeoni, O., Sekkat, C., Puy, G., V obeck´y, A., Zablocki,
+E., and P´erez, P. Unsupervised object localization: Ob-
+serving the background to discover objects. InCVPR, pp.
+3176–3186, 2023.
+Sim´eoni, O., V o, H. V ., Seitzer, M., Baldassarre, F., Oquab,
+M., Jose, C., Khalidov, V ., Szafraniec, M., Yi, S.,
+Ramamonjisoa, M., et al. Dinov3.arXiv preprint
+arXiv:2508.10104, 2025.
+Stojni´c, V ., Kalantidis, Y ., Matas, J., and Tolias, G. Lposs:
+Label propagation over patches and pixels for open-
+vocabulary semantic segmentation. InCVPR, pp. 9794–
+9803, 2025.
+Sun, S., Li, R., Torr, P., Gu, X., and Li, S. CLIP as RNN:
+Segment countless visual concepts without training en-
+deavor. InCVPR, pp. 13171–13182, 2024.
+Tu, W., Deng, W., and Gedeon, T. A closer look at the
+robustness of contrastive language-image pre-training
+(CLIP). InNeurIPS, pp. 13678–13691, 2023.
+Wang, F., Mei, J., and Yuille, A. SCLIP: Rethinking self-
+attention for dense vision-language inference. InECCV,
+pp. 315–332, 2024a.
+Wang, H., Vasu, P. K. A., Faghri, F., Vemulapalli, R., Fara-
+jtabar, M., Mehta, S., Rastegari, M., Tuzel, O., and
+Pouransari, H. Sam-clip: Merging vision foundation
+models towards semantic and spatial understanding. In
+CVPRW, pp. 3635–3647, 2024b.
+Wang, J., Zheng, Z., Ma, A., Lu, X., and Zhong, Y . Loveda:
+A remote sensing land-cover dataset for domain adaptive
+semantic segmentation.arXiv preprint arXiv:2110.08733,
+2021.
+Wang, X., Girdhar, R., Yu, S. X., and Misra, I. Cut and
+learn for unsupervised object detection and instance seg-
+mentation. InProceedings of the IEEE Conference on
+Computer Vision and Pattern Recognition (CVPR), pp.
+3124–3134, 2023.
+Wang, Y ., Shen, X., Hu, S. X., Yuan, Y ., Crowley, J. L.,
+and Vaufreydaz, D. Self-supervised transformers for
+unsupervised object discovery using normalized cut. In
+CVPR, pp. 14343–14353, 2022.
+Waqas Zamir, S., Arora, A., Gupta, A., Khan, S., Sun, G.,
+Shahbaz Khan, F., Zhu, F., Shao, L., Xia, G.-S., and Bai,
+X. isaid: A large-scale dataset for instance segmentation
+in aerial images. InCVPRW, pp. 28–37, 2019.
+Wu, J.-J., Chang, A. C.-H., Chuang, C.-Y ., Chen, C.-P., Liu,
+Y .-L., Chen, M.-H., Hu, H.-N., Chuang, Y .-Y ., and Lin,
+Y .-Y . Image-text co-decomposition for text-supervised se-
+mantic segmentation. InCVPR, pp. 26794–26803, 2024.
+Wysoczanska, M., Simeoni, O., Ramamonjisoa, M., Bursuc,
+A., Trzcinski, T., and Perez, P. CLIP-DINOiser: Teaching
+CLIP a few DINO tricks for open-vocabulary semantic
+segmentation. InECCV, pp. 320–337, 2024.
+11
+
+=== PDF PAGE 12 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+Xie, B., Cao, J., Xie, J., Khan, F. S., and Pang, Y . SED:
+A simple encoder-decoder for open-vocabulary semantic
+segmentation. InCVPR, pp. 3426–3436, 2024.
+Xie, E., Wang, W., Yu, Z., Anandkumar, A., Alvarez, J. M.,
+and Luo, P. Segformer: Simple and efficient design for
+semantic segmentation with transformers. InNeurIPS,
+pp. 12077–12090, 2021.
+Xu, J., Mello, S. D., Liu, S., Byeon, W., Breuel, T., Kautz,
+J., and Wang, X. GroupViT: Semantic segmentation
+emerges from text supervision. InCVPR, pp. 18134–
+18144, 2022a.
+Xu, M., Zhang, Z., Wei, F., Lin, Y ., Cao, Y ., Hu, H., and
+Bai, X. A simple baseline for open-vocabulary semantic
+segmentation with pre-trained vision-language model. In
+ECCV, pp. 736–753, 2022b.
+Xu, M., Zhang, Z., Wei, F., Hu, H., and Bai, X. Side adapter
+network for open-vocabulary semantic segmentation. In
+CVPR, pp. 2945–2954, 2023.
+Xuan, X., Deng, Z., and Ma, K.-L. Reme: A data-centric
+framework for training-free open-vocabulary segmenta-
+tion. InICCV, pp. 20954–20965, 2025.
+Zhang, D., Liu, F., and Tang, Q. Corrclip: Reconstructing
+patch correlations in clip for open-vocabulary semantic
+segmentation. InICCV, pp. 24677–24687, 2025.
+Zhang, R., Wei, Z., Fang, R., Gao, P., Li, K., Dai, J., Qiao,
+Y ., and Li, H. Tip-adapter: Training-free adaption of clip
+for few-shot classification. InECCV, 2022.
+Zhao, H., Puig, X., Zhou, B., Fidler, S., and Torralba, A.
+Open vocabulary scene parsing. InICCV, pp. 2002–2010,
+2017.
+Zhong, Y ., Yang, J., Zhang, P., Li, C., Codella, N., Li, L. H.,
+Zhou, L., Dai, X., Yuan, L., and Li, Y . RegionCLIP:
+Region-based language-image pretraining. InCVPR, pp.
+16793–16803, 2022.
+Zhou, B., Zhao, H., Puig, X., Fidler, S., Barriuso, A., and
+Torralba, A. Scene parsing through ADE20K dataset. In
+CVPR, pp. 633–641, 2017.
+Zhou, C., Loy, C. C., and Dai, B. Extract free dense labels
+from CLIP. InECCV, pp. 350–368, 2022a.
+Zhou, K., Yang, J., Loy, C. C., and Liu, Z. Conditional
+prompt learning for vision-language models. InCVPR,
+2022b.
+Zhou, X., Girdhar, R., Joulin, A., Kr¨ahenb¨uhl, P., and Misra,
+I. Detecting twenty-thousand classes using image-level
+supervision. InECCV, pp. 350–368, 2022c.
+Zhu, Q., Lao, J., Ji, D., Luo, J., Wu, K., Zhang, Y ., Ru,
+L., Wang, J., Chen, J., Yang, M., et al. Skysense-o:
+Towards open-world remote sensing interpretation with
+vision-centric visual-language modeling. InCVPR, pp.
+14733–14744, 2025.
+Zou, X., Dou, Z.-Y ., Yang, J., Gan, Z., Li, L., Li, C., Dai, X.,
+Behl, H., Wang, J., and Yuan, L. Generalized decoding for
+pixel, image, and language. InCVPR, pp. 15116–15127,
+2023a.
+Zou, X. et al. Segment everything everywhere all at once.
+arXiv preprint arXiv:2304.06718, 2023b.
+12
+
+=== PDF PAGE 13 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+Appendix
+A. Additional Ablations
+This section reports additional ablations omitted from the main paper due to space constraints. All settings follow §3.1 with
+SAM3 fully frozen and identical data splits. Unless otherwise stated, we use the same benchmark grouping as the main
+paper:NS(Natural-Scene) andRS(Remote-Sensing), and reportAvg. mIoU.
+A.1. Sensitivity to Representative Mining:Top K
+Stage II (§2.2) trims atypical supports by retaining the K crops that are most consistent with the target prototype (Eq. (6)).
+In our implementation, TopK corresponds to the per-class budget of representative crops collected in Stage II. We ablate K
+over a broad range. When a class contains fewer thanKsupports, we use all available crops.
+Table 6.Top- K sensitivity in Stage II. NSandRSdenote Natural-Scene and Remote-Sensing benchmarks.
+K1 5 10 30 50 100
+NS Avg. mIoU61.7 63.3 64.764.1 64.5 64.3
+RS Avg. mIoU48.1 51.0 52.1 52.352.551.8
+Top-K controls a robustness-coverage trade-off: smaller K yields a tighter “core” (stronger trimming), while larger K
+increases appearance coverage but risks re-introducing outliers and background-dominated crops. In practice, performance
+is typically stable within a mid-range ofK, motivating a single default (K= 10) used in the main paper.
+A.2. Sensitivity to Concept Fusion:Top J
+Stage III aggregates candidate prompt embeddings via temperature-scaled soft fusion (Eq. (8)). In our implementation, we
+set J to includeallexpanded prompt candidates for each class, and rely on score-based weighting (and a light gating rule) to
+downweight borderline prompts rather than hard-truncating the pool. We also report a TopJ sweep by explicitly restricting
+the fusion to the TopJ candidates ranked by the concept scoring in Eq. (7). When J=1, Eq. (8) degenerates to selecting a
+single best prompt embedding.
+Table 7. TopJ sensitivity in Stage III. J=1 denotes single-prompt selection without fusion, whileAlluses the full expanded prompt set.
+J1 2 4 8 16 All
+NS Avg. mIoU60.6 61.5 63.6 64.5 64.5 64.7
+RS Avg. mIoU48.1 49.7 50.1 51.752.1 52.1
+Restricting fusion to a small J reduces prompt-level variance and can prevent weak candidates from entering the mixture. In
+contrast, usingAllmaximizes linguistic coverage and lets the temperature-scaled weights suppress low-scoring prompts
+automatically, which is the default setting in our main experiments.
+A.3. Concept Scoring Metric: Dicevs. IoU
+In Eq. (7), the main paper uses Dice to score candidate prompts on representative supports. We ablate the scoring metric
+by replacing Dice with IoU while keeping all other steps unchanged. We report this comparison in Table 8. Dice is often
+numerically more stable on small or thin structures due to its symmetric overlap form, whereas IoU is stricter and can be
+more sensitive to boundary errors.
+Table 8.Concept scoring in Stage III: Dicevs. IoU (cf. Eq.(7)).
+Scoring metric NS Avg. mIoU RS Avg. mIoU
+Dice (main) 64.7 52.1
+IoU 62.9 51.0
+13
+
+=== PDF PAGE 14 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+B. Concept Bank Construction Cost
+We report the one-time offline cost to construct CONCEPTBANKon the target support split. This cost isnotincluded in the
+inference efficiency comparison (Table 5), since CONCEPTBANKis built once per dataset and then reused for all inference
+runs. We measure wall-clock time of Stages I-III (§2.2) on the support split: (i) mask-pooled crop embeddings and prototype
+estimation (Stage I), (ii) representative support mining (Stage II), (iii) candidate scoring and fusion (Stage III).
+Table 9.One-time CONCEPTBANKconstruction time per dataset (target support split,i.e., training set).
+Dataset|C|#ImgsMCrops Stage I (min) Stage II (min) Stage III (min) Total (min)
+V21 (Everingham et al., 2015) 21 1,464 27 840 0.99 1.00 1.03 3.02
+PC60 (Mottaghi et al., 2014) 60 4,996 6 2,399 2.68 2.83 1.63 7.14
+COCO-O (Lin et al., 2014) 80 118,287 40 3,240 4.32 4.61 2.62 11.55
+V20 (Everingham et al., 2015) 20 1,464 14 800 0.88 0.94 0.72 2.55
+PC59 (Mottaghi et al., 2014) 59 4,996 6 2,359 2.63 2.78 1.65 7.07
+COCO-S (Caesar et al., 2018) 171 118,287 6 6,840 8.43 8.89 4.80 22.12
+City (Cordts et al., 2016) 19 2,975 9 760 1.25 1.50 0.79 3.53
+ADE (Zhou et al., 2017) 150 20,210 6 5,996 6.84 7.49 4.23 18.56
+LoveDA (Wang et al., 2021) 7 2,522 12 2,800 1.70 0.22 0.35 2.27
+Potsdam (ISPRS, 2012a) 6 3,456 4 2,400 1.33 0.73 0.66 2.72
+Vaihingen (ISPRS, 2012b) 6 344 4 1,025 0.57 0.66 0.64 1.87
+iSAID (Waqas Zamir et al., 2019) 16 33,978 6 6,282 5.51 0.64 0.42 6.56
+Stage I is dominated by visual feature extraction over masked crops and scales with the total number of crop pixels. Stage
+III scales withP
+c |Rc| ·M forward evaluations of fΦ on representative supports. Both stages are embarrassingly parallel
+across classes and supports, and benefit from batching and mixed precision.
+14
+
+=== PDF PAGE 15 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+C. Pseudo-code for Concept Bank Construction
+# =========================================================
+# ConceptBank Construction
+# =========================================================
+# Inputs:
+# D_train : target support set with images and GT masks
+# C : class set
+# Phi : frozen SAM3; provides f_Phi (mask predictor), phi_T (text encoder),
+# and the dense visual features used in mask pooling
+# Docs : dataset documentation / label definitions (text)
+# Hyper-params:
+# K : Top-K for representative mining
+# M : #candidate prompts per class (prompt expansion size)
+# J : Top-J for fusion
+# tau : softmax temperature for fusion
+def build_concept_bank(D_train, C, Phi, Docs, K, M, J, tau):
+B = {} # concept bank: class -> calibrated embedding e *_c
+# --- Stage I: Prototype Estimation ---
+# Collect mask-pooled crop embeddings per class
+Z = {c: [] for c in C} # list of z(v,y) for each class
+for (x, Y) in D_train:
+for c in C:
+if has_instance(Y[c]):
+for (v, y_crop) in extract_instance_crops(x, Y[c]):
+z = mask_pooled_embedding(Phi, v, y_crop) # Eq.(6)
+Z[c].append(z)
+P = {}
+for c in C:
+P[c] = l2_normalize(mean(Z[c])) # prototype p_c, Eq.(7)
+# --- Stage II: Representative Support Mining (Top-K) ---
+R = {}
+for c in C:
+scores = [cos(z, P[c]) for z in Z[c]]
+idx = topk_indices(scores, k=min(K, len(scores)))
+R[c] = idx # store indices of representative supports in Z[c]
+# --- Stage III: Prototype-consistent Concept Fusion ---
+for c in C:
+# Concept Pooling (prompt expansion from docs; text-only rewriting)
+Tc = prompt_expand(class_name=c, docs=Docs, M=M) # list of strings
+Ec = [Phi.phi_T(t) for t in Tc] # prompt embeddings
+# Concept Scoring (functional scoring via segmentation on R_c)
+S = []
+for m, e_cm in enumerate(Ec):
+dices = []
+for idx in R[c]:
+v, y = fetch_crop_and_mask(D_train, c, idx)
+y_hat = Phi.f_Phi(v, e_cm)
+dices.append(dice(y_hat, y)) # Eq.(10); or IoU in ablation
+S.append(mean(dices))
+# Top-J + soft fusion
+Jc = topj_indices(S, j=min(J, len(S)))
+w = softmax([S[j]/tau for j in Jc])
+e_star = sum(wi * l2_normalize(Ec[j]) for wi, j in zip(w, Jc))
+B[c] = e_star
+return B
+15
+
+=== PDF PAGE 16 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+D. Prompt Expansion Protocol and Generation Prompts
+We expand each class name into a set of synonym- and attribute-enriched prompts using an off-the-shelf LLM. The LLM
+is provided with dataset documentation (original paper, label taxonomy, and official label definitions). The generation is
+constrained totext-level rewritingof the given label semantics and does not introduce new visual concepts beyond the
+dataset definition.
+D.1. Quality-control rules
+We apply the following constraints to ensure label-faithful prompt expansion: (i) preserve the original class semantics; avoid
+adding new objects/scenes; (ii) allow synonyms, spelling variants (US/UK), plural/singular, and short attribute phrases that
+are consistent with the label definition; (iii) remove overly broad hypernyms if they may cause class leakage (e.g., replacing
+a fine-grained class with “animal”); (iv) deduplicate near-identical strings; (v) keep a fixed budgetMper class.
+D.2. LLM prompt templates
+Template (Natural-scene datasets).
+System:You are an expert dataset annotator for open-vocabulary segmentation. You must follow label definitions strictly and
+avoid introducing new visual concepts.
+User:You are given (1) a dataset name, (2) a class name, and (3) official label documentation. Generate a comma-separated
+list of prompt variants that stay within the same class semantics.
+Input:Dataset:{DATASET}Class name:{CLASS}Label documentation (authoritative):{DOCS}
+Rules:- Output format: a single line, comma-separated phrases, no numbering, no extra text. - Include: synonyms, spelling
+variants, common subtypes, and short attribute phrases consistent with the documentation. - Do NOT add any object that is not
+implied by the documentation. - Avoid overly generic words that could overlap many classes (e.g., “thing”, “object”). - Keep
+2-16 items total (including the original class name). - Prefer concise noun phrases (1-4 words).
+Template (Remote-sensing datasets).
+System:You are an expert dataset annotator for aerial/remote-sensing semantic segmentation. Follow dataset label definitions.
+Keep prompts consistent with top-down imagery and surface appearance.
+User:Given the dataset label documentation, expand the class name into a comma-separated list of synonyms and attribute-
+enriched phrases that are label-faithful for aerial imagery.
+Input:Dataset:{DATASET}Class name:{CLASS}Label documentation (authoritative):{DOCS}
+Rules:- Output a single comma-separated line; no extra commentary. - Allow: synonyms, material/surface descriptors (e.g.,
+asphalt road), and aerial terms (e.g., roof, canopy)only ifthey are consistent with the class definition. - Do NOT introduce new
+land-cover categories not present in the documentation. - Keep 1-15 items total (including the original class name).
+D.3. Prompt Expansion Statistics
+Table 10 reports summary statistics of the expanded concept candidates per class. Natural-scene object categories typically
+admit more lexical variants, while several remote-sensing benchmarks remain comparatively compact.
+Table 10.Prompt expansion statistics.Counts are per-class candidate concepts (incl. the original class name).
+Natural-Scene Remote-Sensing
+Stat. V21 V20 PC60 PC59 COCO-O COCO-S City ADE LoveDA Potsdam Vaihingen iSAID
+|C|21 20 60 59 81 171 19 150 7 6 6 16
+Min4 4 3 3 2 2 4 3 4 2 2 1
+Max27 14 6 6 40 6 9 6 12 4 4 6
+Avg.9.29 8.40 4.67 4.64 5.47 4.93 6.32 4.83 8.00 2.67 3.17 3.50
+16
+
+=== PDF PAGE 17 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+E. Additional Quantitative Results
+We further compare against a recent SAM3-based approach, SegEarth-OV3 (Li et al., 2025b), on both natural-scene (NS)
+benchmarks (Table. 11) and remote-sensing (RS) benchmarks (Table. 12). Across the two groups, CONCEPTBANKimproves
+the average mIoU by +4.1onNSand +3.7onRS. We note that SegEarth-OV3 relies on manually rewritten category
+names; in our re-checks, even small edits to a subset of class names can noticeably degrade its performance, suggesting a
+higher sensitivity to prompt phrasing. It is also substantially slower at inference time, since it follows the standard SAM3
+text-encoding pipeline and requires running the text encoder and grounding repeatedly per class (and even more when
+multiple prompts are used). In contrast, our Concept Bank is constructed offline and stores the calibrated text representations,
+so inferencebypasses the text encoder entirely(see §3.3) and scores all labels for each sample in a single forward pass,
+yielding a clear speed advantage (often by several to tens of times) while improving robustness under drift.
+Table 11.Quantitative comparison of OVS on natural-scene datasets.“Parameter-free” denotes methods without learnable parameters
+or gradient-based optimization. Metric values are mIoU (%). bold and underlined indicate the best and second-best results, respectively.
+Method Pub. & Year Backbone (Size) with background without backgroundAvg.V21 PC60 COCO-O V20 PC59 COCO-S City ADE
+Training-based
+GroupViT (Xu et al., 2022a) CVPR’22 GroupViT (ViT-S/16) 50.4 18.7 27.5 79.7 23.4 15.3 11.1 9.2 29.4
+TCL (Cha et al., 2023) CVPR’23 CLIP 51.2 24.3 30.4 77.5 30.3 19.6 23.1 14.9 33.9
+SegCLIP (Luo et al., 2023) ICML’23 CLIP 52.6 24.7 27.5 - - - - - -
+CoDe (Wu et al., 2024) CVPR’24 CLIP 57.7 30.5 32.3 - - 23.9 28.9 17.7 -
+SAM-CLIP (Wang et al., 2024b) CVPR’24 CLIP + SAM (ViT-B/16) 60.6 29.2 - - - 31.5 - 17.1 -
+Talk2DINO (Barsellotti et al., 2025) ICCV’25 CLIP + DINOv2†(ViT-B/14) 65.8 37.7 45.1 88.5 42.4 30.2 38.1 22.5 46.3
+Parameter-free
+NACLIP∗(Hajimiri et al., 2025) W ACV’25 CLIP 58.9 32.2 33.2 79.7 35.2 23.3 35.5 17.4 39.4
+LPOSS (Stojni´c et al., 2025) CVPR’25 CLIP + DINO (ViT-B/16) 61.1 34.6 33.4 78.8 37.8 25.9 37.3 21.8 41.3
+CASS∗(Kim et al., 2025) CVPR’25 CLIP + DINO (ViT-B/8) 65.8 36.7 37.8 87.8 40.2 26.7 39.4 20.4 44.4
+DIH-CLIP (Duan et al., 2025) ICCV’25 CLIP 64.2 36.0 37.4 84.9 39.7 26.7 40.2 19.6 43.6
+SFP (Jin et al., 2025) (Jin et al., 2025) ICCV’25 CLIP 63.9 37.2 37.9 84.5 39.9 26.4 41.1 20.8 44.0
+CorrCLIP (Zhang et al., 2025) ICCV’25 CLIP (ViT-L/14) + DINO (ViT-B/8) + SAM2 (Hiera-L) 76.7 44.9 49.4 91.5 50.8 34.0 51.1 30.7 53.6
+Trident (Shi et al., 2025) ICCV’25 CLIP + DINO (ViT-B/16) + SAM (ViT-B/16) 67.1 38.6 41.1 84.5 42.2 28.3 42.9 21.9 45.8
+ReME (Xuan et al., 2025) ICCV’25 CLIP + DINOv2 (ViT-L/14) + SAM (ViT-L/16) 82.2 44.6 48.2 93.2 53.1 33.3 59.0 28.2 55.2
+RF-CLIP (Li et al., 2026b) AAAI’26 CLIP 67.2 37.9 39.1 87.0 41.4 27.5 43.0 21.0 45.5
+SAM3∗(Carion et al., 2026) ICLR’26 SAM3 (PE-L+/14) 81.946.1 65.4 88.9 50.0 33.3 62.3 31.8 57.5
+SegEarth-OV3∗(Li et al., 2025b) arXiv’25 SAM3 (PE-L+/14) 79.8 50.7 67.6 96.858.8 42.8 69.737.563.0
+CONCEPTBANK(Ours)- SAM3 (PE-L+/14) 87.156.5 67.9 97.463.0 46.4 75.143.367.1
+Notes:Unless otherwise specified, CLIP uses ViT-B/16 (Dosovitskiy et al., 2021). “ ∗” denotes results reproduced in our work. “ †”
+indicates DINOv2 equipped with registers (Darcet et al., 2024). “-” indicates results are not reported or applicable in the original paper.
+Table 12.Quantitative comparison of OVS on remote-sensing datasets.“Parameter-free” denotes methods without learnable parameters
+or gradient-based optimization. Metric values are mIoU (%). bold and underlined indicate the best and second-best results, respectively.
+Method Pub. & Year Backbone (Size) with background Avg.LoveDA Potsdam Vaihingen iSAID
+Training-based
+SAN (Xu et al., 2023) CVPR’23 CLIP (ViT-L/14@336px) 25.3 37.3 39.2 49.6 37.9
+Cat-Seg (Cho et al., 2024) CVPR’24 CLIP (ViT-L/14@336px) 28.6 35.8 42.3 53.3 40.0
+SkySense-O (Zhu et al., 2025) CVPR’25 CLIP (ViT-L/14@512px) 38.3 54.1 51.6 43.9 47.0
+RSKT-Seg (Li et al., 2026a) AAAI’26 CLIP (ViT-L/14@336px) + RemoteCLIP‡(ViT-B/16) + DINO (ViT-B/32) 33.2 38.4 42.754.342.2
+Parameter-free
+CLIP (Radford et al., 2021) ICML’21 CLIP 12.4 15.6 10.8 7.5 11.6
+MaskCLIP (Zhou et al., 2022a) ECCV’22 CLIP 27.8 33.9 29.9 14.5 26.5
+GEM (Bousselham et al., 2024) CVPR’24 CLIP 31.6 39.1 36.4 17.7 31.2
+ProxyCLIP (Lan et al., 2024a) ECCV’24 CLIP + DINOv2 †(ViT-B/14) 34.3 49.0 47.5 21.8 38.2
+SCLIP∗(Wang et al., 2024a) ECCV’24 CLIP 30.4 39.6 35.9 16.1 30.5
+SegEarth-OV∗(Li et al., 2025a) CVPR’25 CLIP 36.9 48.5 40.0 21.7 36.8
+CorrCLIP∗(Zhang et al., 2025) ICCV’25 CLIP + DINO (ViT-B/8) + SAM2 (Hiera-L) 36.9 51.9 47.0 25.5 40.3
+SAM3∗(Carion et al., 2026) ICLR’26 SAM3 (PE-L+/14) 35.6 54.1 49.1 17.7 39.1
+SegEarth-OV3∗(Li et al., 2025b) arXiv’25 SAM3 (PE-L+/14) 47.4 57.8 60.8 27.6 48.4
+CONCEPTBANK(Ours)- SAM3 (PE-L+/14) 49.4 60.5 63.035.4 52.1
+Notes:Unless otherwise specified, CLIP uses ViT-B/16 (Dosovitskiy et al., 2021). “ ∗” denotes results reproduced in our work. “ †”
+indicates DINOv2 equipped with registers. “‡” indicates RemoteCLIP (Liu et al., 2024), a CLIP-based remote sensing foundation model.
+17
+
+=== PDF PAGE 18 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+F. Additional Qualitative Results
+We present additional qualitative comparisons between the original SAM3 baseline and our CONCEPTBANKon both
+Natural-Scene (see Figs. 5-12) and Remote-Sensing (see Figs. 13-16) benchmarks. As shown in Figs. 5-16, CONCEPTBANK
+effectively reduces spurious activations caused by distribution shifts. We also observe cases in which both methods produce
+visually plausible segmentations that are more consistent with object boundaries than the provided annotations.
+GT SAM3Ours
+Figure 5.Qualitative comparison results of open-vocabulary segmentation on Pascal VOC21.Zoom in for best view.
+GT SAM3Ours
+Figure 6.Qualitative comparison results of open-vocabulary segmentation on Pascal Context 60.Zoom in for best view.
+18
+
+=== PDF PAGE 19 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+GT SAM3Ours
+Figure 7.Qualitative comparison results of open-vocabulary segmentation on COCO-Object.Zoom in for best view.
+GT SAM3Ours
+Figure 8.Qualitative comparison results of open-vocabulary segmentation on Pascal VOC 20.Zoom in for best view.
+19
+
+=== PDF PAGE 20 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+GT SAM3Ours
+Figure 9.Qualitative comparison results of open-vocabulary segmentation on Pascal Context 59.Zoom in for best view.
+GT SAM3Ours
+Figure 10.Qualitative comparison results of open-vocabulary segmentation on COCO-Stuff.Zoom in for best view.
+20
+
+=== PDF PAGE 21 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+GT SAM3Ours
+Figure 11.Qualitative comparison results of open-vocabulary segmentation on Cityscapes.Zoom in for best view.
+GT SAM3Ours
+Figure 12.Qualitative comparison results of open-vocabulary segmentation on ADE20K.Zoom in for best view.
+21
+
+=== PDF PAGE 22 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+SAM3
+Ours
+GT
+Figure 13.Qualitative comparison results of open-vocabulary segmentation on LoveDA.Zoom in for best view.
+22
+
+=== PDF PAGE 23 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+SAM3
+Ours
+GT
+Figure 14.Qualitative comparison results of open-vocabulary segmentation on Potsdam.Zoom in for best view.
+23
+
+=== PDF PAGE 24 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+SAM3
+Ours
+GT
+Figure 15.Qualitative comparison results of open-vocabulary segmentation on Vaihingen.Zoom in for best view.
+24
+
+=== PDF PAGE 25 ===
+Taming SAM3 in the Wild: A Concept Bank for Open-Vocabulary Segmentation
+SAM3
+Ours
+GT
+Figure 16.Qualitative comparison results of open-vocabulary segmentation on iSAID.Zoom in for best view.
+25

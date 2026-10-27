@@ -1,0 +1,1300 @@
+=== PAGE 1 ===
+Retrieve and Segment: Are a Few Examples Enough
+to Bridge the Supervision Gap in Open-V ocabulary Segmentation?
+Tilemachos Aravanis1 Vladan Stojni´c1 Bill Psomas1 Nikos Komodakis2 3 4 Giorgos Tolias1
+1VRG, FEE, Czech Technical University in Prague
+2University of Crete 3Archimedes, Athena RC 4IACM-FORTH
+Ground Truth
+Background PersonPerson
+Motorcycle
+Textual Only
+Car Person
+Motorcycle
+Train
+Sofa
+Potted 
+Plant
+Potted 
+Plant
+Car
+Background
+Visual Only
+Bicycle
+Person
+Motorcycle
+Car BackgroundBackground PersonPerson
+Bicycle
+Car
+Person
+Motorcycle
+Car Background
+Textual + Visual
+Support BSupport A
+Background
+Person
+A B A B
+Car
+Bus
+Background
+Background
+PersonPerson
+HorseBicycle
+BackgroundBackground
+Train
+MotorcycleBird
+Background
+Background
+Figure 1.Open-vocabulary segmentation (OVS) results.We compare three settings: (i)textual-onlysupport (zero-shot OVS), (ii) a
+simplified version ofRNSusingvisual-onlysupport, and (iii) the fullRNScombiningtextual+visualsupport. Textual support: class name
+or description. Visual support: a small set of pixel-annotated images for some classes. Initially, visual support includes images inAand is
+later expanded toB, withA⊆B. Text-only support often yields ambiguous predictions (rider as motorcycle, background hallucinations).
+Visual-only support struggles when some classes lack support (person, car) and can confuse similar objects (motorcycle, bicycle) even
+when all classes have support. Byretrieving information from images relevant to the test image and combining with the textual support,
+RNSis robust under missing visual support for some classes and achieves accuratesegmentation .
+Abstract
+Open-vocabulary segmentation (OVS) extends the zero-shot
+recognition capabilities of vision–language models (VLMs)
+to pixel-level prediction, enabling segmentation of arbi-
+trary categories specified by text prompts. Despite recent
+progress, OVS lags behind fully supervised approaches due
+to two challenges: the coarse image-level supervision used
+to train VLMs and the semantic ambiguity of natural lan-
+guage. We address these limitations by introducing a few-
+shot setting that augments textual prompts with a support
+set of pixel-annotated images. Building on this, we pro-
+pose a retrieval-augmented test-time adapter that learns a
+lightweight, per-image classifier by fusing textual and vi-
+sual support features. Unlike prior methods relying on late,
+hand-crafted fusion, our approach performs learned, per-
+query fusion, achieving stronger synergy between modali-
+ties. The method supports continually expanding support
+sets, and applies to fine-grained tasks such as personalized
+segmentation. Experiments show that we significantly nar-
+row the gap between zero-shot and supervised segmentation
+while preserving open-vocabulary ability.Project Page
+1. Introduction
+Semantic segmentation traditionally relies on fully su-
+pervised models trained on dense pixel-level annotations
+within a fixed set of categories [9, 43, 85]. While this ap-
+proach yields accurate, well-localized masks, it does not
+scale; collecting pixel-level annotations is costly, and mod-
+els cannot recognize categories unseen during training.
+Open-vocabulary segmentation (OVS) builds on the
+zero-shot recognition capabilities of contrastively trained
+vision–language models (VLMs) [24, 51, 82]. Trained on
+large image–text datasets [8, 56], VLMs learn a shared em-
+bedding space where images and text are directly compa-
+rable, enabling recognition of arbitrary categories specified
+at test time via text prompts or class names. Extending this
+ability from image-level to pixel-level prediction has driven
+rapid progress in OVS [32, 33, 63, 73]. However, a sub-
+stantial gap remains to fully supervised models [9]; recent
+improvements show signs of plateauing [55].
+Two key challenges underlie this gap: (i) the mismatch
+between image-level supervision used to train VLMs and
+the fine-grained predictions required for segmentation, and
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+27621
+
+
+=== PAGE 2 ===
+(ii) the semantic ambiguity of natural language supervision.
+While language enables open-vocabulary recognition, it of-
+ten lacks the precision needed for pixel-level tasks.
+We address these challenges by introducing a few-
+shot setting that supplements the textual support of class
+names with a small support set of visual examples,i.e. im-
+ages with pixel-level annotation. We aim tobridge the
+gapbetween zero-shot OVS and supervised segmentation,
+while preserving the open-vocabulary predictions. We pro-
+pose a retrieval-augmented test-time adapter that trains a
+lightweight classifier per test image. Inspired by retrieval-
+based methods [29, 71], our approach retrieves relevant vi-
+sual support examples and fuses them with textual sup-
+port to construct test-time training data. Unlike previous
+work [2, 18] relying on hand-crafted fusion, our method
+performs a learned per-image fusion of textual and visual
+prototypes, enabling strong synergy between modalities, as
+shown in Figure 1. Importantly, we store only a compact
+set of visual prototypes from the support images, keeping
+the memory footprint minimal, while our test-time training
+requires less than a second on an NVIDIAA100GPU 1.
+This design is enabled by the strong, generalizable fea-
+tures of modern VLMs trained at large-scale [8, 56]. These
+rich features allow us to avoid retraining the backbone and
+instead steer predictions with a lightweight classifier trained
+on only a few visual examples. By leveraging these ro-
+bust embeddings, our approach achieves efficient adaptation
+while preserving the open-vocabulary nature of the task.
+Our method, calledR etrieve an d S egment (RNS), can
+handle diverse real world settings, from textual and visual
+support for all classes, to partial support for some classes,
+where either a textual description is not straightforward to
+obtain or visual examples are not yet available. Moreover, it
+is compatible with a dynamic continually changing setting
+where new visual examples can be added to the support set
+at any time, without sacrificing the open-vocabulary nature.
+Due to its simplicity and its dynamic adaptability, our ap-
+proach is easily applicable to segmentation of particular ob-
+jects,i.e. the so called personalized segmentation [64, 84].
+In summary, our contributions are:
+• We investigate multiple few-shot settings for open-
+vocabulary segmentation, enriching textual prompts with
+pixel-annotated visual examples.
+• We introduce RNS, a retrieval-augmented, test-time
+adapter that learns to fuse textual and visual support more
+effectively than prior approaches.
+• RNS significantly reduces the performance gap between
+zero-shot and fully supervised segmentation, while main-
+taining open-vocabulary generalization.
+• RNS supports dynamic support expansion in continually
+evolving environments, and adapts seamlessly to fine-
+grained tasks such as personalized segmentation.
+1See supplementary material for runtime details.
+2. Related work
+Open-vocabulary segmentationis performed by leverag-
+ing vision–language models (VLMs) that align images and
+text in a shared space [24, 51, 82]. The fixed classifier is re-
+placed by a text encoder and matches patch features to text
+features, but vanilla VLMs pre-trained with image-level su-
+pervision struggle with dense localization [4, 88]. There are
+three lines of work: (i)Training VLMs for segmentation: ei-
+ther weakly supervised with masks without labels [13, 17]
+or image–caption pairs [7, 44, 47, 53, 76, 77], or fully super-
+vised with pixel annotations [11, 25, 35, 37, 38, 75, 79, 86].
+However, this approach hinders the open-vocabulary per-
+formance outside of the training domain [11, 63], as shown
+in datasets like MESS [3]. (ii)Training-free VLM tweaks:
+modified inference processes to boost spatial sensitivity,
+e.g. removing the final attention layer [88] or residual
+connections and feedforward networks [32], with further
+variants [4, 32, 67]. (iii)VLM+VM hybrids: combin-
+ing VLM semantics with the localization of vision models
+(VMs) [27, 30, 33, 58, 63, 72, 73, 83]. Methods typically
+localize objects with DINO [6, 49] or SAM [31, 54], then
+classify the localized regions in an open-vocabulary man-
+ner using VLMs. Despite progress, OVS still trails task-
+specific, fully supervised models.
+Few-shot segmentationlearns on base classes and
+adapts to novel classes from few (support) labeled ex-
+amples. Meta-learning and prototypical methods perform
+episodic1−orN−way training, create per-class prototypes
+and classify via similarity [45, 57, 60, 65, 68], typically as-
+suming a closed world. A recent generalized setting evalu-
+ates on both base and novel classes [19, 20, 41, 66], but still
+requires abundant pixel-level annotations for base classes
+and does not leverage VLMs. Close to our setting, a concur-
+rent work Power-of-One [21] introduces one-shot per class
+fine-tuning of text embeddings and specific backbone lay-
+ers. They require access to raw images, while we operate
+on pre-extracted features, and fine-tune internal VLM [36]
+layers for each new class set, which is not as light-weight
+as our test-time adapter. Beyond VLMs, CAT-SAM [74] ex-
+plores few-shot adaptation of SAM [31] via conditional tun-
+ing with lightweight adapters, but does not combine visual
+and textual support. COSINE [42] unifies open-vocabulary
+(text-prompted) and in-context (image-prompted) segmen-
+tation by training a decoder on top of frozen foundation
+models to handle multi-modal prompts. For open vocabu-
+lary semantic segmentation with many categories the model
+is only evaluated with unimodal prompts though.
+Retrieval augmentation in segmentation.Retrieval-
+augmented models for prediction and generation have
+shown strong performance by dynamically expanding
+their knowledge base [22, 40, 52, 80]. Following this
+paradigm in semantic segmentation, recent work enhances
+in-context scene understanding of vision encoders [1, 50,
+27622
+
+
+=== PAGE 3 ===
+62]. FREEDA [2] is conceptually related to RNS, but relies
+on generated visual examples. At test time, textual class
+features are expanded into visual counterparts via retrieval,
+forming a non-parametric visual classifier, which is then
+combined with a standard zero-shot textual classifier. For
+fair comparison, we adapt this method to use real support
+images instead of generated ones. Closely related to our
+work is kNN-CLIP [18], which enhances open-vocabulary
+semantic segmentation by leveraging a memory-efficient
+support set of class vectors derived from pixel-annotated
+images. At test time, it assigns labels to image regions
+based on the similarity to theirknearest neighbors in the
+support set. This approach outperforms continual learning
+baselines, demonstrating that a dynamic support set can in-
+corporate visual examples of new classes without forget-
+ting previously learned ones. However, while kNN-CLIP
+claims to expand the model’s vocabulary to arbitrary class
+sets, its performance remains limited to classes for which
+annotated examples are available.
+Test-time adaptation (TTA)for VLMs has grown
+rapidly, but many methods operate in batch/transductive
+or streaming modes [15, 28, 34] and carry unrealistic as-
+sumptions, such as class-complete batches or i.i.d. streams,
+which compromises zero-shot robustness [81]. In con-
+trast, single-image TTA adapts per sample: TPT [59]
+and ZERO [16] perform optimization or predictions over
+augmentations. For segmentation, single-image TTA is
+explored with self-supervised objectives [23], and OVS-
+specific TTA is just emerging, proposing adaptation layers
+for VLM-based segmenters at test time [48].
+3. Method
+3.1. Task formulation
+Given imageI∈R H×W×3 and setCofCsemantic classes,
+we aim to assign each pixel ofIto one of the classes. The
+class set is arbitrary and defined at test time. Therefore, the
+task is referred to asopen-vocabulary segmentation (OVS).
+Each class is specified either by a textual example,e.g.
+a class name, or by a small set of visual examples in the
+form of raw images with pixel-level annotations, like in a
+few-shot setting. We refer to these as thetextual support
+setandvisual support set, respectively. Typically, a tex-
+tual example is available for every class. However, visual
+examples may be missing initially, but their number and di-
+versity can increase over inference time, reflecting a contin-
+ually expanding open-world scenario. In rare cases, textual
+examples may also be absent,e.g. for novel categories with
+unknown names or in specialized domains such as medical
+imaging or remote sensing, where naming is non-trivial.
+We consider the following settings: (i)full-support: ev-
+ery class inChas a class name and at least one annotated
+support image. (ii)partial-visual-support: some classes
+lack visual examples, but all have class names. (iii)partial-
+textual-support: some classes lack class names, but all have
+visual examples. (iv)only-textual-support: class names are
+available for all classes inC, but no visual support images
+are provided,i.e. the commonly studiedzero-shotsegmen-
+tation setting.
+In contrast to zero-shot segmentation, all other settings
+have visual support examples available, and our goal is to
+leverage them to improve segmentation, while preserving
+the ability to operate with an open-vocabulary.
+We denote a support image byI i, a test (query) image
+byI q, while we drop the superscript when referring to im-
+ages in general and we adopt consistent notation for other
+variables as introduced in the following sections.
+3.2. Zero-shot segmentation with VLMs
+ImageI∈R H×W×3 , processed by the vision encoder of a
+VLM, is mapped to apatch-level feature matrixX∈R n×d.
+Heren=h×wcorresponds to the flattenedh×wpatch
+grid produced by a vision transformer (ViT), andddenotes
+the feature dimension. Thepatch featureat positionj∈
+1, . . . , nis denoted byx j ∈R d.
+Each class namec∈ C, processed by the VLM’s text
+encoder, is mapped to atextual class featuret c ∈R d. Both
+textual and visual features are normalized to unit length.
+The patch-level prediction map is denoted by ˆP∈
+[0,1] n×C with elements ˆPjc denoting the probability of
+patchjfor classcand computed by the dot product sim-
+ilarity between patch feature and textual class feature as
+ˆPjc =s C(x⊤
+j tc),(1)
+wheres C(·)is the softmax over class setC. Then, low-
+resolution prediction ˆPis reshaped and upsampled to the
+full-resolution prediction ˆY∈[0,1] H×W×C , and segmen-
+tation is obtained by theargmaxof ˆYover classes.
+3.3. Full textual and visual support
+In the following, we describe how to process examples in
+the textual and visual support sets to construct two support
+features sets, namely thevisual support feature setand the
+fused support feature setcombining visual and textual infor-
+mation. During inference, the elements of the support fea-
+ture sets that are the most relevant to a test image are used to
+train a lightweight patch-level linear classifier, which is then
+applied to the features of the same test image. Overview of
+this process is shown in Figure 2.
+Visual support features.Given a support imageI i and
+its ground-truth segmentation labelsY i ∈ {0,1} H×W×C
+at full resolution, its patch-level feature matrixX i ∈R n×d
+is extracted. Then, the ground-truth pixel-level labelsY i
+are down-sampled and reshaped to obtain patch-level labels,
+which are not binary anymore due to interpolation and are
+subsequentlyL 1-normalized per class (column) to obtain
+27623
+
+
+=== PAGE 4 ===
+CE(    ,    )
+CE(    ,    )
+visual support loss
+CE(    ,    ) W◼
+CE(    ,    )
+W◼
+W◼
+W◼
+train
+bg
+airplane
+boat
+support
+images
+support
+masks
+textual
+class features
+visual 
+class features
+fused support 
+feature set
+visual
+textual
+fused
+visual per-image
+test image
+patch/region
+features
+❄
+ 
+Support Construction.
+ Training.
+Inference.
+   retrieved visual 
+support features
+🔥
+linear
+classifier   retrieved fused 
+support features
+CE(    ,    )
+CE(    ,    ) W◼
+CE(    ,    )
+W◼
+W◼
+fused support loss
+test image
+ patch/region
+features
+prediction
+linear
+classifier
+per-image visual 
+class features
+visual support
+feature set
+Figure 2.Overview of RNS whenfull textual and visual supportis available.Having access to a set of pixel-level annotated images,
+per-image visual class featuresv i
+c are extracted. These features are then aggregated by class to formvisual class featuresv c, which are
+combined withtextual class featurest c, through a mixing coefficientλ, to producefused class featuresf cλ. During test-time training, a
+test-image-relevant subset ofvisual support featuresandfused class features, along with their class labels, are used to train a lightweight
+linear classifierg θ using cross-entropy loss. Each training sample is weighted with a class relevance weightw c (e.g.w ■forbg). At
+inference, this classifier, trained per test image, is applied to patch-level featuresx q
+j to generate segmentation predictions. When SAM is
+available, patch-level features are replaced by region-level featuresx q
+r for improved accuracy.
+P i ∈[0,1] n×C. These labels are used to pool the patch
+features intoper-image visual class featuresv i
+c for classes
+Ci present in imageiby
+vi
+c =
+nX
+j=1
+P i
+jc x i
+j .(2)
+AssumingMavailable support images, the union of per-
+image visual class features is given by
+V=
+M[
+i=1
+{v i
+c :c∈ C i},(3)
+and referred to asvisual support feature set, which is used
+to support the test-time adaptation process.
+Fused support features.We aim to leverage the seman-
+tic information in the textual class features. However, due
+to the modality gap between visual and textual features in
+VLMs [39], and because our goal is to classify image patch-
+level features, combining them directly with visual support
+features does not perform well, as confirmed by our experi-
+ments. Thus, for classc, we create afused class feature
+fcλ =λt c + (1−λ)v c, λ∈[0,1],(4)
+by combining textual class featuret c andvisual class fea-
+turev c obtained by aggregating all per-image visual class
+features for classcacross the visual support set by
+vc =
+X
+i∈Ic
+v i
+c ,(5)
+whereI c is the set of support images that contain classc.
+The fusion process is performed for a set of mixing coef-
+ficientsΛ⊆[0,1]to capture diverse and complementary
+information from both modalities, yielding multiple fused
+class features per class. We denote thefused support fea-
+ture setbyF={f cλ|c∈ C, λ∈Λ}, which is used to
+support the test-time adaptation process.
+Support feature set maintenance.For each support im-
+age, we extract its feature matrix and pool patch features
+into per-image visual class features (2). If a new support im-
+age arrives, we update the visual support feature setV(3),
+the visual class features (5), the fused class features (4), and
+consequently the fused support feature setF. Therefore,
+our support sets are dynamically expandable in a straight-
+forward and efficient manner, allowing to operate in a con-
+tinually evolving open-world scenario.
+Test-time adaptation.For test imageI q with feature
+matrixX q ∈R n×d, and the feature of patchjdenoted by
+xq
+j, we train linear classifierg θ :R d →R C, specifically for
+I q, to project features to class probabilities. We leverage
+the relevant elements of the two support feature sets.
+To this end, we retrieve theknearest neighbors of each
+test image patch features from the visual support feature set
+and unite them into theretrieved visual support feature set
+Vr =
+n[
+j=1
+kNN
+ 
+V,x q
+j
+
+.(6)
+We define thevisual support lossby
+Lv =
+X
+v∈ V r
+w l(v) CE
+ 
+gθ(v),1 l(v)
+
+,(7)
+whereCEis the cross entropy loss,l(v)provides the label
+of featurev(a per-image visual class feature),1 c is the one-
+hot encoding of classc, andw c is aclass relevance weight
+for classc. This loss encourages the classifier to assign high
+probability to the correct class for each retrieved support
+feature. The retrieved set is expected to include features
+corresponding to classes present in the test image, particu-
+larly those originating from visually similar images.
+27624
+
+
+=== PAGE 5 ===
+The class relevance weights are used to suppress the
+impact of retrieved features irrelevant to the test image.
+Weightw c is estimated via the similarity between the
+image-level featurex q ∈R d and the corresponding textual
+class feature, followed by softmax:
+wc =s C
+
+(xq)⊤tc
+
+,(8)
+withx q given by global average pooling
+xq = 1
+n
+nX
+j=1
+xq
+j .(9)
+We utilize textual support, via the fused support set, by
+training the classifier on the fused class features (denoted
+byF r and referred to asretrieved fused support feature set)
+of the classes (denoted byC r) that appear in retrieved vi-
+sual support feature setV r. This is performed via thefused
+support loss:
+Lf =
+X
+c∈Cr
+wc
+X
+λ∈Λ
+CE
+ 
+gθ(fcλ),1 c
+
+.(10)
+We observe that using multiple mixing coefficientsΛim-
+proves performance compared to using a single coefficient.
+The total loss is given byL=L v +β f Lf .After training,
+classifierg θ is applied to test image patch features to obtain
+patch-level predictions. Then, this low resolution prediction
+map is upsampled to the original image resolution to obtain
+the final segmentation map.
+3.4. Partial visual support
+We present an additional loss, while other components re-
+main as in Section 3.3.
+Classes without visual support.The set of classes sup-
+ported by their class name but with no image examples are
+denoted asC d. Given the absence of visual support for these
+classes, we cannot compute their visual class featurevc (5),
+and consequently, their fused class featuref cλ (4).
+To circumvent this, we exploit the test image to identify
+whether any of the classes inC d are present in it via zero-
+shot prediction ˆP q (1). Predictions in ˆP q are converted to
+one-hot vectors by assigning each patch to its most probable
+class, and the result isL 1-normalized per class (column)
+to obtain ˜P q ∈[0,1] n×C. We denote byC q ⊆ Cthe set
+of classes assigned to at least one patch according to ˜P q.
+Then, we define the visual class feature by pooling the patch
+features according to these pseudo-labels:
+vc =
+nX
+j=1
+˜P q
+jc xq
+j , c∈ C d ∩ Cq.(11)
+Note2 that we perform this only for classes inCq ∩ Cd whose
+2Notationv c used for both types of visual class features; (5) used for
+classes with visual-textual support, while (11) for those with only textual.
+visual class feature cannot be obtained by (5). This allows
+us to perform the modality fusion by (4) for all classes.
+Fused feature pseudo-labeling.Fused class featuref cλ
+is derived through visual class features that use pseudo-
+labeling. Therefore, its association with classcis uncertain.
+To circumvent this, we pseudo-label those fused class fea-
+tures. The predicted probability distribution forf cλ denoted
+by ˆpcλ ∈[0,1] C has itsc ′ element, associated with classc ′,
+estimated byf ⊤
+cλtc′ followed by softmax over all classes.
+Extended test-time adaptation loss.We introduce a
+pseudo-label lossterm exploiting such pseudo-labels:
+Lp =
+X
+c∈Cd∩Cq
+wc
+X
+λ∈Λ
+KL
+ ˆpcλ
+ gθ(fcλ)
+
+,(12)
+whereKLis the Kullback-Leibler divergence.
+The total loss is given byL=L v +β f Lf +
+βp Lp.Note that classes with visual support are handled in
+the second loss term, while the rest are either handled in
+the third loss term (C r ∩ Cd =∅) or ignored if they are not
+predicted to be present in the test image.
+3.5. Partial textual support
+We modifyfused support featuresof classes without textual
+support, while other components remain as in Section 3.3.
+Classes without textual support.When class names are
+absent, we cannot compute textual class featurest c or their
+fused counterpartsf cλ (4). Excluding these classes from
+the loss introduces bias toward classes with both supports.
+Instead, we replace missing textual class features with the
+average textual class feature across classes with an available
+class name. This provides a neutral semantic prior, ensuring
+that all classes equivalently participate in the loss.
+If textual support is missing for all classes, no textual
+class features can be formed. In this case, we simply set
+Λ ={0}and class relevance weightsw c are set equal to 1
+for all classes, effectively reducing to ourw/o textbaseline.
+3.6. Region-proposal predictions
+Our method so far assumes patch-level feature extraction
+and predictions,i.e.x q
+j for patchj. When region proposals
+S∈ {0,1} H×W×R forRbinary masks are available for the
+test image,e.g. from SAM [31, 54], we proceed as follows.
+We downsample each mask to patch resolution and apply
+L1 normalization per region, yielding ¯S∈[0,1] n×R.
+We then pool patch features into region-level features by
+x q
+r =
+nX
+j=1
+¯Sjr x q
+j , r= 1, . . . , R,(13)
+whererdenotes the region index. Finally, we assign labels
+at the region level and map them to the corresponding mask
+regions at the full image resolution to obtain the final seg-
+mentation map.
+27625
+
+
+=== PAGE 6 ===
+1 2 3 5 10 20
+30
+40
+50
+Support images per class
+mIoU (%)
+RNS
+kNN-CLIP
+FREEDA
+Zero-shot
+with text
+w/o text
+1 2 3 5 10 20
+30
+40
+50
+Support images per class
+SAM
+Patch
+Figure 3.Full textual and visual support.We compare zero-shot, RNS, kNN-CLIP and FREEDA and their variants without class name
+information (w/o text) for increasing number of support images per class. SAM 2.1 is used for region proposals.Left:OpenCLIP (ViT-
+B/16) for region-level predictions.Right:DINOv3.txt (ViT-L/16) for patch-level and region-level predictions.
+0 0.1 0.3 0.5 0.7 0.9
+0
+20
+40
+Fraction of classes w/o visual support
+mIoU (%)
+RNS
+kNN-CLIP
+FREEDA
+Zero-shot
+with text
+w/o pseudo-label loss
+w/o text
+0 0.1 0.3 0.5 0.7 0.9
+25
+30
+35
+40
+Fraction of classes w/o textual support
+RNS
+kNN-CLIP
+FREEDA
+Zero-shot
+with text
+w/o text
+Figure 4.Partial visual (left) and textual (right) support settings.Results of zero-shot, RNS, kNN-CLIP, FREEDA and their variants
+without class name information (w/o text). RNS evaluated w/o the pseudo-label loss in (12). OpenCLIP ViT-B/16 and SAM 2.1 are used.
+Left: a fraction of classes lack visual examples, whileB= 3for the rest. Right: a fraction of classes lack textual class names, andB= 1.
+4. Experiments
+4.1. Experimental setup
+Datasets and evaluation.We evaluate on the valida-
+tion split of six OVS benchmarks: PASCAL VOC [14]
+(VOC), PASCAL Context [46] (Context), COCO Object
+(Object), COCO-Stuff [5] (Stuff), Cityscapes [12] (City),
+and ADE20K [87] (ADE). We report theaverage mIoU
+over all datasets unless otherwise noted. Per dataset results
+are presented in the supplementary. We also evaluate on
+PASCAL Context-59 (C-59) [46], FoodSeg103 (Food) [70],
+and CUB [69] to compare OVS and fully supervised meth-
+ods. Details about sampling theBsupport images per class
+for the visual support set, and the construction of the few-
+shot benchmark are shown in the supplementary.
+Implementation details.We use OpenCLIP ViT-
+B/16 [10] trained on LAION [56] and apply the MaskCLIP
+trick [88]. For DINOv3 [61], we use the public ViT-L/16
+checkpoint adapted with dino.txt [26] to derive text-aligned
+patch features, denoted by DINOv3.txt. For region propos-
+als, we run SAM 2.1 [54] Hiera-L on each query image
+with a32×32grid of points (one mask per point) and non-
+maximum suppression to ensure non-overlap. More imple-
+mentation details are shown in the supplementary.
+Competitors.We compare to zero-shot predic-
+tion (Section 3.2), and to two retrieval-based OVS
+methods that leverage both visual and textual support
+sets: kNN-CLIP [18] , which we re-implement, and
+FREEDA [2], where we adapt the official code to use a
+real support set,i.e. pixel-annotated images, rather than
+synthetic-only prototypes. Please refer to the supplemen-
+tary material for details in the implementation of the afore-
+mentioned competitors. We also report performance for
+training a linear classifier or the full network “offline” on
+the entire support set in a closed-set manner. These vari-
+ants lose the open-vocabulary ability as they cannot provide
+predictions for unseen classes, but provide useful reference
+baselines. Specifically, we consider the following three of-
+fline training methods: (i) Linear classifier on per-image vi-
+sual class featuresv i
+c and their corresponding labels. (ii)
+Offline linear classifier on patch-level featuresxi
+j and pixel-
+level annotations. Predictions are upsampled to apply the
+loss at the full image resolution. (iii) Offline finetuning
+on images and pixel-level annotations. This configuration
+builds upon the previous setup but, in addition to training
+the linear classifier, it also finetunes the parameters of the
+vision encoder. We also compare to SOTA fully supervised
+and different kinds of OVS methods in Table 2.
+27626
+
+
+=== PAGE 7 ===
+1 2 3 5 10 20
+30
+40
+50
+Support images per class
+mIoU (%)
+RNS
+Vr
+VCr
+random fromV Cr
+random fromV
+furthest fromV Cr
+Figure 5.Impact of retrieval on RNS.We replace the retrieved
+visual support feature setV r of RNS with a random subset of the
+visual support feature setV, or different variants of visual support
+features from the retrieved classesV Cr .
+MethodB= 1B= 5B= 10
+RNS 41.59 47.87 49.02
+RNS w/owc 41.20 -0.39 47.43 -0.44 48.54 -0.48
+RNS w/owc Λ ={0.8}36.40 -5.19 46.55 -1.32 48.38 -0.64
+RNS w/o text 34.11 -7.48 45.71 -2.16 48.00 -1.02
+Table 1.Ablations of RNS.We report average mIoU across the
+considered datasets for three different numbers of available sup-
+port images per class (B= 1,B= 5,B= 10). Blue numbers
+denote difference to the number in the same column but first row.
+4.2. Experimental results
+Full textual and visual support.Figure 3 reports mIoU as
+we vary the number of support imagesBper class. RNS
+consistently outperforms all competitors on everyB, both
+backbones, and input feature granularity, with large gains.
+Moreover, it yields significant improvement over zero-shot
+segmentation:+7.3%on OpenCLIP and+18.4%on DI-
+NOv3.txt with just one image per class. RNS effectively
+leverages text, achieving a performance gain atB= 1over
+the w/o-text variant while performing on par in theB= 20
+case, indicating that textual priors are valuable when sup-
+port is sparse, while visuals dominate as support densifies.
+Interestingly, kNN-CLIP ’s fusion heuristics help atB= 1,
+but hinder afterB= 5, suggesting sensitivity to hand-
+tuned fusion as support grows. The variant of kNN-CLIP
+that discards text is competitive when enough support im-
+ages are available but scores low in the few-shot regime,
+where the diversity and quality of the support are minimal.
+FREEDA does not benefit enough from combining textual
+with visual support; low gains with respect to w/o-text base-
+line. Moreover, on newer backbones with stronger localiza-
+tion, e.g., DINOv3, the gap between RNS and kNN-CLIP
+widens, indicating that RNS scales better with better visual
+representations. Region-proposals consistently boost per-
+formance compared to patch-level predictions, by leverag-
+ing the large-scale training of SAM, at the expense of higher
+computational cost at inference time.
+Partial visual support.In Figure 4 (left), we vary the
+fraction of classes without visual examples, while keep-
+ing text descriptions for all. RNS degrades smoothly, and
+1 2 3 5 10 20
+20
+30
+40
+Support images per class
+mIoU (%)
+RNS
+RNS w/o text
+Offline linear clf on visual class features
+Offline linear clf on pixel-level annotations
+Offline finetuning on pixel-level annotations
+Offline finetuning on pixel-level annotations + RNS
+Zero-shot
+Figure 6.Comparison in a closed vocabulary setting.We com-
+pare RNS to the offline baseline competitors. To ensure a fair
+comparison we tune the learning rate, batch size, and number of
+iterations using a train-validation split from the available support
+images. No mask proposals are used. We report average perfor-
+mance on VOC, ADE, and Stuff.
+manages to benefit from visual support even for small frac-
+tions of supported classes. Removing pseudo-label loss (12)
+leads to a steep drop in performance; this is our mecha-
+nism to compensate for the missing visual support. Further
+removing textual support (w/o text) degrades performance
+more, as the model cannot leverage neither fusion nor class
+relevance weights. kNN-CLIP and FREEDA drop signif-
+icantly, and soon perform below zero-shot, as they do not
+account for missing classes in their support set. Note that
+missing visual support for some classes is inevitable in an
+open-world and dynamically expanding environment.
+Partial textual support.In Figure 4 (right), we vary
+the fraction of classes without text descriptions, while keep-
+ing the visual support set intact. RNS remains the best
+across the entire range, dropping only mildly as text be-
+comes scarce. Results suggest that training jointly on visual
+and textual support is superior to heuristic late fusion of in-
+dependent predictions; kNN-CLIP degrades steeply, while
+FREEDA barely benefits even when text is available. RNS
+uses text as an auxiliary signal, used for fusion and rele-
+vance weighting, yielding a consistent boost when available
+but without making the model fragile when it disappears.
+Ablationsare presented in Table 1. Removing class rel-
+evance weights (wc) yields a reduction across all shots, con-
+firming their role in suppressing irrelevant retrieved classes.
+Additionally, creating fused features (4) with a singleλ=
+0.8harms especially the low-shot regime, where effective
+use of text fusion is more important. Overall, components
+of RNS provide complementary benefits, with lower but
+considerable impact as visual support increases.
+In Figure 5, we analyze the impact of retrieval mecha-
+nism on the performance of RNS. When replacing retrieved
+visual support feature setV r (6) with a random subset ofV
+performance degrades a lot, confirming that using similar
+image regions is crucial. Then, we perform the default re-
+trieval (6) but instead of keepingV r, we focus on retrieved
+classesC r, and form a set of visual support features from the
+retrieved classesV Cr=SM
+i=1{v i
+c :c∈ C r}. We perform the
+test-time adaptation using different subsets of this set. Us-
+27627
+
+
+=== PAGE 8 ===
+test imagebefore 
+personalization
+after 
+personalization
+Figure 7.RNS for personalized segmentation.We append ex-
+amples of a specific instance to the support.Green:personalized
+instance,red:generic class, andblack:background. Support sets
+shown in the supplementary.
+ing the full setV Cr yields slightly lower performance than
+the default approach, suggesting thatV Cr includes irrele-
+vant examples that are filtered out by RNS. Using a random
+subset ofV Cr performs quite better than a random subset of
+V, indicating that restricting adaptation to semantically rel-
+evant classes is beneficial. In contrast, selecting the furthest
+per query feature examples fromV Cr results in the worst
+performance, even below random sampling fromV. These
+demonstrate that retrieval in RNS identifies relevant support
+features, which improves performance significantly.
+Closed-set comparisons.We also include a compari-
+son of RNS with fully supervised offline baselines in Fig-
+ure 6. The offline classifier trained on visual class features
+performs comparably to RNS w/o text whenB= 1−3,
+but its performance deteriorates as the number of images
+per class increases. This highlights the advantage of test-
+time retrieval, which identifies the most relevant visual class
+features from the support set for each test image. Offline
+methods trained on pixel-level annotations perform poorly
+in low-shot settings, indicating that such methods require
+larger amounts of data to avoid overfitting. Freezing the
+backbone and training only a linear classifier with pixel-
+level cross entropy loss underperforms RNS in all shots,
+suggesting that our method and objective are more effective
+in few-shot support utilization. On the other hand, training
+the backbone as well results in stronger performance when
+sufficient support is available, at the cost of training com-
+putational complexity. The best performance is obtained
+when combining the pretrained backbone weights from the
+latter experiment with RNS, by adapting the linear classi-
+fier during test-time. This suggests: (i) the complementary
+gains of visual and textual supervision with our method (ii)
+the efficacy of our test-time training on test-image relevant
+support, compared to offline training on the entire support.
+Personalized segmentation.In Figure 7, we qualita-
+tively demonstrate that the dynamic expandability of the
+support set in RNS enables personalized segmentation of
+Method Training set Annot. VOC City ADE C-59 Food CUB A vg.
+SAN†[78] COCO 118k – – 32.1 57.7 24.5 19.3 –
+CAT-Seg [11] COCO 118k 82.5 47.0∗ 37.9 63.333.3 22.9 47.8
+LPOSS+ [63]✗ ✗62.4 37.9 22.3 38.6 26.1 12.0 33.2
+CorrCLIP [83]✗ ✗76.4 49.9 28.8 47.9 – – –
+DINOv3.txt [61] + SAM✗ ✗31.3 39.3 27.7 36.3 27.2 5.8 27.9
++ RNSB= 1 Domain 66 73.259.137.352.742.834.049.9
++ RNSB= 20 Domain964 82.161.747.862.552.265.261.9
+Fully SupervisedDomain 20k90.4 87.0 63.0 70.345.184.6 73.4
+Table 2.OVSvs. fully supervised segmentation.Fully super-
+vised: best method picked per dataset. ∗: self-evaluated, †: from
+CAT-Seg.Domain: using annotations from each training set.An-
+not:the number of pixel-level semantic segmentation annotations
+that each method uses. Fordomainwe report the ADE annota-
+tions. Full table and details in the supplementary.
+particular object instances within a class. Starting from a
+support set that allows RNS to segment pixels of a class,
+e.g.,plate, appending only a few examples of a particu-
+lar instance,e.g.,plate with a kingfisher / my
+plate, enables the model to distinguish that instance from
+the broader class. We observe that RNS accurately seg-
+ments partially occluded personalized objects, such as the
+skirt with a tropical pattern. Failure cases
+remain;e.g., RNS incorrectly segments part of anorange
+towelas aswimsuit, likely due to insufficient contex-
+tual information and reliance on color cues. Nevertheless,
+results illustrate that RNS is effectively employed for per-
+sonalized segmentation without any modifications.
+Bridging the gap.In Table 2, we compare different OVS
+methods, including RNS, and fully supervised ones (closed
+vocabulary). We consider methods from four categories (i)
+SAN and CAT-Seg as OVS methods that train on COCO-
+Stuff, (ii) LPOSS and CorrCLIP as training free OVS meth-
+ods, (iii) RNS as an OVS method that uses support sets con-
+structed from annotated images, (iv) fully supervised meth-
+ods pre-trained offline on a closed set of classes. RNS with
+B= 20, narrows down the gap to fully supervised segmen-
+tation to11.5on average, improving the zero-shot baseline
+by34. RNS also surpasses the second best OVS method,
+CAT-Seg, by14.1, using much less pixel-level annotations.
+The improvement is more evident on fine-grained datasets
+like CUB and Food that are far from the domain of COCO-
+Stuff, which is commonly used as a training set in OVS.
+5. Conclusion
+We introduce RNS, a retrieval–augmented test-time adapter
+for open-vocabulary segmentation that learns a lightweight
+per-image linear classifier on frozen VLM features by fus-
+ing textual class features with retrieved visual support fea-
+tures. The method operates on patches or region propos-
+als, handles full and partial support with a single objective,
+and avoids any type of hand-crafted solutions. Across six
+benchmarks and two backbones, RNS consistently outper-
+forms all baselines and competitors. Finally, the dynamic
+support mechanism makes RNS naturally suited for open-
+world fine-grained tasks,i.e. personalized segmentation.
+27628
+
+
+=== PAGE 9 ===
+Acknowledgments
+This work was supported by the Czech Technical Uni-
+versity in Prague grant No. SGS23/173/OHK3/3T/13,
+the EU Horizon Europe programme MSCA PF RA VI-
+OLI (No. 101205297), and the Junior Star GACR GM
+21-28830M. We acknowledge VSB–Technical University
+of Ostrava, IT4Innovations National Supercomputing
+Center, Czech Republic, for awarding this project (OPEN-
+33-67) access to the LUMI supercomputer, owned by
+the EuroHPC Joint Undertaking, hosted by CSC (Fin-
+land) and the LUMI consortium, through the Ministry
+of Education, Youth and Sports of the Czech Republic
+via the e-INFRA CZ project (ID: 90254). The access to
+the computational infrastructure of the OP VVV funded
+project CZ.02.1.01/0.0/0.0/16 019/0000765 “Research
+Center for Informatics” is also gratefully acknowledged.
+References
+[1] Ivana Bala ˇzevi´c, David Steiner, Nikhil Parthasarathy, Relja
+Arandjelovi´c, and Olivier J. H ´enaff. Towards in-context
+scene understanding. InNeurIPS, 2023. 2
+[2] Luca Barsellotti, Roberto Amoroso, Marcella Cornia,
+Lorenzo Baraldi, and Rita Cucchiara. Training-free open-
+vocabulary segmentation with offline diffusion-augmented
+prototype generation. InCVPR, 2024. 2, 3, 6
+[3] Benedikt Blumenstiel, Johannes Jakubik, Hilde K ¨uhne, and
+Michael V¨ossing. What a mess: Multi-domain evaluation of
+zero-shot semantic segmentation. InNeurIPS, 2023. 2
+[4] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and
+Hilde Kuehne. Grounding everything: Emerging localiza-
+tion properties in vision-language transformers. InCVPR,
+2024. 2
+[5] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. COCO-
+Stuff: Thing and stuff classes in context. InCVPR, 2018.
+6
+[6] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. In
+ICCV, 2021. 2
+[7] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learn-
+ing to generate text-grounded mask for open-world semantic
+segmentation from only image-text pairs. InCVPR, 2023. 2
+[8] Soravit Changpinyo, Piyush Sharma, Nan Ding, and Radu
+Soricut. Conceptual 12m: Pushing web-scale image-text pre-
+training to recognize long-tail visual concepts. InCVPR,
+2021. 1, 2
+[9] Liang-Chieh Chen, Yukun Zhu, George Papandreou, Florian
+Schroff, and Hartwig Adam. Encoder-decoder with atrous
+separable convolution for semantic image segmentation. In
+ECCV, 2018. 1
+[10] Mehdi Cherti, Romain Beaumont, Ross Wightman, Mitchell
+Wortsman, Gabriel Ilharco, Cade Gordon, Christoph Schuh-
+mann, Ludwig Schmidt, and Jenia Jitsev. Reproducible scal-
+ing laws for contrastive language-image learning. InCVPR,
+2023. 6
+[11] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. InCVPR, 2024. 2, 8
+[12] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. InCVPR,
+2016. 6
+[13] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. InCVPR, 2022.
+2
+[14] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge.IJCV, 2010. 6
+[15] Xinqi Fan, Xueli Chen, Luoxiao Yang, Chuin Hong Yap,
+Rizwan Qureshi, Qi Dou, Moi Hoon Yap, and Mubarak
+Shah. Test-time retrieval-augmented adaptation for vision-
+language models. InICCV, 2025. 3
+[16] Matteo Farina, Gianni Franchi, Giovanni Iacca, Massimil-
+iano Mancini, and Elisa Ricci. Frustratingly easy test-time
+adaptation of vision-language models. InNeurIPS, 2024. 3
+[17] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scal-
+ing open-vocabulary image segmentation with image-level
+labels. InECCV, 2022. 2
+[18] Zhongrui Gui, Shuyang Sun, Runjia Li, Jianhao Yuan, Zhao-
+chong An, Karsten Roth, Ameya Prabhu, and Philip Torr.
+knn-clip: Retrieval enables training-free segmentation on
+continually expanding large vocabularies.TMLR, 2024. 2,
+3, 6
+[19] Sina Hajimiri, Malik Boudiaf, Ismail Ben Ayed, and Jose
+Dolz. A strong baseline for generalized few-shot semantic
+segmentation. InCVPR, 2023. 2
+[20] Mir Rayat Imtiaz Hossain, Mennatullah Siam, Leonid Sigal,
+and James J Little. Visual prompting for generalized few-
+shot segmentation: A multi-scale approach. InCVPR, 2024.
+2
+[21] Mir Rayat Imtiaz Hossain, Mennatullah Siam, Leonid Si-
+gal, and James J Little. The power of one: A single ex-
+ample is all it takes for segmentation in vlms.arXiv preprint
+arXiv:2503.10779, 2025. 2
+[22] Ahmet Iscen, Mathilde Caron, Alireza Fathi, and Cordelia
+Schmid. Retrieval-enhanced contrastive vision-text models.
+InICLR, 2024. 2
+[23] Klara Janouskova, Tamir Shor, Chaim Baskin, and Jiri
+Matas. Single image test-time adaptation for segmentation.
+TMLR, 2024. 3
+[24] Hao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc V . Le, Yun-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representation
+learning with noisy text supervision. InICML, 2021. 1, 2
+[25] Siyu Jiao, Hongguang Zhu, Jiannan Huang, Yao Zhao, Yun-
+chao Wei, and Humphrey Shi. Collaborative vision-text rep-
+resentation optimizing for open-vocabulary segmentation. In
+ECCV, 2024. 2
+[26] Cijo Jose, Th ´eo Moutakanni, Dahyun Kang, Federico
+Baldassarre, Timoth ´ee Darcet, Hu Xu, Daniel Li, Marc
+27629
+
+
+=== PAGE 10 ===
+Szafraniec, Micha¨el Ramamonjisoa, Maxime Oquab, Oriane
+Sim´eoni, Huy V . V o, Patrick Labatut, and Piotr Bojanowski.
+Dinov2 meets text: A unified framework for image- and
+pixel-level vision-language alignment. InCVPR, 2025. 6
+[27] Dahyun Kang and Minsu Cho. In defense of lazy visual
+grounding for open-vocabulary semantic segmentation. In
+ECCV, 2024. 2
+[28] Adilbek Karmanov, Dayan Guan, Shijian Lu, Abdulmotaleb
+El Saddik, and Eric Xing. Efficient test-time adaptation of
+vision-language models. InCVPR, 2024. 3
+[29] Urvashi Khandelwal, Omer Levy, Dan Jurafsky, Luke Zettle-
+moyer, and Mike Lewis. Generalization through memoriza-
+tion: Nearest neighbor language models. InICLR, 2020. 2
+[30] Chanyoung Kim, Dayun Ju, Woojung Han, Ming-Hsuan
+Yang, and Seong Jae Hwang. Distilling spectral graph for
+object-context aware open-vocabulary semantic segmenta-
+tion. InCVPR, 2025. 2
+[31] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. InICCV, 2023. 2, 5
+[32] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+ence. InECCV, 2024. 1, 2
+[33] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Proxyclip: Proxy at-
+tention improves clip for open-vocabulary segmentation. In
+ECCV, 2024. 1, 2
+[34] Youngjun Lee, Doyoung Kim, Junhyeok Kang, Jihwan
+Bang, Hwanjun Song, and Jae-Gil Lee. RA-TTA: Retrieval-
+augmented test-time adaptation for vision-language models.
+InICLR, 2025. 3
+[35] Fan Li, Xuanbin Wang, Xuan Wang, Zhaoxiang Zhang, and
+Yuelei Xu. Images as noisy labels: Unleashing the poten-
+tial of the diffusion model for open-vocabulary semantic seg-
+mentation. InCVPR, 2025. 2
+[36] Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi.
+Blip: Bootstrapping language-image pre-training for unified
+vision-language understanding and generation. InICML,
+2022. 2
+[37] Yongkang Li, Tianheng Cheng, Bin Feng, Wenyu Liu, and
+Xinggang Wang. Mask-adapter: The devil is in the masks
+for open-vocabulary segmentation. InCVPR, 2025. 2
+[38] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. InCVPR, 2023. 2
+[39] Weixin Liang, Yuhui Zhang, Yongchan Kwon, Serena Ye-
+ung, and James Y . Zou. Mind the gap: Understanding
+the modality gap in multi-modal contrastive representation
+learning. InNeurIPS, 2022. 4
+[40] Haotian Liu, Kilho Son, Jianwei Yang, Ce Liu, Jianfeng Gao,
+Yong Jae Lee, and Chunyuan Li. Learning customized vi-
+sual models with retrieval-augmented knowledge. InCVPR,
+2023. 2
+[41] Sun-Ao Liu, Yiheng Zhang, Zhaofan Qiu, Hongtao Xie,
+Yongdong Zhang, and Ting Yao. Learning orthogonal pro-
+totypes for generalized few-shot semantic segmentation. In
+CVPR, 2023. 2
+[42] Yang Liu, Yufei Yin, Chenchen Jing, Muzhi Zhu, Hao Chen,
+Yuling Xi, Bo Feng, Hao Wang, Shiyu Li, and Chunhua
+Shen. Unified open-world segmentation with multi-modal
+prompts. InICCV, 2025. 2
+[43] Jonathan Long, Evan Shelhamer, and Trevor Darrell. Fully
+convolutional networks for semantic segmentation. In
+CVPR, 2015. 1
+[44] Huaishao Luo, Junwei Bao, Youzheng Wu, Xiaodong He,
+and Tianrui Li. Segclip: Patch aggregation with learn-
+able centers for open-vocabulary semantic segmentation. In
+ICML, 2023. 2
+[45] Juhong Min, Dahyun Kang, and Minsu Cho. Hypercorre-
+lation squeeze for few-shot segmentation. InICCV, 2021.
+2
+[46] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and se-
+mantic segmentation in the wild. InCVPR, 2014. 6
+[47] Jishnu Mukhoti, Tsung-Yu Lin, Omid Poursaeed, Rui Wang,
+Ashish Shah, Philip HS Torr, and Ser-Nam Lim. Open
+vocabulary semantic segmentation with patch aligned con-
+trastive learning. InCVPR, 2023. 2
+[48] Mehrdad Noori, David Osowiechi, Gustavo Adolfo Vargas
+Hakim, Ali Bahri, Moslem Yazdanpanah, Sahar Dastani,
+Farzad Beizaee, Ismail Ben Ayed, and Christian Desrosiers.
+Test-time adaptation of vision-language models for open-
+vocabulary semantic segmentation. InNeurIPS, 2025. 3
+[49] Maxime Oquab, Timoth ´ee Darcet, Th´eo Moutakanni, Huy V .
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, Mido
+Assran, Nicolas Ballas, Wojciech Galuba, Russell Howes,
+Po-Yao Huang, Shang-Wen Li, Ishan Misra, Michael Rab-
+bat, Vasu Sharma, Gabriel Synnaeve, Hu Xu, Herv ´e J´egou,
+Julien Mairal, Patrick Labatut, Armand Joulin, and Piotr Bo-
+janowski. Dinov2: Learning robust visual features without
+supervision.TMLR, 2024. 2
+[50] Valentinos Pariza, Mohammadreza Salehi, Gertjan J. Burgh-
+outs, Francesco Locatello, and Yuki M. Asano. Near, far:
+Patch-ordering enhances vision foundation models’ scene
+understanding. InICLR, 2025. 2
+[51] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen
+Krueger, and Ilya Sutskever. Learning transferable visual
+models from natural language supervision. InICML, 2021.
+1, 2
+[52] Ori Ram, Yoav Levine, Itay Dalmedigos, Dor Muhlgay, Am-
+non Shashua, Kevin Leyton-Brown, and Yoav Shoham. In-
+context retrieval-augmented language models.Transactions
+of the Association for Computational Linguistics, 2023. 2
+[53] Kanchana Ranasinghe, Brandon McKinzie, Sachin Ravi,
+Yinfei Yang, Alexander Toshev, and Jonathon Shlens. Per-
+ceptual grouping in contrastive vision-language models. In
+ICCV, 2023. 2
+27630
+
+
+=== PAGE 11 ===
+[54] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang
+Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman
+R¨adle, Chloe Rolland, Laura Gustafson, Eric Mintun, Junt-
+ing Pan, Kalyan Vasudev Alwala, Nicolas Carion, Chao-
+Yuan Wu, Ross Girshick, Piotr Doll´ar, and Christoph Feicht-
+enhofer. Sam 2: Segment anything in images and videos. In
+ICLR, 2025. 2, 5, 6
+[55] Josip ˇSari´c, Ivan Martinovi ´c, Matej Kristan, and Sini ˇsa
+ˇSegvi´c. What holds back open-vocabulary segmentation? In
+ICCVW, 2025. 1
+[56] Christoph Schuhmann, Romain Beaumont, Richard Vencu,
+Cade Gordon, Ross Wightman, Mehdi Cherti, Theo
+Coombes, Aarush Katta, Clayton Mullis, Mitchell Worts-
+man, et al. Laion-5b: An open large-scale dataset for training
+next generation image-text models. InNeurIPS, 2022. 1, 2,
+6
+[57] Amirreza Shaban, Shray Bansal, Zhen Liu, Irfan Essa, and
+Byron Boots. One-shot learning for semantic segmentation.
+InBMVC, 2017. 2
+[58] Yuheng Shi, Minjing Dong, and Chang Xu. Harnessing vi-
+sion foundation models for high-performance, training-free
+open vocabulary segmentation. InICCV, 2025. 2
+[59] Manli Shu, Weili Nie, De-An Huang, Zhiding Yu, Tom
+Goldstein, Anima Anandkumar, and Chaowei Xiao. Test-
+time prompt tuning for zero-shot generalization in vision-
+language models. InNeurIPS, 2022. 3
+[60] Mennatullah Siam, Boris N Oreshkin, and Martin Jagersand.
+Amp: Adaptive masked proxies for few-shot segmentation.
+InICCV, 2019. 2
+[61] Oriane Sim ´eoni, Huy V V o, Maximilian Seitzer, Federico
+Baldassarre, Maxime Oquab, Cijo Jose, Vasil Khalidov,
+Marc Szafraniec, Seungeun Yi, Micha ¨el Ramamonjisoa,
+et al. Dinov3.arXiv preprint arXiv:2508.10104, 2025. 6,
+8
+[62] Sophia Sirko-Galouchenko, Spyros Gidaris, Antonin
+V obecky, Andrei Bursuc, and Nicolas Thome. Dip:
+Unsupervised dense in-context post-training of visual
+representations. InICCV, 2025. 3
+[63] Vladan Stojni ´c, Yannis Kalantidis, Ji ˇr´ı Matas, and Giorgos
+Tolias. LPOSS: Label propagation over patches and pixels
+for open-vocabulary semantic segmentation. InCVPR, 2025.
+1, 2, 8
+[64] Shobhita Sundaram, Julia Chae, Yonglong Tian, Sara Beery,
+and Phillip Isola. Personalized representation from person-
+alized generation. InICLR, 2025. 2
+[65] Zhuotao Tian, Hengshuang Zhao, Michelle Shu, Zhicheng
+Yang, Ruiyu Li, and Jiaya Jia. Prior guided feature en-
+richment network for few-shot segmentation.IEEE TPAMI,
+2020. 2
+[66] Zhuotao Tian, Xin Lai, Li Jiang, Shu Liu, Michelle Shu,
+Hengshuang Zhao, and Jiaya Jia. Generalized few-shot se-
+mantic segmentation. InCVPR, 2022. 2
+[67] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethinking
+self-attention for dense vision-language inference. InECCV,
+2024. 2
+[68] Kaixin Wang, Jun Hao Liew, Yingtian Zou, Daquan Zhou,
+and Jiashi Feng. Panet: Few-shot image semantic segmenta-
+tion with prototype alignment. InICCV, 2019. 2
+[69] Peter Welinder, Steve Branson, Takeshi Mita, Catherine
+Wah, Florian Schroff, Serge Belongie, and Pietro Perona.
+Caltech-ucsd birds 200. 2010. 6
+[70] Xiongwei Wu, Xin Fu, Ying Liu, Ee-Peng Lim, Steven C. H.
+Hoi, and Qianru Sun. A large-scale benchmark for food im-
+age segmentation. InACM MM, 2021. 6
+[71] Yuhuai Wu, Markus Norman Rabe, DeLesley Hutchins, and
+Christian Szegedy. Memorizing transformers. InICLR,
+2022. 2
+[72] Monika Wysocza ´nska, Micha ¨el Ramamonjisoa, Tomasz
+Trzci´nski, and Oriane Sim ´eoni. Clip-diy: Clip dense infer-
+ence yields open-vocabulary semantic segmentation for-free.
+InWACV, 2024. 2
+[73] Monika Wysocza ´nska, Oriane Sim´eoni, Micha¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzci ´nski, and Patrick P ´erez.
+Clip-dinoiser: Teaching clip a few dino tricks for open-
+vocabulary semantic segmentation. InECCV, 2024. 1, 2
+[74] Aoran Xiao, Weihao Xuan, Heli Qi, Yun Xing, Ruijie Ren,
+Xiaoqin Zhang, Ling Shao, and Shijian Lu. Cat-sam: Con-
+ditional tuning for few-shot adaptation of segment anything
+model. InECCV, 2024. 2
+[75] Bin Xie, Jiale Cao, Jin Xie, Fahad Shahbaz Khan, and
+Yanwei Pang. SED: A simple encoder-decoder for open-
+vocabulary semantic segmentation. InCVPR, 2024. 2
+[76] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas Breuel, Jan Kautz, and Xiaolong Wang. Groupvit:
+Semantic segmentation emerges from text supervision. In
+CVPR, 2022. 2
+[77] Jilan Xu, Junlin Hou, Yuejie Zhang, Rui Feng, Yi Wang, Yu
+Qiao, and Weidi Xie. Learning open-vocabulary semantic
+segmentation models from natural language supervision. In
+CVPR, 2023. 2
+[78] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. InCVPR, 2023. 8
+[79] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary
+segmentation with single frozen convolutional CLIP. In
+NeurIPS, 2023. 2
+[80] Jianhao Yuan, Shuyang Sun, Daniel Omeiza, Bo Zhao, Paul
+Newman, Lars Kunze, and Matthew Gadd. Rag-driver: Gen-
+eralisable driving explanations with retrieval-augmented in-
+context learning in multi-modal large language model. In
+Proceedings of the Robotics: Science and Systems (RSS)
+2024, 2024. 2
+[81] Maxime Zanella, Beno ˆıt G´erin, and Ismail Ben Ayed. Boost-
+ing vision-language models with transduction.NeurIPS,
+2024. 3
+[82] Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and
+Lucas Beyer. Sigmoid loss for language image pre-training.
+InICCV, 2023. 1, 2
+[83] Dengke Zhang, Fagui Liu, and Quan Tang. Corrclip: Re-
+constructing patch correlations in clip for open-vocabulary
+semantic segmentation. InICCV, 2025. 2, 8
+[84] Renrui Zhang, Zhengkai Jiang, Ziyu Guo, Shilin Yan, Junt-
+ing Pan, Hao Dong, Yu Qiao, Peng Gao, and Hongsheng Li.
+Personalize segment anything model with one shot. InICLR,
+2024. 2
+27631
+
+
+=== PAGE 12 ===
+[85] Hengshuang Zhao, Jianping Shi, Xiaojuan Qi, Xiaogang
+Wang, and Jiaya Jia. Pyramid scene parsing network. In
+CVPR, 2017. 1
+[86] Ziyu Zhao, Xiaoguang Li, Lingjia Shi, Nasrin Imanpour, and
+Song Wang. Dpseg: Dual-prompt cost volume learning for
+open-vocabulary semantic segmentation. InCVPR, 2025. 2
+[87] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Scene parsing
+through ADE20K dataset. InCVPR, 2017. 6
+[88] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. InECCV, 2022. 2, 6
+27632

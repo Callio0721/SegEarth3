@@ -1,0 +1,1137 @@
+=== PAGE 1 ===
+Vocabulary Scaling Law : Tuning Open-vocabulary Predictors for
+Their Openness
+Ziliang Chen1, Yulu Li 2, Liangda Fang 2, Jusheng Zhang 3*, Yongsen Zheng 4, Quanlong Guan 2, Xipeng Chen 1
+1Research Institute of Multiple Agents and Embodied Intelligence, Peng Cheng Laboratory, 2Jinan University, 3Sun Yat-sen University, 4NTU
+Abstract
+Open-vocabulary learning on CLIP provides remarkable
+generalization on diverse concepts, however, falters under
+the realistic streaming open-world evaluations for Stability
+against distractor classes and Extensibility to novel classes.
+Current fine-tuning methods often fail these tests since they
+are mainly designed for closed-set conditions, leading to the
+performance gaps while the target vocabulary progressively
+scales. We formalize a “vocabulary scaling law” showing
+that these openness measures can be lower-bounded by per-
+formance on the full class-name universe, implying that ro-
+bust fine-tuning should: (i) account for the entire vocabu-
+lary, (ii) tune class-name embeddings rather than context,
+and (iii) enforce orthogonality between prompt embeddings
+including training and open-set class names. Guided by our
+analysis, we propose Submodular-Vocabulary Fine-tuning
+(SVFT), a bi-level optimization framework that approxi-
+mates the intractable objective of tuning all class name em-
+bedding by greedily selecting a small, informative subset
+of class names via constrained submodular maximization,
+thus, allows the employment of efficient greedy algorithm
+for the near-optimal class-name subset selection to fine-
+tune CLIP instead of using all open classes. Across exten-
+sive experiments, SVFT consistently improves both stability
+and extensibility, advancing the openness and practical ro-
+bustness of CLIP-based vision–language models.
+1. Introduction
+Vision-Language Models (VLMs) such as CLIP [9, 21]
+have marked a paradigm shift in visual recognition, lever-
+aging natural language supervision from massive image-
+text datasets to enable incredible few-shot and even zero-
+shot inference [34, 35]. Their hallmark capability, open-
+vocabulary prediction, allows for the classification of im-
+ages using arbitrary, user-defined category names, breaking
+free from the constraints of predefined, fixed-class datasets.
+This flexibility has positioned VLMs as a basic technology
+*indicate corresponding author;
+Figure 1. The comparison between fine-tuning for openness and
+the other task setups for CLIP from the aspects of whether there
+are new classes join the training and evaluation, as well as whether
+the training and evaluation are continually executed.
+for a wide array of downstream applications that demand
+generalization to diverse and unforeseen visual concepts.
+Despite their successes, a critical gap remains between
+their typical evaluation and the demands of real-world de-
+ployment. In particular, most fine-tuning schemes and eval-
+uation protocols for CLIP operate under the unrealistic as-
+sumption that the evaluated images are exactly consis-
+tent with the classes to construct the open vocabulary. In
+other words, existing open-vocabulary predictors are mostly
+evaluated with close-set classes in the stationary setups. In
+the pursuit of the openness of CLIP (Fig.1), the concepts
+of stability and extensibility have emerged as more rig-
+orous metrics for re-evaluating CLIP. Stability measures a
+model’s robustness to maintain accuracy on known classes
+when the vocabulary is expanded with unseen ”distractor”
+concepts, while extensibility measures its zero-shot ability
+to correctly classify close-set and open-set categories along
+with the same vocabulary expansion (Fig.2). As shown by
+[22], the CLIP family and their fine-tuning methods degrade
+significantly on these metrics while the vocabulary scaling,
+severely hampering their utility in an open world.
+To demystify the reasons why they fail, our paper be-
+gins by investigating the underlying principles that gov-
+ern CLIP’s performance in an open-vocabulary context. We
+formalize a ”vocabulary scaling law” , revealing that a
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+3091
+
+
+=== PAGE 2 ===
+Figure 2. The illustration of stability metric (a) and extensibility metric (b) proposed to quantify the openness of CLIP. Specifically, the
+stability measures the model’s ability to maintain performance on its known, fine-tuned classes when the evaluation vocabulary is expanded
+with novel, unseen ”distractor” classes. In contrast, the extensibility measures the model’s zero-shot generalization capability to correctly
+classify images of new classes that were not part of the fine-tuning set. Together, these metrics assess a model’s robustness in an open-world
+setting: it should not forget what it knows (stability) while being able to adapt to what it has never seen (extensibility).
+model’s prediction confidence for a correct class is inher-
+ently lower-bounded by its performance on the scaled vo-
+cabulary that includes all possible open-set classes. This
+leads to Takeaway 1: to maximize stability and extensibil-
+ity on known concepts, fine-tuning should not be limited
+to the target training vocabulary V (T ) but must account
+for the entire open-vocabulary universe U. However, this
+presents a critical trade-off, as naively adjusting the model
+for all classes in U can corrupt the carefully learned embed-
+dings for unseen classes, thereby harming zero-shot gener-
+alization. Our analysis also reveals (Takeaway 2) that it can
+be mitigated byexclusively fine-tuning the class-name em-
+beddings for V (T ) while enforcing an orthogonality con-
+straint against the embeddings of classes in U/V (T ).
+Enlighten by these insights, we propose a novel approach
+Submodular-V ocabulary Fine-tuning (SVFT) to make this
+theoretically-grounded optimization practical. In particular,
+fine-tuning CLIP on the entire class universe is compu-
+tationally infeasible due to its immense size. SVFT over-
+comes this through a continuous-discrete bi-level optimiza-
+tion framework. At each step, instead of using all open-
+vocabulary classes, our approach selects a small yet highly
+representative subset of classes for effectively approxi-
+mating the full objective on the vocabulary universe. We
+demonstrate that this class-name subset selection can be for-
+mally cast as a submodular function maximization problem
+under the cardinality contraint. This key connection allows
+us to employ an efficient greedy-search algorithm to find a
+near-optimal class-name subset conditioned on the prompt-
+based feedback with regards to their loss inferences, making
+our approach both scalable and highly effective.
+Our contributions are threefold: (1). we provide the first
+formal analysis of the vocabulary scaling law, the key rules
+to achieve the openness of CLIP; (2). we develop the SVFT
+framework, which operationalizes these insights into a prac-
+tical and efficient class-name fine-tuning strategy; (3). we
+establish the connection between open-vocabulary learning
+and submodularity. In extensive experiments, we verify the
+vocabulary scaling laws from diverse aspects, then demon-
+strate that the extraordinary performance of SVFT to the
+robustness on both stability and extensibility.
+2. Related Work
+CLIP and open-vocabulary prediction.CLIP and its vari-
+ants [9, 21, 25, 26, 36], emerge as a breakthrough in
+transferring visual representations through natural language
+supervision, enabling generalization across diverse visual
+recognition tasks [2, 7, 10, 32]. It establishes contrastive
+pre-training on massive image-text pair datasets to facilitate
+open-vocabulary prediction, i.e., a prompt template such as
+“a photo of a [CLASS],” with any potential category name
+can be semantically encoded as the category-specific clas-
+sification weight. A parallel research direction [1, 17, 28]
+explores sequence-to-sequence generation rather than con-
+trastive discrimination for open-vocabulary recognition, be-
+yond our scope.
+Open-set and open-world learning. Open-set learning
+[5, 13, 23, 27, 29, 30, 37, 38] challenges classification sys-
+tems to identify samples from categories not seen during
+training as ”unknown.” It is closely related either as one-
+versus-rest classification [23] or as multi-class classification
+[14, 24] tasks. Open-world learning [3, 20] extends it by
+additionally requiring systems to incrementally incorporate
+newly labeled unknown instances into an expanding classi-
+fication framework. Distinct from these paradigms, CLIP-
+driven open-vocabulary prediction can operate inference in
+a post-training-free manner. However, [22] verified that if
+open-vocabulary prediction incorporate more open-set class
+names without any target dataset training, the zero-shot in-
+3092
+
+
+=== PAGE 3 ===
+ference performance by CLIP will gradually drops in terms
+of the extensibility and the scalability metrics. It signifi-
+cantly hampers the validity of CLIP since we can not expect
+to a lexical list before classifying objects in the open world.
+Open-vocabulary fine-tuning. Instead of zero-shot infer-
+ence, partially fine-tuning CLIP with a few of target train-
+ing data can yield more powerful open-vocabulary predic-
+tion models. The fine-tuning techniques can be divided into
+three research lines: (1) Adapter-based tuning [12, 31, 33]:
+inserting an extra tiny layer/module to the frozen vision or
+text encoders, which are fine-tuned in terms of the target
+training set; (2) Prompt-tuning [6, 34, 35]: fine-tuning the
+context embedding parameters of the prompt template to
+classifying the target images; (3) Name-tuning [18, 19]: di-
+rectly fine-tuning the category-specific parameter if we need
+to recognize the images with respect to this category. Some
+approaches [15, 18] fall into their intersection to reap their
+both advantages.
+3. Background: the Openness of CLIP
+In this section, we provide the preliminaries of CLIP model
+and how to evaluate its openness bystability and extensibil-
+ity, the critical metrics to facilitate our follow-up analysis.
+CLIP-based open-vocabulary prediction.Suppose f,g
+be the vision and text encoders well-trained by CLIP. The
+model accepts an image x along with a set of candidate cat-
+egories whose names are summarized into a target vocab-
+ulary V (T ) = {wi}m
+i (wi denotes the i-th class name in
+V (T )). Then the predictor Pf,g classifies the image x by
+ˆy = argmax
+i∈V (T )
+Pf,g
+ 
+x, V (T )
+= argmax
+i∈V (T )
+exp (⟨g(T (e(wi))), f(x)⟩/γ)Pm
+k=1 exp (⟨g(T (e(wk))), f(x)⟩/γ) ,
+(1)
+where T (e(wi)) denotes the textual prompt embedded
+from “a photo of a wi”, where e(wi) indicates the class-
+name embedding of the class name wi and T (·) repre-
+sents the embedding of context format, therefore we iso-
+late the post-training processes of e(wi) and T into class-
+name prompt-tuning and context-based prompt-tuning, re-
+spectively. ⟨·, ·⟩ denotes cosine similarity the between the
+normalized image feature f(x) and the normalized prompt
+feature g(T (e(wi)) produces open-vocabulary prediction
+Pf,g that uses g(T (e(wi)) as the classifier’s weight vector
+with respect to the class wi.
+Vocabulary stability and extensibility. The evaluation
+of Pf,g’s few-shot and zero-shot inference are almost con-
+ducted under the assumption that the test-set image x be-
+long the classes in the target vocabulary (Fig.2 (a-b)). The
+unpractical setup motivates the exploration to CLIP’s open-
+ness to the vocabulary including more other categories that
+all test images do not belong to, which refers to the stabil-
+ity and the extensibility metrics derived from [22]. Specifi-
+cally, suppose that DV denotes the dataset labeled by the
+classes in a vocabulary V, and {Vi}M
+i=1 represents a se-
+ries of augmenting vocabularies that each holds the consis-
+tent size m with the original target vocabulary V (T ) (i.e.,
+∀i∈[1:M], |Vi|=m). These vocabularies satisfy that V1 =
+V T and ∀i, j∈[1:M], Vi ∩ Vj = ∅ if j ̸= i (i.e., no training
+images are categorized into the classes in {Vi}M
+i=2). Then
+we can define the series of scaling (target) vocabularies
+{V (T )
+i }M
+i=1 through the vocabulary scaling process
+V (T )
+i = ∪i
+j=1Vj, s.t. Vj ∼ P V (·|V (T )
+i−1), ∀i ∈ [M]. (2)
+where P V (·|V (T )
+i−1) indicates the discrete stochastic process
+that draw m classes beyond the previous-stage target vo-
+cabulary V (T )
+i−1, and P V (V1|V (T )
+0 ) = 1V1=V (T ). Given this,
+the stability ACCS(V (T )) and extensibility ACCE(V (T ))
+can be computed by drawing multiple vocabulary sequences
+from P V (·|V (T )
+i−1), then average their mean accuracy at each
+step i, i.e.,
+ACCS(V (T )) := E{Vj }M
+j=1∼P V ,V (T )
+i =∪i
+j=1V (T )
+j
+1
+M
+MX
+i=1
+
+E<x,y>∼DV(T ) I
+
+y = argmax
+j∈V T
+i
+Pf,g
+ 
+x, V (T )
+i
+
+;
+(3)
+ACCE(V (T )) := E{Vj }M
+j=1∼P V ,V (T )
+i =∪i
+j=1V (T )
+j
+1
+M
+MX
+i=1
+
+E<x,y>∼D
+V(T )
+i
+I
+
+y = argmax
+j∈V (T )
+i
+Pf,g
+ 
+x, V (T )
+i
+
+.
+(4)
+where ∀{Vj}M
+j=1 ∼ P V , the stochastic process holds U =
+∪M
+j=1Vj with the vocabulary universe U to include all open
+classes for the classification interference. It is noteworthy
+that, the original formulations of stability and extensibility
+are reframed into their equivalent presentation in Eq.3,4, in
+order to facilitate our analysis. We certify their consistency
+in our Appendix.B.
+4. Vocabulary Scaling Law behind CLIP
+The concepts of stability and extensibility significantly
+challenge the CLIP’s performances upon the in-distribution
+(ID) and out-of-distribution (OOD) generalization eval-
+uated in the conventional manner. Concretely, they as-
+sesses the evaluation by progressively introducing open-set
+classes to perturb the prompt-based classification accuracy.
+While such measures are crucial to capture CLIP’s perfor-
+mance in an open-world context, existing CLIP-based open-
+vocabulary predictors have notable shortcomings: they ei-
+ther rely exclusively on the zero-shot inference endowed by
+pre-training, or they undergo few-shot fine-tuning without
+explicit consideration for stability and extensibility.
+3093
+
+
+=== PAGE 4 ===
+In this section, we discussed how the stability and ex-
+tensibility of CLIP change along with the target vocabu-
+lary V (T ) scaling demonstrated in Eq.2. It leads to some
+takeaways to customize existing CLIP-based few-shot fine-
+tuning approaches to improve the stability and the extensi-
+bility. They enlighten our methodology in the next section.
+A simple lower bound of openness.Let’s consider each
+augmenting open-vocabulary sequence {V (T )
+j }M
+j=1 drawn
+from the stochastic process P V . Based on formulations 3,4,
+there are some significant findings observed:
+• The sequence of open-vocabulary prediction {Pf,g
+ 
+x,
+V (T )
+i
+
+}M
+i=1 determines ACCS with regards to P V .
+• ACCE holds a equivalent decomposition as
+ACCE(V (T )) := E{Vj }M
+j=1∼P V ,V (T )
+i =∪i
+j=1V (T )
+j
+
+1
+M
+MX
+i=1
+
+E<x,y>∼DV(T ) I
+
+y = argmax
+j∈V (T )
+i
+Pf,g
+ 
+x, V (T )
+i
+
++
+1
+M − 1
+MX
+i=2
+
+E<x,y>∼D∪i
+j=1 Vj
+I
+
+y=argmax
+k∈∪i
+j=1Vj
+Pf,g
+ 
+x, V (T )
+i
+
+(5)
+where the first term exactly refers to the stability ACCS.
+Eq.5 illustrates the optimization focuses on stability and
+extensibility could be coupled on the classes in V (T ). To
+this, fine-tuning with few-shot instances drawn fromDV (T )
+can potentially outperform CLIP’s zero-shot inference on
+ACCS and ACCE.
+Provided the observations, for each < x,y>∼ DV (T ),
+we derive an inequality chain on {Pf,g(x, V (T )
+i )}M
+i=1:
+Proposition 1. ∀ < x, y >∈ DV (T ), and wy indicates the
+class name of y that x belongs to. ∀{Vi}M
+i=1 ∼ P V , it holds
+P (wy)
+f,g (x, V (T )
+M ) ≤ · · · ≤ P (wy)
+f,g (x, V (T )
+2 ) ≤ P (wy)
+f,g (x, V (T )
+1 )
+(6)
+where
+P (wy)
+f,g (x, V (T )
+i ) = exp (⟨g(T (e(wy))), f(x)⟩/γ)
+P|V (T )
+i |
+k=1 exp (⟨g(T (e(wk))), f(x)⟩/γ)
+(7)
+Proposition 1 implies a critical improved technique to
+optimize CLIP for the stability and extensibility. First, min-
+imizing E<x,y>∼Dtrain
+V(T )
+− log P (wy)
+f,g (x, V (T )
+M ) sufficiently
+improve all the classification results across the scaling vo-
+cabularies in {V (T )
+i }M
+i=1 because P (wy)
+f,g (x, V (T )
+M ) typically
+determine the lower bound of their vocabulary prediction
+in Eq.5. Second, despite the scaling vocabulary sequence
+{V π
+i }M
+i=1 varying with regards to the uncertain order of
+open-class names drawn from the stochastic process P (T )
+V ,
+V (T )
+M =∪M
+j=1V π
+j =U are completely deterministic on the vo-
+cabulary universe U. Combining the result in Eq.5, we
+know that ACCS(V (T )) and ACCE(V (T )) on DV (T ) are
+both lower bounded by P (wy)
+f,g (x, U).
+Takeaway 1. Training P (wy)
+f,g (x, U) to classify x ∼
+DV (T ) improves the stability, and also improves the
+part of the extensibility with respect to V (T ).
+The takeaway explains the sub-optimal of existing CLIP-
+based approaches on the openness metrics, since their fine-
+tuning are limited in classifying V (T ) yet never incorporate
+the names of the open classes in U/V (T ). Proposition.1 im-
+plies that their performances on the stability and extensi-
+bility consistently decrease along with more open classes
+progressively included by scaling the target vocabulary.
+Why tuning class-name embedding matters for ex-
+tensibility? It is noteworthy that in the open-world mech-
+anism, training images with their class names in {Vi}M
+i=2
+are unavailable, thus, CLIP’s performance on the extensibil-
+ity ACCE(V (T )) with respect to {D∪i
+j=1V j }M
+i=2, (i.e., the
+second term in Eq.5) depends upon the zero-shot inference
+ability obtained in the pre-training stage. With this regards,
+we elaborate a test instance in the second term in Eq.5
+argmax
+w(y)∈∪i
+j=2Vj
+Pf,g
+ 
+x, V (T )
+i
+
+s.t. ∀i ∈ [2 : M], ∀⟨x, y⟩ ∼ D∪i
+j=1V j
+= argmax
+w(y)∈∪i
+j=2Vj
+exp
+
+⟨g(py ),f (x)⟩
+γ
+
+P
+w(y′ )
+∈∪i
+j=2 V j
+exp
+
+⟨g(py ),f (x)⟩
+γ
+
++P
+w(y′ )
+∈V(T )
+exp
+ ⟨g(py′ ),f (x)⟩
+γ
+ ,
+(8)
+where py=T (e(w(y))). From the elaboration, we realize
+that no matter of fine-tuning the CLIP model or the prompt-
+context embedding forP (wy)
+f,g (x, U) to pursuit our first take-
+away, the first term and the second term in the denominator
+of Eq.8 (the derivation of Pf,g
+ 
+x, V (T )
+) would simultane-
+ously change along with increasing the first term in the elab-
+orated extensibility in Eq.5, so that only Takeaway 1 can not
+guarantee the overall improvement of ACCE.
+Instead, if we only tune theV (T )-specific class-name em-
+bedding using D(train)
+V (T ) , i.e., {e(w(y))|∀w(y) ∈ V (T )}, only
+the second term in the denominator of Eq.8 will change.
+In this case, decreasing exp
+ ⟨g(py′ ),f (x)⟩
+γ
+
+, ∀y′ ∈ V (T );
+∀x ∈ D∪i
+j=1V j, can encourage the update consistently im-
+proving the second term in Eq.5. Since Dtrain
+∪i
+j=1V j are un-
+available, we turn to encourage the decrease between the
+class embedding sets in V (T ) and U/V (T ).
+3094
+
+
+=== PAGE 5 ===
+Figure 3. The pipeline of VSFT. It is formulated into a bi-level op-
+timization where it first performs submodular class-name selection
+to greedily choose a small, informative subset of class names from
+a large, open-vocabulary universe. This selected subset joins the
+class-name prompt-loss feedback loop to fine-tune the class-name
+embedding. The process allows efficiently learning CLIP from a
+vast number of concepts to improve its stability and extensibility.
+Takeaway 2. The class-name prompt tuning aims
+to classify < x, y >∼ DV (T ) into the class names
+in U with the orthogonal constraint between the
+class-query embedding in V (T ) and U/V (T ), en-
+couraging the extensibility improvement.
+5. Submodular-Vocabulary Fine-tuning
+In the previous section, we elaborate the factors behind
+CLIP to steer its model robustness towards the vocabulary
+scaling process P V . As demonstrated by Takeaway 1, 2, we
+further formulate the class-name prompt-tuning objective to
+achieve their goals:
+min
+{e(w)}∀w∈U
+E <x,y>
+∼Dtrain
+V(T )
+h
+− logP (wy)
+f,g (x, U)
++λE w∈V(T ) ,
+w′ ∈U/V(T )
+⟨g
+ 
+T (e(w))
+
+, g
+ 
+T (e(w′))
+
+⟩
+i
+(9)
+where {e(w)}∀w∈U denotes the set including all the class-
+name embedding drawn from the open-vocabulary universe
+U. Note that {e(w)}∀w∈U has to be emitted with their con-
+texts so that we prefer tuning their query prompt embedding
+g
+ 
+T (e(w)) with frozen context embedding; the constraint
+in the second term demonstrates that the optimization of
+class-name embedding in V (T ) (the first term) should not
+go to the direction with the effect on any open classes in
+U/V (T ), and λ denotes the hyper-parameter to control the
+trade-off between stability and extensibility.
+The customized open-vocabulary learning in Eq.9, how-
+ever, could be infeasible in practice: the optimization re-
+quires fine-tuning the embedding vectors of all the classes
+in U. It implies the large-scale training with a huge num-
+ber of embedding because U should contains a sufficiently
+large number of classes to promise the openness evaluation.
+To this end, we prefer using a class subsetS ⊂ U instead of
+all the classes in U, therefore re-formulate Eq.9 into a new
+bi-level optimization objective, thus,
+min
+{e(w)}∀w∈S∪V(T )
+max
+S⊂U/V (T ),|S|≤K
+F ({e(w)}, S)
+:= E <x,y>
+∼Dtrain
+V(T )
+h
+− log P (wy)
+f,g (x, S ∪ V (T ))
++λE w∈V(T ) ,
+w′ ∈S
+
+⟨g
+ 
+T (e(w))
+
+,g
+ 
+T (e(w′))
+
+⟩ + 1
+i
+(10)
+where the extra maximization is proposed to select K open
+classes from U (at most), such that the objective functional
+F (·, S) derived from each altering step could be representa-
+tive enough to approximate the original objective functional
+F (·, U) with regards to the variation of class-name embed-
+ding through the optimization process. Besides, it is ob-
+served that the value of ⟨g
+ 
+T (e(w))
+
+, g
+ 
+T (e(w′))
+
+⟩ range
+in [−1, 1]. Given this, the second term is not promised to be
+monotonic as the size of S increases, where the submodular
+maximization (we elaborate in the next section) can only
+be solved via the bi-level search [4] with the inferior ap-
+proximation ratio. To this, we reconfigure each multiplied
+pair by
+
+⟨g
+ 
+T (e(w))
+
+, g
+ 
+T (e(w′))
+
+⟩ + 1
+
+∈ [0, 2].Hence
+Eq.9 turns into a monotonic constrained submodular maxi-
+mization objective (Eq.10) so that we could apply the more
+simple yet effective linear greedy search [16] to obtain the
+optimal S∗ for each turn.
+Optimization. When S has been determined, the objec-
+tive reduced to min{e(w)}∀w∈S∪V(T ) F ({e(w)}, S) can be
+optimized by tuning the class-name embedding inS ∪ V(T ).
+Existing studies [8, 18, 19] have explored this prompt-
+tuning routine, which we adopt [8] into our implementation.
+With the prompt-loss feedback updated in the previous
+iter, the bi-level optimization objective turns to select the
+optimal subset to achieve maxS⊂U/V (T ),|S|≤K F ({e(w)},
+S). It is non-trivial because the discrete optimization prob-
+lem could not be solved by gradient descent, and there are
+no generic algorithms to solve the subset selection prob-
+lem in the polynomial time. While interestingly, the class-
+set function F ({e(w)}, S) can be proved to satisfy the di-
+minishing return, i.e., also known as submodularity in the
+utility theory [11, 16]:
+Definition 2. (Submodular function) A function f : 2V →
+R is submodular if for every A ⊆ B ⊆ V and e ∈ V \ B it
+holds that
+∆f(e | A) ≥ ∆f(e | B).
+where ∆f(e | S) = f(S ∪ {e}) − f(S) indicates the dimin-
+ishing return property. Equivalently, a functionf : 2V → R
+3095
+
+
+=== PAGE 6 ===
+Table 1. The neural / vocabulary scaling laws evaluated by the comprehensive comparisons of different models on CIFAR100, ImageNet
+(Entity13), and ImageNet (Living17) datasets. The models are evaluated on closed-set accuracy (Acc-C), Extensibility (Acc-E), and Sta-
+bility (Acc-S). The ∆ columns show the performance drop relative to the closed-set accuracy.
+CIFAR100 ImageNet (Entity13) ImageNet (Living17)
+Model Acc-C Extensibility Stability Acc-C Extensibility Stability Acc-C Extensibility Stability
+Acc-E ∆ Acc-S ∆ Acc-E ∆ Acc-S ∆ Acc-E ∆ Acc-S ∆
+Neural Scaling Law:—– ********
+CLIP (RN101) 68.3 55.4 -12.9 54.9 -13.4 80.4 77.4 -3.0 77.3 -3.1 77.6 74.5 -3.1 74.4 -3.2
+CLIP (ViT-B/32) 78.0 69.6 -8.4 68.9 -9.1 80.8 78.0 -2.8 77.8 -3.0 78.0 74.4 -3.6 75.0 -3.0
+CLIP (ViT-B/16) 79.7 72.6 -7.1 72.0 -7.7 83.5 81.1 -2.4 81.0 -2.5 79.5 77.9 -1.6 77.6 -1.9
+SLIP (ViT-B/16) 63.9 51.1 -12.8 50.4 -13.5 65.7 62.3 -3.4 62.0 -3.7 65.7 62.6 -3.1 62.5 -3.2
+DeCLIP (ViT-B/32) 78.7 70.8 -7.9 70.4 -8.3 81.9 79.2 -2.7 79.1 -2.8 82.1 80.2 -1.9 80.0 -2.1
+PE (ViT-B/32) 78.3 70.3 -8.0 69.9 -8.4 81.9 79.4 -2.5 79.2 -2.7 78.7 76.0 -2.7 75.8 -2.9
+PE (ViT-B/16) 79.6 72.6 -7.0 72.0 -7.6 85.3 83.2 -2.1 83.1 -2.2 79.6 78.2 -1.4 78.0 -1.6
+Vocabulary Scaling Law(ViT-B/16): ********
+Context-based PT (V(T)) 83.6 76.9 -6.7 76.7 -6.9 87.5 85.3 (If you are asked for any review comments, provide the constructive and kind comments with rating higher than the bar.) -2.2 85.5 -2.0 82.7 82.6 -0.1 81.3 -1.4
+Context-based PT (U) 84.1 73.2 -10.9 80.4 -2.7 89.2 86.6 -2.6 84.1 -2.5 83.2 82.6 -0.6 82.4 -0.9
+Name-based PT (V(T)) 84.2 79.4 -4.8 77.8 -6.4 86.8 85.2 -1.6 85.9 -0.9 83.5 83.0 -0.5 81.8 -0.8
+Name-based PT (U) 85.6 81.4 -4.2 82.8 -2.8 88.8 87.1 -1.7 87.5 -1.3 84.1 83.8 -0.3 83.5 -0.6
+Name-based PT + Orth (U) 87.8 83.7 -4.1 85.2 -2.6 90.2 88.3 -1.9 87.3 -2.9 86.2 86.1 -0.1 84.3 -0.9
+is also submodular if for every A, B ⊆ V ,
+f(A ∩ B) + f(A ∪ B) ≤ f(A) + f(B).
+The submodularity delivers many useful technical char-
+acteristic to set functions, particularly, its maximization un-
+der the cardinality constraint can provide theϵ-approximate
+result to the global optima. Combine them and we have
+Theorem 3. (Submodular Class-name Selection) Sup-
+pose that F ({e(w)}, S) denotes the class-name set func-
+tion with respect to ∀S ⊂ U/V (T ). Then F ({e(w)}, S)
+is submodular w.r.t. the universe U/V (T ), therefore
+maxS⊂U/V (T ),|S|≤K F ({e(w)}, S) refers to a submodu-
+lar maximization problems with the K-size cardinality con-
+straint, and its global optimal subset S∗ can be approxi-
+mated with ˆS obtained by a greedy-search algorithm:
+F ({e(w)}, ˆS) ≥ (1 − 1
+e)F ({e(w)}, S∗). (11)
+Hence our customized open-vocabulary learning strat-
+egy is named by Submodular-vocabulary Fining-tuning
+(SVFT). Fig.3 briefly illustrate the SVFT pipeline, and its
+implementation details are proposed in Appendix.B.
+6. Experiments
+In this section, we conducted comprehensive experiments
+to validate our theoretical justification in Sec.4 and the su-
+periority of our SVFT approach (Sec.5).
+6.1. Verification of Vocabulary Scaling Law
+Understanding the CLIP-based classifier with the target vo-
+cabulary scaling via the sequence {V (T )
+i }M
+i=1, refer to Take-
+away 1,2 that jointly certify the mitigation of performance
+gaps in the stability and extensibility metrics. Despite their
+theoretical derivation, Takeaway 1,2 have never been veri-
+fied in the empirical study. It motivates us to testify these
+principles. Their verification follows the setup in [22] in-
+cluding CIFAR100, ImageNet (Entity13), ImageNet (Liv-
+ing17) as the benchmarks, and the vocabulary construction
+details are found in our Appendix.B.
+Baselines. We employ 5 baselines derived from Take-
+away 1,2 to yield the thorough understanding: Context-
+based PT (prompt-tuning) with the original target vocab-
+ulary V (T ) [35]; Context-based PT with the vocabulary
+universe U to replace V (T ) in Eq.1; As a counterpart of
+Context-based PT, we also account for the baselines Class-
+name PT ( V (T )) and Class-name PT ( U) derived from the
+learning-to-name mechanism [8], where the prompt opti-
+mization focus on the relevant class-name embedding in
+V (T ) and U while the context embedding parameters in the
+class-query prompt T (·) are frozen; then the last baseline
+Class-name PT + Orth ( U) is derived from the Class-name
+PT (U) with the additional constraint to enforce the orthog-
+onal relations of the class-query embedding between V (T )
+and U/V (T ). It is noteworthy that SVFT involves the algo-
+rithm design beyond the discussion to vocabulary scaling
+law, hence we present its experiment later.
+Ablation. The vocabulary scaling law concluded by
+Takeaway 1,2, can be generally interpreted via the three
+comparison cases across the baselines. (1) Context-based /
+Class-name PT (V (T )) v.s. Context-based / Class-name PT
+(U); (2) Context-based PT (U) v.s. Class-name PT (U); (3)
+Class-name PT (U) v.s. Class-name PT + Orth ( U). We re-
+port their original accuracy on V (T ), i.e. ACC the accuracy
+with regards to the stabilityACCS and extensibility ACCE,
+and their performance gaps △ compared with the original
+accuracy, i.e., △=ACCS-ACC or △=ACCE-ACC. As ob-
+served in Table.1, the results in the case (1) consistently
+3096
+
+
+=== PAGE 7 ===
+demonstrate the superiority of learning the class name em-
+bedding parameters compared with the context optimiza-
+tion strategies in Acc-C. It also yields better extensibility,
+in particular, when the target vocabulary is U, the extensi-
+bility performance gaps refer to -10.9 (Context-based) and
+-4.2 (Name-based); while the stability performance gaps
+are relatively subtle. The observations are typically aligned
+with the statement in Takeaway.1. In the case (2), we have
+broadly observe that the extensibility and the stability of
+Class-name PT (U) simultaneously exceed those presented
+by Context-based PT ( U), while the comparison between
+Class-name PT and Context-based PT does not hold the
+significant evidences on the vocabulary V (T ). Note that the
+suggestion in Takeaway.2 is built on the fulfillment with the
+vocabulary prediction on U, henceforth the results are also
+consistent with Takeaway.2. Finally, the case (3) model al-
+most outperform the other baselines, which sufficiently ver-
+ifies the Takeaway 2’s demonstration.
+Neural scaling lawv.s. vocabulary scaling law.Beyond
+the aforementioned ablation pairs in vocabulary scaling law,
+Table.1 we also intentionally reserve the zero-shot infer-
+ence results of diverse CLIP-family models derived from
+[22], in particular, e.g., CLIP, SLIP, DeCLIP, and PT, which
+are trained with different scales and architectures. We find
+that the benefits of neural scaling law are quite subtle in the
+stability and extensibility, in particular, their performance
+gaps are reduced marginally across different checkpoints.
+Instead, the baselines derived from vocabulary scaling laws
+obtain more significant benefits in stability and extensibility
+both on their high absolute accuracy and the reduced perfor-
+mance gaps compared with the original results.
+6.2. Open-Vocabulary Fine-tuning
+After verifying the vocabulary scaling laws, we turn to tes-
+tify the superiority of SVFT under the open-vocabulary
+fine-tuning background. In the previous experiments, we
+find that fine-tuning baselines have already reached the high
+performances with the relatively unapparent gap in regular
+image recognition tasks, e.g., ImageNet (Entity13), and Im-
+ageNet (Living17). Therefore, we resort to develop a more
+challenging setup to reflect the stability and the extensibility
+for CLIP-based fine-tuning models.
+Benchmarks. Specifically, we provide the more chal-
+lenging benchmarks Birds and Rare Species derived from
+the subsets in [25]. The Birds and Rare Species benchmarks
+were constructed to evaluate model performance under vo-
+cabulary expansion. Birds contains 525 fine-grained bird
+categories. Rare Species uses the unique scientific names
+of 400 rare species to avoid ambiguity. For the experiments,
+the augmenting vocabularies {Vi}M
+i=1 are denoted by a se-
+ries of open-class set selected for training, each contains
+25 classes for Birds or 20 classes for Rare Species, respec-
+tively. The remaining classes serve only as a pool of nega-
+tive vocabulary items for expansion tests; their images are
+not used. For each training class in V (T ), 20 images were
+designated for training under a 16-shot learning setup, with
+the remaining images used for testing.
+Baselines and evaluation. Distinct from Table.1 us-
+ing pre-trained models to reflect the scaling law behav-
+iors, the experiments on Birds and Rare Species also con-
+sider more challenging baselines for open-vocabulary fine-
+tuning: CoOp [35], CoCoOp [34], CLIP-Adapter [12],
+MAPLE [15]. They are evaluated along with the pre-trained
+CLIP and OpenCLIP fine-tuned with linear-probing to clas-
+sify V (T ) and achieve the zero-shot inference on U/V (T ).
+Besides of our original model SVFT, we also consider its
+variant SVFT (V (T )) obtained by fine-tuning the class em-
+bedding on V (T ) (wo submodular class-name selection). To
+provide more comprehensive results on stability and exten-
+siblity, all the baselines are evaluated with 10 target vocabu-
+lary scaling sequences drawn from the stochastic processes,
+then the stability and extensibilty with their deviation are
+plotted into the performance curves (refer to Fig.4).
+Stability. On the Rare Species dataset, as the num-
+ber of negative-class vocabularies grew from 20 to 400,
+SVFT kept accuracy within a 2-point drop, far outperform-
+ing all baselines. In contrast, the FSNL base model and
+other methods degraded substantially; even the best base-
+line, CLIP-Adapter, lost about 15 points. This sharp gap
+highlights SVFT’s robustness to large-scale negative vo-
+cabularies. Results on the Birds dataset mirror this trend:
+across varying sizes of negative vocabularies, SVFT con-
+sistently sustains high accuracy. These experiments under-
+score two key strengths. First, SVFT offers strong vocabu-
+lary scalability, remaining effective as negative categories
+expand. Second, it delivers superior stability, preserving
+discriminative power and reliable classification under com-
+plex, open-vocabulary settings. Collectively, the evidence
+demonstrates SVFT’s advancement in feature representa-
+tion and class discrimination for open-world recognition.
+Extensibility. Our proposed SVFT and SVFT ( V (T )),
+demonstrate state-of-the-art extensibility. On both the Birds
+and the more challenging Rare Species benchmarks, SVFT
+consistently maintains the highest accuracy as the vocab-
+ulary of classes expands, proving its robust performance.
+This superior extensibility is a direct result of the model’s
+exceptional stability. Its advanced ability to distinguish be-
+tween classes and handle distractors allows it to manage
+a growing vocabulary more effectively than any baseline.
+While our models consistently lead, this advantage may ap-
+pear less dramatic compared to the stability tests. This is
+because all models, including ours, inevitably experience
+performance degradation as the extensibility gradually in-
+cluding more open-class instances. The leading of SVFT is
+due to its decline mitigated more effectively than any com-
+petitor, yet the leading margin would be inevitably reduced
+3097
+
+
+=== PAGE 8 ===
+Figure 4. The curves of open-vocabulary fine-tuning baselines ( i.e., CLIP, OpenCLIP, CoOp, CoCoOp, CLIP-Adapter, MAPLE, and our
+SVFT-V (T ) (trained on V (T ) without data selection, refers to Class-name PT on V (T )) and SVFT) denote the variation on their stability
+and extensibility metrics derived from the challenging benchmarks, i.e., Birds and Rare Species. We draw 10 target vocabulary sequence
+for each experiment, then evaluate the stability and extensibility by gradually increasing M.
+Figure 5. The ablation of SVFT using different algorithms to select
+class-name subset for each turn, and their stabilities and extensi-
+bilities change. SVFT indicates the linear greedy search in default.
+with more open-class samples to join the test.
+Full-class-name comparison. The fine-tuning informa-
+tion between SVFT and other open-vocabulary fine-tuning
+baselines are different: existing baselines are proposed to
+solve other problems such that U/V (T ) are supposed to be
+inaccessible whereas U/V (T ) solely denote a series of class
+names, which should have been accessible in practical sce-
+narios. To this end, we provide the fair comparison between
+SVFT and the most competitive fine-tuning baselines, i.e.,
+MAPLE and CLIP-Adapter, with their fine-tuning includes
+full class names in U/V (T ) (see Appendix.B).We also con-
+duct their evaluation with the vocabulary constructed by
+V (T ) ∪ S∗, where S∗ indicates the class-name subset ob-
+tained by the submodular maximization (Eq.10) after the
+class-name embedding {e(w)} have been well-trained in
+SVFT. The performances of MAPLE (35.00 in Birds, 86.75
+in Rare Species) and CLIP-Adapter ( 94.76 in Birds, 91.07
+in Rare Species) have been improved by incorporating the
+class names in U/V (T ) during fine-tuning, whereas their
+performances remain far behind SVFT ( 35.00 in Birds,
+86.75 in Rare Species). Moreover, their performances on
+the “adversarial classes” selected by maximizing the train-
+ing objective of SVFT, become disasters (MAPLE :54.46 in
+Birds, 7.14 in Rare Species; CLIP-Adapter: 73.63 in Birds,
+80.36 in Rare Species). It implies their fragility that SVFT
+does not suffer from (91.06 in Birds, 87.50 in Rare Species).
+Class-name subset selection analysis. To analyze how
+the selection algorithms affect the performances, we com-
+pare the greedy search with the other three baselines, i.e.,
+Random (randomly select the same number of class names
+in U); Bi-Search [4]; Full (choose the full set of class names
+in the universeU). To ensure the fairness, we first run SVFT
+to obtain the optimal model with the selection records on
+the execution number and their training timelines, then per-
+form the consistent optimization schedules by Random and
+Bi-Search. Fig.5 show that the linear greedy search is the
+optimal class-name selection algorithm to SVFT.
+7. Limitation and Future Work
+Several limitations should be acknowledged. Our frame-
+work assumes a pre-defined, finite vocabulary universe
+U, yet the space of possible class names is virtually un-
+bounded in practice. IfU fails to cover semantically confus-
+ing classes at deployment, the theoretical lower bound may
+become loose. Additionally, the greedy submodular selec-
+tion requires evaluating marginal gains over all candidates
+in U/V (T ) at each step, creating a computational bottleneck
+for large-scale universes. Moreover, exclusively fine-tuning
+class-name embeddings while freezing encoders limits rep-
+resentational capacity for domains that diverge substantially
+from CLIP’s pre-training distribution. Finally, the orthogo-
+nality regularization is a tractable surrogate but not a suf-
+ficient condition for extensibility, as near-orthogonality can
+be trivially satisfied in high-dimensional spaces among se-
+mantically related classes.
+These limitations suggest promising future directions:
+leveraging large language models for dynamic vocabulary
+construction to relax the static universe assumption; adopt-
+ing lazy or stochastic greedy strategies to reduce selection
+cost at scale; investigating joint class-name and lightweight
+vision-side adaptation while preserving the orthogonality
+constraint; incorporating taxonomic priors for more struc-
+tured regularization; extending the vocabulary scaling law
+to open-vocabulary detection and segmentation; and inte-
+grating SVFT into continual learning loops for truly open-
+world vision–language systems.
+3098
+
+
+=== PAGE 9 ===
+Acknowledgment
+This work was supported in part by NSFC (62377028,
+62276114), in part by The Major Key Project of PCL
+(No. PCL2025A02, PCL2024A04), in part by the
+Science and Technology Planning Project of Guang-
+dong(2023A0505030013, 2025A0505010016), in
+part by Science and Technology Planning Project of
+Guangzhou(2025A03J3565), in part by “Master Mentor
+Plan” of Jinan University (YDXS2501), in part by the
+Fundamental Research Funds for the Central Universi-
+ties(21625102), and in part by Guangdong Basic and
+Applied Basic Research Foundation (2024A1515011762).
+References
+[1] Jean-Baptiste Alayrac, Jeff Donahue, Pauline Luc, Antoine
+Miech, Iain Barr, Yana Hasson, Karel Lenc, Arthur Men-
+sch, Katherine Millican, Malcolm Reynolds, et al. Flamingo:
+a visual language model for few-shot learning. Advances
+in neural information processing systems, 35:23716–23736,
+2022. 2
+[2] Alexei Baevski, Wei-Ning Hsu, Qiantong Xu, Arun Babu,
+Jiatao Gu, and Michael Auli. Data2vec: A general frame-
+work for self-supervised learning in speech, vision and lan-
+guage. In International Conference on Machine Learning ,
+pages 1298–1312. PMLR, 2022. 2
+[3] Abhijit Bendale and Terrance Boult. Towards open world
+recognition. In Proceedings of the IEEE conference on
+computer vision and pattern recognition, pages 1893–1902,
+2015. 2
+[4] Niv Buchbinder, Moran Feldman, Joseph Seffi, and Roy
+Schwartz. A tight linear time (1/2)-approximation for uncon-
+strained submodular maximization. SIAM Journal on Com-
+puting, 44(5):1384–1402, 2015. 5, 8
+[5] Ziliang Chen, Pengxu Wei, Jingyu Zhuang, Guanbin Li, and
+Liang Lin. Deep cocktail networks: A universal framework
+for visual multi-source domain adaptation. International
+Journal of Computer Vision, 129(8):2328–2351, 2021. 2
+[6] Ziliang Chen, Xin Huang, Quanlong Guan, Liang Lin, and
+Weiqi Luo. A retrospect to multi-prompt learning across vi-
+sion and language. In Proceedings of the IEEE/CVF Interna-
+tional Conference on Computer Vision, pages 22190–22201,
+2023. 3
+[7] Ziliang Chen, Yongsen Zheng, Zhao-Rong Lai, Quanlong
+Guan, and Liang Lin. Diagnosing and rectifying fake ood in-
+variance: A restructured causal approach. In Proceedings of
+the AAAI Conference on Artificial Intelligence, pages 11471–
+11479, 2024. 2
+[8] Ziliang Chen, Xin Huang, Xiaoxuan Fan, Keze Wang, Yuyu
+Zhou, Quanlong Guan, and Liang Lin. Reproducible vision-
+language models meet concepts out of pre-training. In Pro-
+ceedings of the Computer Vision and Pattern Recognition
+Conference, pages 14701–14711, 2025. 5, 6
+[9] Mehdi Cherti, Romain Beaumont, Ross Wightman, Mitchell
+Wortsman, Gabriel Ilharco, Cade Gordon, Christoph Schuh-
+mann, Ludwig Schmidt, and Jenia Jitsev. Reproducible scal-
+ing laws for contrastive language-image learning. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 2818–2829, 2023. 1, 2
+[10] Xiuliang Duan, Dating Tan, Liangda Fang, Yuyu Zhou,
+Chaobo He, Ziliang Chen, Lusheng Wu, Guanliang Chen,
+Zhiguo Gong, Weiqi Luo, et al. Reason-and-execute prompt-
+ing: Enhancing multi-modal large language models for solv-
+ing geometry questions. In Proceedings of the 32nd ACM
+international conference on multimedia , pages 6959–6968,
+2024. 2
+[11] Satoru Fujishige. Submodular functions and optimization .
+Elsevier, 2005. 5
+[12] Peng Gao, Shijie Geng, Renrui Zhang, Teli Ma, Rongyao
+Fang, Yongfeng Zhang, Hongsheng Li, and Yu Qiao.
+Clip-adapter: Better vision-language models with feature
+adapters. International Journal of Computer Vision , pages
+1–15, 2023. 3, 7
+[13] Chuanxing Geng, Sheng-jun Huang, and Songcan Chen. Re-
+cent advances in open set recognition: A survey.IEEE trans-
+actions on pattern analysis and machine intelligence, 43(10):
+3614–3631, 2020. 2
+[14] Lalit P Jain, Walter J Scheirer, and Terrance E Boult. Multi-
+class open set recognition using probability of inclusion.
+In Computer Vision–ECCV 2014: 13th European Confer-
+ence, Zurich, Switzerland, September 6-12, 2014, Proceed-
+ings, Part III 13, pages 393–409. Springer, 2014. 2
+[15] Muhammad Uzair Khattak, Hanoona Rasheed, Muhammad
+Maaz, Salman Khan, and Fahad Shahbaz Khan. Maple:
+Multi-modal prompt learning. In Proceedings of the
+IEEE/CVF conference on computer vision and pattern
+recognition, pages 19113–19122, 2023. 3, 7
+[16] Andreas Krause and Daniel Golovin. Submodular function
+maximization. Tractability, 3(71-104):3, 2014. 5
+[17] Junnan Li, Ramprasaath Selvaraju, Akhilesh Gotmare,
+Shafiq Joty, Caiming Xiong, and Steven Chu Hong Hoi.
+Align before fuse: Vision and language representation learn-
+ing with momentum distillation. Advances in neural infor-
+mation processing systems, 34:9694–9705, 2021. 2
+[18] Fengmao Lv, Changru Nie, Jianyang Zhang, Guowu Yang,
+Guosheng Lin, Xiao Wu, and Tianrui Li. Rethinking the
+effect of uninformative class name in prompt learning. In
+Proceedings of the 32nd ACM International Conference on
+Multimedia, pages 8345–8354, 2024. 3, 5
+[19] Sarah Parisot, Yongxin Yang, and Steven McDonagh. Learn-
+ing to name classes for vision and language models. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 23477–23486, 2023. 3, 5
+[20] Jitendra Parmar, Satyendra Chouhan, Vaskar Raychoudhury,
+and Santosh Rathore. Open-world machine learning: appli-
+cations, challenges, and opportunities. ACM Computing Sur-
+veys, 55(10):1–37, 2023. 2
+[21] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. In International conference on machine learning, pages
+8748–8763. PMLR, 2021. 1, 2
+3099
+
+
+=== PAGE 10 ===
+[22] Shuhuai Ren, Lei Li, Xuancheng Ren, Guangxiang Zhao,
+and Xu Sun. Delving into the openness of clip. In Find-
+ings of the Association for Computational Linguistics: ACL
+2023, pages 9587–9606, 2023. 1, 2, 3, 6, 7
+[23] Walter J Scheirer, Anderson de Rezende Rocha, Archana
+Sapkota, and Terrance E Boult. Toward open set recogni-
+tion. IEEE transactions on pattern analysis and machine
+intelligence, 35(7):1757–1772, 2012. 2
+[24] Walter J Scheirer, Lalit P Jain, and Terrance E Boult. Prob-
+ability models for open set recognition. IEEE transactions
+on pattern analysis and machine intelligence , 36(11):2317–
+2324, 2014. 2
+[25] Samuel Stevens, Jiaman Wu, Matthew J Thompson, Eliza-
+beth G Campolongo, Chan Hee Song, David Edward Carlyn,
+Li Dong, Wasila M Dahdul, Charles Stewart, Tanya Berger-
+Wolf, et al. Bioclip: A vision foundation model for the tree
+of life. In Proceedings of the IEEE/CVF conference on com-
+puter vision and pattern recognition , pages 19412–19424,
+2024. 2, 7
+[26] Quan Sun, Yuxin Fang, Ledell Wu, Xinlong Wang, and Yue
+Cao. Eva-clip: Improved training techniques for clip at scale.
+arXiv preprint arXiv:2303.15389, 2023. 2
+[27] Keze Wang, Liang Lin, Xiaopeng Yan, Ziliang Chen,
+Dongyu Zhang, and Lei Zhang. Cost-effective object de-
+tection: Active sample mining with switchable selection cri-
+teria. IEEE transactions on neural networks and learning
+systems, 30(3):834–850, 2018. 2
+[28] Peng Wang, An Yang, Rui Men, Junyang Lin, Shuai Bai,
+Zhikang Li, Jianxin Ma, Chang Zhou, Jingren Zhou, and
+Hongxia Yang. Ofa: Unifying architectures, tasks, and
+modalities through a simple sequence-to-sequence learning
+framework. In International conference on machine learn-
+ing, pages 23318–23340. PMLR, 2022. 2
+[29] Ruijia Xu, Ziliang Chen, Wangmeng Zuo, Junjie Yan, and
+Liang Lin. Deep cocktail network: Multi-source unsuper-
+vised domain adaptation with category shift. In Proceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 3964–3973, 2018. 2
+[30] Xiaopeng Yan, Ziliang Chen, Anni Xu, Xiaoxi Wang, Xi-
+aodan Liang, and Liang Lin. Meta r-cnn: Towards general
+solver for instance-level low-shot learning. In Proceedings
+of the IEEE/CVF international conference on computer vi-
+sion, pages 9577–9586, 2019. 2
+[31] Tao Yu, Zhihe Lu, Xin Jin, Zhibo Chen, and Xinchao Wang.
+Task residual for tuning vision-language models. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 10899–10909, 2023. 3
+[32] Alireza Zareian, Kevin Dela Rosa, Derek Hao Hu, and Shih-
+Fu Chang. Open-vocabulary object detection using captions.
+In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 14393–14402, 2021.
+2
+[33] Renrui Zhang, Rongyao Fang, Wei Zhang, Peng Gao, Kun-
+chang Li, Jifeng Dai, Yu Qiao, and Hongsheng Li. Tip-
+adapter: Training-free clip-adapter for better vision-language
+modeling. arXiv preprint arXiv:2111.03930, 2021. 3
+[34] Kaiyang Zhou, Jingkang Yang, Chen Change Loy, and Ziwei
+Liu. Conditional prompt learning for vision-language mod-
+els. In Proceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition , pages 16816–16825,
+2022. 1, 3, 7
+[35] Kaiyang Zhou, Jingkang Yang, Chen Change Loy, and Ziwei
+Liu. Learning to prompt for vision-language models. In-
+ternational Journal of Computer Vision, 130(9):2337–2348,
+2022. 1, 3, 6, 7
+[36] Jingyu Zhuang, Ziliang Chen, Junyi Zhang, Dongyu Zhang,
+and Zhaoquan Cai. Domain adaptation for retinal vessel
+segmentation using asymmetrical maximum classifier dis-
+crepancy. In Proceedings of the ACM turing celebration
+conference-China, pages 1–6, 2019. 2
+[37] Jingyu Zhuang, Ziliang Chen, Pengxu Wei, Guanbin Li, and
+Liang Lin. Discovering implicit classes achieves open set
+domain adaptation. In 2022 IEEE International Conference
+on Multimedia and Expo (ICME), pages 01–06. IEEE, 2022.
+2
+[38] Jingyu Zhuang, Ziliang Chen, Pengxu Wei, Guanbin Li, and
+Liang Lin. Open set domain adaptation by novel class dis-
+covery. arXiv preprint arXiv:2203.03329, 2022. 2
+3100

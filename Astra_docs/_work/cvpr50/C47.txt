@@ -1,0 +1,1007 @@
+=== PAGE 1 ===
+Discriminative Perception via Anchored Description for Reasoning Segmentation
+Tao Yang*, Qing Zhou*, Yanliang Li, Qi Wang†
+Northwestern Polytechnical University
+{taoytao, mrazhou, yanliangli}@mail.nwpu.edu.cn, crabwq@gmail.com
+Abstract
+Reasoning segmentation increasingly employs reinforce-
+ment learning to generate explanatory reasoning chains
+that guide Multimodal Large Language Models. While
+these geometric rewards are primarily confined to guid-
+ing the final localization, they are incapable of discrimi-
+nating whether the reasoning process remains anchored on
+the referred region or strays into irrelevant context. Lack-
+ing this discriminative guidance, the model’s reasoning of-
+ten devolves into unfocused and verbose chains that ulti-
+mately fail to disambiguate and perceive the target in com-
+plex scenes. This suggests a need to complement the RL ob-
+jective with Discriminative Perception, an ability to actively
+distinguish a target from its context. To realize this, we pro-
+pose DPAD to compel the model to generate a descriptive
+caption of the referred object, which is then used to explic-
+itly discriminate by contrasting the caption’s semantic rel-
+evance to the referred object against the wider context. By
+optimizing for this discriminative capability, the model is
+forced to focus on the unique attributes of the target, lead-
+ing to a more converged and efficient reasoning chain. The
+descriptive caption also serves as an interpretability ratio-
+nale that aligns with the segmentation. Experiments on the
+benchmarks confirm the validity of our approach, deliver-
+ing substantial performance gains, with the cIoU on Rea-
+sonSeg increasing by 3.09% and the reasoning chain length
+decreasing by approximately 42%. Code is available at
+https://github.com/mrazhou/DPAD.
+1. Introduction
+Reasoning segmentation (RS) [12, 26, 28] challenges mod-
+els to generate precise pixel-level masks by interpreting
+nuanced, context-dependent language queries. The task
+requires the model to perform inference, deciphering im-
+plicit relational and attributive cues within a query to iso-
+late the target within a complex visual scene. The ad-
+vent of Multimodal Large Language Models (MLLMs) has
+*Equal contribution.
+†Corresponding author.
+The image shows a bear standing in a grassy 
+area with some vegetation and trees in the 
+background. The bear's body is covered in fur, 
+and it appears to be in a natural habitat. The 
+bear's nose is visible in the image, and it is 
+the part of the body that is used to detect 
+scents.  The bear is the main subject, and the 
+environment includes grass, plants, and trees. 
+The bear's nose is the body part used to 
+receive scent signals. The most closely 
+matched object to the body part used to 
+receive scent signals is the bear's nose.
+100
+Th in k: Th e  th in kin g  p r oce ss in volve s 
+identifying the body part used to receive 
+scent signals in a bear. This is typically the 
+nose, as it is the primary organ for detecting 
+scents. The bear in the image has a visible 
+nose, which is the object of interest.
+Caption: Nose used to receive scent signals.
+51
+The body part used to receive scent signals.
+41.7%
+ResonSeg
+117
+68
+61.8%
+RefCOCO
+165
+63
+ResonSeg RefCOCO
+0.6
+60.8
+3.9
+57.7
+79.3
+78.7
+Figure 1. Comparison between Seg-Zero’s unfocused reasoning
+(green), which leads to lower performance, and DPAD’s focused
+reasoning (blue), which is guided by Discriminative Perception to
+achieve substantial improvements.
+been pivotal in addressing this challenge [17, 23], leading
+to architectures that bridge their powerful reasoning capa-
+bilities with specialized segmentation modules to achieve
+language-guided, pixel-level understanding.
+Early architectures like the pioneering LISA [11] re-
+lied on Supervised Fine-Tuning (SFT). The limited out-of-
+distribution (OOD) generalization of this approach [12, 17],
+however, catalyzed a paradigm shift towards Reinforcement
+Learning (RL) to cultivate more generalizable reasoning
+[3, 8, 23]. Within this shift, Group-Relative Policy Opti-
+mization (GRPO) [7] has emerged as a compelling choice,
+demonstrating substantial advantages for fine-tuning mod-
+els on task-specific rewards [18, 25, 27, 33]. This RL ap-
+proach facilitated emergent reasoning, where models au-
+tonomously generate Chains-of-Thought, directly improv-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+13189
+
+
+=== PAGE 2 ===
+ing OOD adaptability in visual tasks. Drawing on this emer-
+gent reasoning, several works [17, 23, 27, 29] in RS have
+demonstrated that a pure RL strategy can generate reason-
+ing chains to navigate cluttered visual contexts, achieving
+substantial zero-shot performance improvements on chal-
+lenging benchmarks such as ReasonSeg.
+Despite their success, these RL-driven paradigms are
+fundamentally limited by a core learning signal that relies
+on reward functions based on geometric metrics like IoU
+and L1 distance [9]. While these geometric metrics are pri-
+marily confined to guiding the final localization, they offer
+only indirect or insufficient incentives for the intermediate
+reasoning process. Indeed, they are incapable of discrimi-
+nating whether the reasoning process remains anchored on
+the referred region or strays into irrelevant context. Lacking
+this discriminative guidance, the model’s reasoning can of-
+ten devolve into chains that are divergent, unanchored, and
+verbose. This deficiency is particularly detrimental when
+effective disambiguation and discerning perception are re-
+quired, as a divergent reasoning chain inevitably incorpo-
+rates irrelevant contextual distractors, polluting the seman-
+tic cues the model relies on [1, 19, 24]. As a result, the
+model struggles to isolate the true target from a complex
+scene, as shown in Figure 1. To address this critical gap, we
+propose a complementation in the learning objective for RS
+itself—moving beyond mere geometric accuracy to actively
+cultivate the model’s ability to distinguish the target from its
+context, a capability termed Discriminative Perception.
+We realize Discriminative Perception through our
+method, DPAD (DiscriminativePerception viaAnchored
+Description). DPAD introduces a discriminative signal to
+operate in synergy with the geometric rewards by com-
+pelling the model to generate an anchored and descriptive
+caption, subsequently quantifying this caption’s discrimina-
+tive capability through an innovative criterion that contrasts
+its semantic relevance to the anchored region against its rel-
+evance to the wider image context. By optimizing for this
+discriminative capability, the model’s internal reasoning is
+implicitly rendered more focused and efficient, leading to
+an average reduction of approximately 42% in the length of
+the generated reasoning chains, as shown in Figure 1. More-
+over, the caption offers a transparent explanation for the
+segmentation, improving interpretability. We conduct ex-
+tensive experiments on benchmark datasets to validate our
+approach, demonstrating that it delivers substantial perfor-
+mance gains alongside a more focused and efficient reason-
+ing process.
+To summarize as follows:
+• We introduce Discriminative Perception and propose
+DPAD, which incentivizes focused reasoning via con-
+trastive discrimination based on an anchored description.
+• Extensive experiments on challenging reasoning segmen-
+tation benchmarks validate that DPAD achieves substan-
+tial performance gains.
+• Moreover, DPAD provides interpretability through a co-
+generated descriptive caption and reduces the average
+length of reasoning chains by approximately 42%.
+2. Related Work
+2.1. Image Segmentation
+Image segmentation [5, 30], a fundamental task in com-
+puter vision, involves partitioning an image into pixel-level
+masks. The task has evolved from general semantic seg-
+mentation to more nuanced, language-driven objectives. A
+key development in this area is Referring Expression Seg-
+mentation [15, 32], which requires segmenting an object
+specified by a direct natural language phrase and is eval-
+uated on standard benchmarks like RefCOCO, RefCOCO+,
+and RefCOCOg [34]. Pushing this frontier further, RS
+[3, 22] challenges models to perform pixel-level localiza-
+tion based on more complex language instructions that re-
+quire inference. This task demands a deep synthesis of vi-
+sual perception and language comprehension to decipher re-
+lational and abstract cues, thus necessitating models with
+powerful reasoning abilities.
+2.2. Multimodal Large Language Models
+The development of MLLMs [13] represents a significant
+breakthrough in artificial intelligence, bridging the gap be-
+tween visual perception and natural language understand-
+ing. Pre-trained on vast image-text datasets, these models
+build internal representations that capture a deep seman-
+tic alignment between modalities, allowing them to excel
+at diverse tasks like visual question answering [10], im-
+age captioning [16, 31, 35], and complex reasoning [4].
+Their ability to comprehend nuanced, context-dependent
+queries establishes them as a foundational technology for
+advanced vision-language tasks. These powerful, general-
+purpose reasoning capabilities, once demonstrated on high-
+level, holistic image tasks, now pave the way for specialized
+downstream applications that demand fine-grained, pixel-
+level understanding, such as reasoning segmentation [22].
+2.3. Reasoning Segmentation with MLLMs
+Reasoning segmentation leverages the advanced capabili-
+ties of MLLMs to perform pixel-level localization based
+on complex language instructions. The development of
+this field has undergone a critical paradigm shift from
+Supervised Fine-Tuning (SFT) to Reinforcement Learning
+(RL). Early representative methods, such as LISA [11],
+applied SFT but faced limitations in generalization when
+dealing with out-of-distribution (OOD) scenarios. To ad-
+dress this issue, the state-of-the-art has shifted towards RL-
+based methods, represented by Seg-Zero [17]. By employ-
+ing techniques such as Group-Relative Policy Optimization
+13190
+
+
+=== PAGE 3 ===
+(GRPO), these models can elicit the emergent generation
+of chains of thought without explicit reasoning supervi-
+sion, significantly enhancing zero-shot performance. Con-
+currently, this paradigm introduces new considerations for
+reward mechanism design. The geometric reward signals
+that current methods rely on provide only localization guid-
+ance and are unable to discriminate the quality of the rea-
+soning chain. During the learning process, a model might
+find a pathway that achieves the final localization, but this
+pathway is not necessarily the most focused or insightful.
+3. Methodology
+This section details our proposed method, DPAD. Within
+an RL-driven framework, DPAD complements rewards for
+format adherence and geometric accuracy by fostering the
+model’s “Discriminative Perception” for more focused and
+efficient reasoning segmentation.
+3.1. Problem Formulation
+Reasoning segmentation, the task of generating a maskM
+from a given imageIand a language queryQ, is formulated
+in our work within an RL framework built upon a decoupled
+architecture. In this paradigm, a trainable MLLM acts as a
+reasoning policy,π, to produce localization prompts. These
+prompts are then consumed by a frozen segmentation model
+to render the final mask.
+For a given states= (I, Q), this policy is trained to
+generate a token sequenceYcontaining a reasoning chain
+T, a geometric localizationA, and an anchored descriptive
+captionC, with the generation process expressed as:
+Y= (T, A, C)∼π(·|s)(1)
+The final maskMis then deterministically produced by
+the localizationAvia a frozen segmentation module,F seg,
+such thatM=F seg(I, A). The overarching objective of
+the RL framework is to learn an optimal policyπ∗ that max-
+imizes the expected final reward,Rf inal. This reward func-
+tion directly evaluates the quality of the generated sequence
+Y. The optimization objective is formally defined as:
+π∗ = arg max
+π
+EY∼π(·|s) [Rf inal(Y, s)](2)
+3.2. Discriminative Perception
+To address the unfocused and verbose reasoning chains pro-
+duced by existing RL frameworks, we introduce DPAD
+(Discriminative Perception via Anchored Description), as
+shown in Figure 2. Our method stimulates the model’s “Dis-
+criminative Perception” by requiring the MLLM policy to
+generate ananchored descriptive captionfor its localiza-
+tion, which in turn enables a discriminative reward. This
+process compels the generation of more focused and effi-
+cient reasoning chains.
+Anchored Descriptive Caption.In addition to the rea-
+soning chain (T) and geometric localization (A), our frame-
+work requires the MLLM policy to generate a concise and
+anchored caption (C). This caption’s purpose is twofold.
+First, it serves as a human-readable rationale that explains
+the model’s final localization, enhancing the framework’s
+overall interpretability. Second, and more critically, it acts
+as the semantic foundation for our reward signal, providing
+the necessary content to evaluate the model’s discriminative
+ability. The caption is considered “anchored” because it is
+prompted to describe the object identified by the model’s
+own geometric localization output (A).
+Discriminative Perception Reward.This reward is the
+technical core of DPAD, designed to quantify and incen-
+tivize the model’s discriminative perception. As illustrated
+in Figure 2, this reward,R dpad, is calculated by contrast-
+ing the caption’s relevance to the target versus the broader
+context. To achieve this, we define the Region of Interest
+(ROI) as the image crop bounded by the ground-truth box,
+and the All of Image (AOI) as the entire image. Using a
+pre-trained vision-language model (e.g., CLIP), we extract
+semantic features from both the text and the image modal-
+ities. LetV C denote the text feature embedding of the cap-
+tionC, and letV ROI andV AOI denote the visual feature
+embeddings of the ROI and AOI, respectively. The seman-
+tic similarity function between a generic text feature vector
+VT and a visual feature vectorV I is defined as follows:
+Sim(VT , VI) = VT ·V I
+∥VT ∥∥VI ∥ (3)
+Based on this, we derive ROI Score,S 1 = Sim(VC, VROI),
+and AOI Score,S 2 = Sim(VC, VAOI). An effective caption
+must be more relevant to the ROI than to the image as a
+whole. We thus formulate our final discriminative signal,
+∆, to reflect this principle:
+∆ = max(0, S1 −S 2)(4)
+Here, the term(S 1−S2)quantifies the discriminative power
+of the caption. The discriminative reward,R dpad, is then
+formalized as follows:
+Rdpad =
+(
+1,if∆>0
+0,if∆ = 0 (5)
+3.3. Final Reward and Optimization
+The complete reward signal,R final, is a composite function
+designed to guide the policy from multiple perspectives, as
+illustrated in Figure 2. It is composed of three components.
+Format Validation Reward (R format).This reward
+ensures the model’s outputs adhere to a predefined struc-
+ture. We employ three specific checks. First, a regular ex-
+pression verifies the presence and order of the<think>,
+13191
+
+
+=== PAGE 4 ===
+Reward
+Discriminative 
+Perception
+MLLM
+SAM
+If we were observing the 
+sunset and its beautiful 
+colors from the vantage 
+point ..., what natural 
+feature would obstruct our 
+view to some extent?
+Reason
+<think>...</think>
+<answer>...</answer>
+<caption>...</caption>
+<answer>{'bbox': 
+[......], 'P1': [..], 
+'P2':[..]}</answer>
+<caption>Tree 
+silhouette ... sunset 
+view.</caption>
+Format Validation
+Geometric Location
+if Match: Reward = 1 
+else: Reward = 0
+IoU > 0.5: Reward = 1 
+else: 0; L1 < T : 
+Reward = 1 else: 0
+Discrimination  
+),0( 21 SSmax 
+0 0Reward Reward
+0
+Tree silhouette obstructs the 
+sunset view.
+1 ROI S
+1
+T
+A
+C
+CLIP
+ CLIP
+2 AOI S
+Figure 2. An overview of the DPAD framework, where a MLLM generates a reasoning chain (T), a geometric localization (A), and an
+anchored descriptive caption (C). The core of our method is the Discriminative Perception reward, which uses the generated caption to
+derive a Region of Interest (ROI) Score (S 1) and an All of Image (AOI) Score (S 2). The contrast between these scores provides a binary
+reward signal that incentivizes the model to generate focused reasoning capable of distinguishing the target from its context.
+<answer>, and<caption>tags. Second, a parser val-
+idates the JSON object within the<answer>tag, en-
+suring it contains the required keys (“bbox”, “points 1”,
+“points 2”) and that their values are correctly formatted.
+Finally, a check confirms the presence of an anchored de-
+scriptive caption (C) within the model’s output. All checks
+return a binary reward of 1.0 for success and 0.0 for failure,
+ensuring strict adherence to the desired output format.
+Geometric Location Reward (Rgeo).This reward eval-
+uates the geometric accuracy of the localization output (A)
+to enhance spatial precision. It is a composite of several
+sub-rewards. An IoU-based reward is calculated, yielding a
+score of 1.0 if the Intersection over Union between the pre-
+dicted and ground-truth bounding boxes exceeds 0.5, and
+0.0 otherwise. We also employL 1 distance-based rewards
+for both the bounding box and key points. These provide a
+reward of 1.0 if the distance is below a set threshold and 0.0
+otherwise. This combination of metrics ensures the local-
+ization is both spatially accurate and correctly positioned.
+The final reward is formulated as follows:
+Rfinal =R format +R geo +R dpad (6)
+Optimization.The MLLM policy,π, is fine-tuned using
+GRPO to maximize the expectedRfinal, effectively navigat-
+ing the trajectory of reasoning tokens. By optimizing this
+composite objective, the policy is compelled to generate
+reasoning chains that are not only geometrically accurate
+but also semantically focused and logically coherent. This
+process acts as a structural and semantic regularizer that im-
+plicitly prunes divergent and verbose thoughts, forcing the
+model to concentrate on the unique discriminative attributes
+that distinguish the target from its background. Conse-
+quently, this refined focus leads to more efficient reasoning
+and consistently improved segmentation performance.
+Table 1. Performance comparison on existing benchmarks. Sym-
+bol†denotes scores reported in the paper while∗denotes our re-
+production with official code and model checkpoint. Our method
+achieves improvements on ReasonSeg.
+Method val test
+gIoU cIoU gIoU cIoU
+OVSeg 28.5 18.6 26.1 20.8
+ReLA 22.4 19.9 21.3 22.0
+Grounded-SAM 26.0 14.5 21.3 16.4
+LISA-7B-LLaV A1.5 53.6 52.3 48.7 48.8
+LISA-13B-LLaV A1.5 57.7 60.3 53.8 50.8
+SAM4MLLM 46.7 48.1 - -
+Qwen2.5VL-3B + SAM2 53.8 44.1 47.6 37.4
+Seg-Zero-7B† 62.6 62.0 57.5 52.0
+Seg-Zero-7B∗ 60.9 57.3 57.7 54.4
+DPAD-7B (ours) 63.1 61.2 60.8 57.5
+4. Experiments
+4.1. Experimental Settings
+We adopt a frozen CLIP model (ViT-B/32) as the seman-
+tic scorer to extract both textual and visual features for the
+computation ofR dpad. To rigorously evaluate our proposed
+method, DPAD, we utilize a range of standard benchmarks
+for reasoning and referring expression segmentation.
+Training Data.Our model is trained exclusively on a
+small subset of 3,000 samples from the RefCOCOg dataset
+[34]. This minimal training set is smaller than those used in
+prior works, which underscores the superior data and learn-
+ing efficiency of our method. We do not use any datasets
+with explicit reasoning chain annotations for training.
+Evaluation Benchmarks.The performance of our pro-
+posed method, DPAD, is evaluated on several benchmarks.
+13192
+
+
+=== PAGE 5 ===
+Table 2. Performance comparison on existing benchmarks. Sym-
+bol†denotes scores reported in the paper while∗denotes our re-
+production with official code and model checkpoint. Our method
+achieves improvements in cIoU on RefCOCO, RefCOCO+, and
+RefCOCOg.
+Method RefCOCO RefCOCO+ RefCOCOg
+testA testA test
+LA VT 75.8 68.4 62.1
+ReLA 76.5 71.0 66.0
+LISA-7B 76.5 67.4 68.5
+PixelLM-7B 76.5 71.7 70.5
+MagNet 78.3 73.6 69.3
+Seg-Zero-7B† 80.3 76.2 72.6
+Seg-Zero-7B∗ 78.7 74.4 71.3
+DPAD-7B (ours) 79.3 74.7 72.6
+We use ReasonSeg as our primary benchmark to assess the
+model’s generalization capability on complex and nuanced
+queries. Furthermore, the model’s robustness and zero-shot
+transfer capabilities are validated on the standard test splits
+of RefCOCO, RefCOCO+, and RefCOCOg.
+4.2. Evaluation Metrics
+We evaluate our model from two perspectives: segmenta-
+tion performance and discriminative perception capability.
+Segmentation Performance.We adopt global Intersec-
+tion over Union (gIoU) and cumulative Intersection over
+Union (cIoU) to rigorously assess pixel-level mask predic-
+tion. Specifically, gIoU averages the IoU scores across all
+samples to provide a robust instance-level evaluation that
+weights small and large targets equally. Conversely, cIoU
+computes the ratio of total intersection to total union areas
+across the entire dataset, offering a stable macro-level mea-
+surement of pixel precision.
+Discriminative Perception Capability.To evaluate the
+discriminative specificity of the model’s outputs towards the
+target, we introduce a suite of semantic metrics for both the
+descriptive caption (C) and the reasoning chain (T). For
+the caption, we measure its similarity to the ROI (S 1) and
+the AOI (S 2), deriving a Semantic Signal-to-Noise Ratio
+(SNR =S 1/S2) to quantify its discriminative power. Sim-
+ilarly, to analyze the internal reasoning process, we com-
+puteT S 1 andT S 2 as the similarities ofTto the ROI and
+AOI, respectively, yielding the Reasoning SNR (TSNR =
+T S1/T S2). High values forS 1 andT S 1 indicate strong
+target relevance, while highSNRandTSNRdemonstrate
+precise contextual specificity.
+4.3. Implementation Details
+Architecture.Our framework follows a decoupled de-
+sign. We use Qwen2.5-VL [2] as the reasoning model and
+Table 3. Performance and efficiency across different Query Types
+on ReasonSeg.
+Query gIoU (↑) #Tok (↓)
+Base DPAD Base DPAD
+Attribute 61.2264.2997.7659.95
+Relation 58.4762.1791.7363.00
+Logic 44.9247.03110.2268.30
+Table 4. Performance and efficiency across different Difficulty lev-
+els on ReasonSeg.
+Difficulty gIoU (↑) #Tok (↓)
+Base DPAD Base DPAD
+Easy 68.3773.0491.6259.28
+Medium 58.9161.6996.2961.66
+Hard 45.1947.48105.0662.17
+Table 5. Comparison of discriminative perception metrics for
+DPAD and Seg-Zero on ReasonSeg.
+Metric Seg-zero-7B DPAD-7B (ours)
+val test val test
+Tokens# 117.50 111.90 68.49 68.52
+S1 - - 25.54 25.53
+S2 - - 22.77 22.63
+SNR - - 1.15 1.16
+TS1 21.83 23.18 22.14 22.07
+TS2 22.37 24.74 21.28 21.31
+TSNR 0.98 0.94 1.05 1.04
+a frozen SAM2-Large [20] as the segmentation module.
+Training.We use a batch size of 16 and a sampling num-
+ber of 8 for each training step. The initial learning rate is
+set to1×10 −6 with a weight decay of 0.01. The reward
+weightsλare fixed at1.0by default. The discriminative
+rewardR dpad is calculated using a frozen CLIP (ViT-B/32)
+model, which is entirely discarded during inference.
+4.4. Experimental Results
+Segmentation Performance.We compare our method,
+DPAD, against a comprehensive suite of state-of-the-
+art approaches, including OVSeg [14], ReLA [14],
+Grounded-SAM [21], LISA-7B-LLaV A1.5 [11], LISA-
+13B-LLaV A1.5 [11], SAM4MLLM [4], Qwen2.5VL-3B +
+SAM2 [27], LA VT [32], PixelLM-7B [22], MagNet [6],
+and Seg-Zero-7B [17]. As demonstrated in Table 1 and Ta-
+ble 2, our DPAD-7B achieves state-of-the-art performance
+across multiple challenging benchmarks. On the ReasonSeg
+dataset, DPAD-7B yields substantial improvements over the
+13193
+
+
+=== PAGE 6 ===
+What can be used to 
+mix the ingredients and 
+provide a convenient 
+way to drink the cocktail?
+ Think: The image shows two glasses 
+containing a dark red liquid, which is 
+likely a cocktail... In the image, the 
+highball glass is the object that can 
+be used to mix the ingredients and 
+provide a convenient way to drink 
+the cocktail.
+ 106
+Think: The thinking process involves 
+identifying the object in the  ... The 
+object in question is the straw in the 
+taller glass. The straw is used to stir 
+the cocktail and also to drink it.
+Caption: A red straw used for mixing 
+and drinking the cocktail.
+ 60
+Butterflies are attracted 
+to certain ... What part of 
+the plant in the picture is 
+likely to attract butterflies? Think: The image shows a butterfly 
+p e r c h e d  o n  a  p u r p l e  f l o w e r. 
+Butterflies are attracted to certain 
+types of plants because they provide 
+them ... The butterfly's proboscis is 
+extended, which is a sign that it is 
+feeding on the nectar of the flower. 
+ 87
+Think: The thinking process involves 
+identifying the part of the plant ... In 
+the picture, the butterfly is perched 
+on a purple flower, which is the part 
+of the plant that is likely to attract 
+butterflies.
+Caption: A purple flower.
+ 58
+The transportation vehicle 
+that does not require 
+electricity or gasoline. Think: The image shows a red sports 
+car parked on a street. There is also a 
+bicycle parked on the sidewalk next 
+to a \"No Standing Anytime\" sign ... 
+The bicycle is the most closely 
+matched object in terms of not 
+requiring electricity or gasoline.  
+ 98
+Think: The thinking process ... The 
+object in question is a bicycle, which 
+is a human-powered transportation 
+vehicle. The bicycle is parked next to 
+the red car, and it is the only object 
+in the image that fits this description.
+Caption: A bicycle.
+ 54
+Figure 3. Qualitative comparison between the Seg-Zero and our DPAD. The figure illustrates examples where Seg-Zero produces “Long
+& Unfocused” reasoning chains that often stray into irrelevant context before identifying the target. In contrast, DPAD generates “Short &
+Focused” chains that are more converged and efficient. This demonstrates how DPAD’s Discriminative Perception leads to more precise
+reasoning and a significant reduction in token count.
+strong Seg-Zero-7B∗ baseline, boosting gIoU from 57.7 to
+60.8 (+3.1) and cIoU from 54.4 to 57.5 (+3.1). This signifi-
+cant gain confirms that explicitly cultivating discriminative
+perception enhances the model’s capacity to disambiguate
+targets from complex distractors. Furthermore, we evaluate
+the zero-shot generalization of DPAD-7B on the RefCOCO,
+RefCOCO+, and RefCOCOg test splits. As shown in Ta-
+ble 2, our model outpaces the Seg-Zero-7B∗ across all three
+datasets, achieving 79.3 (+0.6) on RefCOCO, 74.7 (+0.3)
+on RefCOCO+, and 72.6 (+1.3) on RefCOCOg. These con-
+sistent improvements underscore that our discriminative re-
+ward mechanism inherently strengthens cross-domain ro-
+bustness and zero-shot transferability.
+Stratified Analysis.To further investigate the robust-
+ness of our approach, we stratify the ReasonSeg test set by
+query type (Attribute, Relation, Logic) and difficulty (Easy,
+Medium, Hard). Following the complexity assessment pro-
+tocol in [27], we utilize Qwen2.5-VL-72B to categorize the
+queries based on scene ambiguity and cognitive complexity.
+As detailed in Table 3 and Table 4, DPAD consistently out-
+performs the baseline across all data splits. Regarding query
+types (Table 3), the baseline exhibits a token explosion on
+complex Logic queries, consuming over 110 tokens on av-
+Table 6. Comparison of discriminative perception metrics for
+DPAD and Seg-Zero on RefCOCO testA (o), RefCOCO testA (+),
+RefCOCOg test (g).
+Metric Seg-zero-7B DPAD-7B (ours)
+o + g o + g
+Tokens# 165.1 159.9 159.8 63.13 62.88 66.79
+S1 - - - 24.30 24.64 25.91
+S2 - - - 20.54 19.51 22.28
+SNR - - - 1.24 1.34 1.21
+TS1 19.66 19.69 20.15 21.83 21.30 22.67
+TS2 21.41 21.36 22.50 19.82 18.98 20.98
+TSNR 0.92 0.93 0.90 1.11 1.14 1.09
+erage. DPAD mitigates this verbosity, compressing the rea-
+soning chain by approximately 38% while still delivering
+a+2.11gIoU improvement. Furthermore, DPAD achieves
+even more pronounced accuracy gains on Attribute (+3.07
+gIoU) and Relation (+3.70gIoU) queries, demonstrating
+its broad versatility. A similarly compelling trend emerges
+across varying difficulty levels (Table 4). On Easy and
+13194
+
+
+=== PAGE 7 ===
+Table 7. Ablation of reward formulations on ReasonSeg. The best
+results are highlighted in bold.
+Method val test
+gIoU cIoU gIoU cIoU
+Baseline 60.9 57.3 57.7 54.4
++ Difference 61.3 58.8 57.6 54.3
++ Scaled 62.6 54.0 58.4 57.5
+DPAD (Binary) 63.1 61.2 60.8 57.5
+Medium subsets, DPAD secures substantial performance
+boosts of+4.67and+2.78gIoU. On the most challeng-
+ing Hard scenarios, DPAD yields a+2.29improvement in
+gIoU while drastically reducing the reasoning token count
+by nearly 41%. Unlike the baseline’s volatile reasoning
+token lengths, DPAD maintains a stable reasoning length
+(59–68 tokens) across all tasks. These fine-grained results
+robustly validate our core premise that pruning divergent
+thoughts effectively cultivates a generalizable and efficient
+reasoning paradigm without compromising the model’s ca-
+pacity for complex logical deduction.
+Discriminative Perception Capability.Beyond seg-
+mentation accuracy, we analyze the model’s internal behav-
+ior using our proposed metrics to strictly assess discrimina-
+tive capability and reasoning efficiency. As detailed in Ta-
+ble 5 and Table 6, DPAD-7B consistently achievesSNRand
+TSNRvalues exceeding the critical threshold of1.0across
+all test sets, whereas the Seg-Zero-7B baseline consistently
+falls below this mark. On the ReasonSeg benchmark, for in-
+stance, DPAD-7B records anSNRof1.16and aTSNRof
+1.04. Surpassing this1.0threshold signifies that the gener-
+ated text aligns more closely with the target ROI than with
+the broader image context. This provides direct quantitative
+evidence that DPAD acquires true discriminative percep-
+tion, effectively distinguishing the target from background
+distractors and mitigating the tendency of prior methods to
+incorporate irrelevant contextual noise. Furthermore, this
+enhanced target focus directly translates to vastly improved
+reasoning efficiency. Evaluated by the average token count,
+DPAD-7B generates significantly more concise reasoning
+chains. On the ReasonSeg test set, the required token count
+drops from117.90to68.52(a41.7%reduction). A sim-
+ilar trend emerges across the RefCOCO variants, with the
+RefCOCOg test set exhibiting a substantial decrease from
+159.80to66.79(a58.2%reduction). These compelling re-
+sults lend robust empirical support to our hypothesis that
+optimizing for discriminative perception implicitly prunes
+divergent thoughts, thereby compelling the model toward
+highly converged and efficient reasoning.
+Qualitative Analysis.To provide an intuitive under-
+standing of our method’s impact, we present a multi-faceted
+analysis in Figure 3, Figure 4, and Figure 5.
+Table 8. Ablation study of different reward formulations in cIoU
+on RefCOCO, RefCOCO+, and RefCOCOg test sets, showing
+cIoU scores. Best results are highlighted in bold.
+Method RefCOCO RefCOCO+ RefCOCOg
+testA testA test
+Baseline 78.7 74.4 71.3
++ Difference 77.2 73.2 70.8
++ Scaled 78.4 74.6 71.6
+DPAD (Binary) 79.3 74.7 72.6
+/uni00000015/uni00000013/uni00000013/uni00000017/uni00000013/uni00000013/uni00000019/uni00000013/uni00000013
+/uni00000036/uni00000044/uni00000050/uni00000053/uni0000004f/uni00000048/uni00000003/uni0000002c/uni00000051/uni00000047/uni00000048/uni0000005b
+/uni00000013
+/uni00000018/uni00000013
+/uni00000014/uni00000013/uni00000013
+/uni00000014/uni00000018/uni00000013
+/uni00000015/uni00000013/uni00000013
+/uni00000015/uni00000018/uni00000013
+/uni00000016/uni00000013/uni00000013/uni00000037/uni00000052/uni0000004e/uni00000048/uni00000051/uni00000003/uni00000026/uni00000052/uni00000058/uni00000051/uni00000057
+/uni00000027/uni00000033/uni00000024/uni00000027
+/uni00000036/uni00000048/uni0000004a/uni00000010/uni0000003d/uni00000048/uni00000055/uni00000052
+/uni00000018/uni00000013
+/uni00000014/uni00000013/uni00000013
+/uni00000014/uni00000018/uni00000013
+/uni00000015/uni00000013/uni00000013
+/uni00000015/uni00000018/uni00000013
+/uni00000016/uni00000013/uni00000013
+Figure 4. Per-sample token count comparison on the ReasonSeg
+test. DPAD is shown in blue, and Seg-Zero is shown in green.
+Figure 3 presents a direct qualitative comparison be-
+tween the reasoning processes of DPAD and the Seg-Zero
+baseline. The visualizations illustrate how DPAD’s core
+principle, Discriminative Perception, addresses the verbose
+and unfocused chains typical of prior methods. By explic-
+itly incentivizing target-relevant descriptions, our frame-
+work actively prunes divergent global scenes, irrelevant ob-
+jects, and redundant self-confirmations from the internal
+thought process. For instance, in identifying an object for
+a cocktail, Seg-Zero strays into irrelevant context, while
+DPAD immediately identifies the correct object (the straw),
+effectively cutting the token count from 106 to 60. This
+powerful disambiguation capability is equally evident in
+the non-electric vehicle example; DPAD avoids distraction
+from the visually dominant sports car and correctly locates
+the bicycle, reducing the token count from 98 to 54.
+This efficiency is not an anomaly. Figure 4 extends this
+analysis to every sample in the ReasonSeg test set, plotting
+the token count for each individual inference. The scatter
+plot reveals that DPAD’s token counts (blue) are consis-
+tently clustered in a low, tight band, demonstrating stable
+and highly efficient performance. In contrast, Seg-Zero’s
+13195
+
+
+=== PAGE 8 ===
+/uni00000035/uni00000048/uni00000044/uni00000056/uni00000052/uni00000051/uni00000036/uni00000048/uni0000004a
+/uni0000000b/uni00000059/uni00000044/uni0000004f/uni0000000c
+/uni00000035/uni00000048/uni00000044/uni00000056/uni00000052/uni00000051/uni00000036/uni00000048/uni0000004a
+/uni0000000b/uni00000057/uni00000048/uni00000056/uni00000057/uni0000000c
+/uni00000035/uni00000048/uni00000049/uni00000026/uni00000032/uni00000026/uni00000032/uni0000000e
+/uni0000000b/uni00000057/uni00000048/uni00000056/uni00000057/uni00000024/uni0000000c
+/uni00000035/uni00000048/uni00000049/uni00000026/uni00000032/uni00000026/uni00000032
+/uni0000000b/uni00000057/uni00000048/uni00000056/uni00000057/uni00000024/uni0000000c
+/uni00000035/uni00000048/uni00000049/uni00000026/uni00000032/uni00000026/uni00000032/uni0000004a
+/uni0000000b/uni00000057/uni00000048/uni00000056/uni00000057/uni0000000c
+/uni00000018/uni00000013
+/uni0000001a/uni00000018
+/uni00000014/uni00000013/uni00000013
+/uni00000014/uni00000015/uni00000018
+/uni00000014/uni00000018/uni00000013
+/uni00000014/uni0000001a/uni00000018
+/uni00000015/uni00000013/uni00000013
+/uni00000015/uni00000015/uni00000018/uni00000037/uni00000052/uni0000004e/uni00000048/uni00000051/uni00000003/uni00000026/uni00000052/uni00000058/uni00000051/uni00000057
+/uni00000036/uni00000048/uni0000004a/uni00000010/uni0000003d/uni00000048/uni00000055/uni00000052
+/uni00000027/uni00000033/uni00000024/uni00000027
+Figure 5. Comparison of the average token counts generated by
+DPAD and Seg-Zero across five datasets. The lines represent the
+mean values, while the shaded areas indicate the standard devia-
+tion. The results confirm that DPAD accomplishes accurate rea-
+soning using significantly fewer tokens and exhibiting lower vari-
+ance across all benchmarks.
+counts (green) are not only significantly higher on average
+but also exhibit much greater variance across samples.
+Furthermore, Figure 5 provides compelling evidence for
+how our method’s focused reasoning translates into supe-
+rior efficiency and stability across five distinct benchmarks.
+As a direct result of our discriminative optimization, DPAD
+maintains a consistently low average token count (the blue
+line, approximately 65 tokens) with a narrow variance band,
+signifying robust, low-variance reasoning. Conversely, Seg-
+Zero’s unfocused process leads to a substantially higher and
+more volatile token count. This instability is visually evi-
+dent in its fluctuating average and wide variance band, re-
+vealing a high-variance reasoning process that is overly sen-
+sitive to dataset-specific complexities.
+Overall, these visualizations robustly support our cen-
+tral thesis that by compelling the model to generate an an-
+chored description and optimizing for a discriminative re-
+ward, DPAD successfully cultivates a highly focused and
+efficient reasoning paradigm. This not only improves quan-
+titative performance but also produces transparent reason-
+ing chains devoid of irrelevant contextual noise.
+4.5. Ablation Study
+To investigate the impact of different reward formulations,
+we conduct an ablation study with results detailed in Table 7
+and Table 8. We compare our final DPAD model equipped
+with a binary reward against a Baseline trained without any
+discriminative signal, alongside two alternative continuous
+reward designs. The first alternative is a “Difference” re-
+ward formulated asR=S 1 −S 2, and the second is a
+“Scaled” reward calculated asR=S 1 ×max(0, S 1 −S 2).
+In our evaluation, a clear and consistent performance hi-
+erarchy emerges across all benchmarks. On the Reason-
+Seg dataset (Table 7), all three reward formulations yield
+improvements over the Baseline. The “Difference” re-
+ward improves the validation gIoU to 61.3 (+0.4), while the
+“Scaled” variant reaches 62.6 (+1.7). Crucially, our binary
+reward establishes the best performance among all variants,
+boosting validation gIoU to 63.1 (+2.2) and cIoU to 61.2
+(+3.9). This trajectory extends to the RefCOCO experi-
+ments (Table 8). All variants surpass the Baseline, with the
+binary reward uniformly securing the highest scores across
+the three test splits, highlighted by a notable cIoU of 72.6
+on the challenging RefCOCOg benchmark.
+We attribute the clear superiority of the binary reward
+to its signal format, which is highly compatible with the
+internal optimization mechanics of our framework. Specif-
+ically, our system—including the Format Validation reward
+(Rformat) and the Geometric Location reward (R geo)—
+fundamentally relies on discrete success-or-failure signals
+to guide the GRPO-based policy updates. Our binary dis-
+criminative reward aligns with this effective paradigm, pro-
+viding unambiguous feedback on whether the model dis-
+tinguishes the target. In contrast, while continuous rewards
+offer more granular semantic information, their inherent nu-
+merical noise and scale fluctuations actively interfere with
+the stable convergence of the RL policy.
+5. Conclusion
+In this work, we introduced DPAD, a framework that miti-
+gates unfocused reasoning in segmentation models by fos-
+tering discriminative perception. By compelling the MLLM
+to generate an anchored descriptive caption, DPAD learns to
+explicitly distinguish targets from their context, yielding a
+highly converged and efficient reasoning process. Extensive
+experiments demonstrate that DPAD achieves state-of-the-
+art performance across multiple challenging benchmarks,
+including ReasonSeg and the RefCOCO suite. Crucially,
+these accuracy gains are accompanied by an approximate
+42%reduction in reasoning chain length and discrimina-
+tive signals (SNRandTSNR) consistently exceeding the
+critical1.0threshold. Beyond quantitative improvements,
+DPAD significantly enhances interpretability through its co-
+generated captions. Ultimately, our findings suggest that
+optimizing for discriminative perception offers a highly
+promising pathway toward building accurate, focused, and
+efficient Multimodal Large Language Models for complex
+visual reasoning tasks.
+Acknowledgments
+This work was supported by the National Natural Sci-
+ence Foundation of China under Grants 62471394 and
+U21B2041.
+13196
+
+
+=== PAGE 9 ===
+References
+[1] Pranjal Aggarwal and Sean Welleck. L1: Controlling How
+Long a Reasoning Model Thinks with Reinforcement Learn-
+ing.arXiv preprint arXiv:2503.04697, 2025. 2
+[2] Shuai Bai, Keqin Chen, Xuejing Liu, Jialin Wang, Wenbin
+Ge, Sibo Song, Kai Dang, Peng Wang, Shijie Wang, Jun
+Tang, et al. Qwen2. 5-vl technical report.arXiv preprint
+arXiv:2502.13923, 2025. 5
+[3] Chao Chen, Jiacheng Xu, Weijian Liao, Hao Ding,
+Zongzhang Zhang, Yang Yu, and Rui Zhao. Focus-then-
+Decide: Segmentation-assisted Reinforcement Learning. In
+Proceedings of the AAAI Conference on Artificial Intelli-
+gence, pages 11240–11248, 2024. 1, 2
+[4] Yi-Chia Chen, Wei-Hua Li, Cheng Sun, Yu-Chiang Frank
+Wang, and Chu-Song Chen. SAM4MLLM: Enhance Multi-
+modal Large Language Model for Referring Expression Seg-
+mentation. InEuropean Conference on Computer Vision,
+pages 323–340. Springer, 2024. 2, 5
+[5] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention Mask
+Transformer for Universal Image Segmentation. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 1290–1299, 2022. 2
+[6] Yong Xien Chng, Henry Zheng, Yizeng Han, Xuchong Qiu,
+and Gao Huang. Mask grounding for referring image seg-
+mentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 26573–
+26583, 2024. 5
+[7] Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song,
+Ruoyu Zhang, Runxin Xu, Qihao Zhu, Shirong Ma, Peiyi
+Wang, Xiao Bi, et al. Deepseek-RL: Incentivizing Reason-
+ing Capability in LLMs via Reinforcement Learning.arXiv
+preprint arXiv:2501.12948, 2025. 1
+[8] Duojun Huang, Xinyu Xiong, Jie Ma, Jichang Li, Zequn
+Jie, Lin Ma, and Guanbin Li. AlignSAM: Aligning Seg-
+ment Anything Model to Open Context via Reinforcement
+Learning. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 3205–
+3215, 2024. 1
+[9] Jiaqi Huang, Zunnan Xu, Jun Zhou, Ting Liu, Yicheng Xiao,
+Mingwen Ou, Bowen Ji, Xiu Li, and Kehong Yuan. SAM-
+RL: Leveraging SAM for Reward Feedback in Multimodal
+Segmentation via Reinforcement Learning.arXiv preprint
+arXiv:2505.22596, 2025. 2
+[10] Ngoc Dung Huynh, Mohamed Reda Bouadjenek, Sunil
+Aryal, Imran Razzak, and Hakim Hacid. Visual Question
+Answering: From Early Developments to Recent Advances–
+A Survey.arXiv preprint arXiv:2501.03939, 2025. 2
+[11] Xin Lai, Zhuotao Tian, Yukang Chen, Yanwei Li, Yuhui
+Yuan, Shu Liu, and Jiaya Jia. Lisa: Reasoning Segmentation
+via Large Language Model. InProceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition,
+pages 9579–9589, 2024. 1, 2, 5
+[12] Liulei Li, Wenguan Wang, and Yi Yang. LogicSeg: Parsing
+Visual Semantics with Neural Logic Learning and Reason-
+ing. InProceedings of the IEEE/CVF International Confer-
+ence on Computer Vision, pages 4122–4133, 2023. 1
+[13] Yanwei Li, Yuechen Zhang, Chengyao Wang, Zhisheng
+Zhong, Yixin Chen, Ruihang Chu, Shaoteng Liu, and Jiaya
+Jia. Mini-Gemini: Mining the Potential of Multi-modality
+Vision Language Models.arXiv preprint arXiv:2403.18814,
+2024. 2
+[14] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. InProceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+7061–7070, 2023. 5
+[15] Chang Liu, Henghui Ding, and Xudong Jiang. Gres: Gen-
+eralized referring expression segmentation. InProceedings
+of the IEEE/CVF conference on computer vision and pattern
+recognition, pages 23592–23601, 2023. 2
+[16] Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee.
+Visual Instruction Tuning.Advances in Neural Information
+Processing Systems, 36:34892–34916, 2023. 2
+[17] Yuqi Liu, Bohao Peng, Zhisheng Zhong, Zihao Yue, Fanbin
+Lu, Bei Yu, and Jiaya Jia. Seg-zero: Reasoning-chain Guided
+Segmentation via Cognitive Reinforcement.arXiv preprint
+arXiv:2503.06520, 2025. 1, 2, 5
+[18] Yuqi Liu, Tianyuan Qu, Zhisheng Zhong, Bohao Peng, Shu
+Liu, Bei Yu, and Jiaya Jia. VisionReasoner: Unified Vi-
+sual Perception and Reasoning via Reinforcement Learning.
+arXiv preprint arXiv:2505.12081, 2025. 1
+[19] Xiaoye Qu, Yafu Li, Zhaochen Su, Weigao Sun, Jianhao Yan,
+Dongrui Liu, Ganqu Cui, Daizong Liu, Shuxian Liang, Junx-
+ian He, et al. A Survey of Efficient Reasoning for Large
+Reasoning Models: Language, Multimodality, and Beyond.
+arXiv preprint arXiv:2503.21614, 2025. 2
+[20] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang
+Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman
+R¨adle, Chloe Rolland, Laura Gustafson, et al. Sam 2:
+Segment anything in images and videos.arXiv preprint
+arXiv:2408.00714, 2024. 5
+[21] Tianhe Ren, Shilong Liu, Ailing Zeng, Jing Lin, Kunchang
+Li, He Cao, Jiayu Chen, Xinyu Huang, Yukang Chen, Feng
+Yan, et al. Grounded SAM: Assembling Open-World Models
+for Diverse Visual Tasks.arXiv preprint arXiv:2401.14159,
+2024. 5
+[22] Zhongwei Ren, Zhicheng Huang, Yunchao Wei, Yao Zhao,
+Dongmei Fu, Jiashi Feng, and Xiaojie Jin. PixelLM: Pixel
+Reasoning with Large Multimodal Model. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 26374–26383, 2024. 2, 5
+[23] Yiqing Shen, Chenjia Li, Fei Xiong, Jeong-O Jeong, Tian-
+peng Wang, Michael Latman, and Mathias Unberath. Rea-
+soning Segmentation for Images and Videos: A Survey.
+arXiv preprint arXiv:2505.18816, 2025. 1, 2
+[24] Yang Sui, Yu-Neng Chuang, Guanchu Wang, Jiamu Zhang,
+Tianyi Zhang, Jiayi Yuan, Hongyi Liu, Andrew Wen,
+Shaochen Zhong, Hanjie Chen, et al. Stop Overthinking: A
+Survey on Efficient Reasoning for Large Language Models.
+arXiv preprint arXiv:2503.16419, 2025. 2
+[25] Xie Ting, Ye Huang, Zhilin Liu, and Lixin Duan.
+Semantic Segmentation with Reward.arXiv preprint
+arXiv:2505.17905, 2025. 1
+13197
+
+
+=== PAGE 10 ===
+[26] Junchi Wang and Lei Ke. LLM-Seg: Bridging Image Seg-
+mentation and Large Language Model Reasoning. InPro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 1765–1774, 2024. 1
+[27] Song Wang et al. PixelThink: Towards Efficient Chain-of-
+Pixel Reasoning.arXiv preprint arXiv:2505.23727, 2025. 1,
+2, 5, 6
+[28] XuDong Wang, Shaolun Zhang, Shufan Li, Konstantinos
+Kallidromitis, Kehan Li, Yusuke Kato, Kazuki Kozuka, and
+Trevor Darrell. SegLLM: Multi-round Reasoning Segmen-
+tation.arXiv preprint arXiv:2410.18923, 2024. 1
+[29] Yibin Wang, Zhimin Li, Yuhang Zang, Chunyu Wang,
+Qinglin Lu, Cheng Jin, and Jiaqi Wang. Unified Multi-
+modal Chain-of-Thought Reward Model through Reinforce-
+ment Fine-tuning.arXiv preprint arXiv:2505.03318, 2025.
+2
+[30] Yuwen Xiong, Renjie Liao, Hengshuang Zhao, Rui Hu, Min
+Bai, Ersin Yumer, and Raquel Urtasun. UPSNet: A Uni-
+fied Panoptic Segmentation Network. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 8818–8826, 2019. 2
+[31] Tao Yang, Qing Zhou, and Qi Wang. Dia: Deriving linguis-
+tic information from auxiliary languages for remote sensing
+image captioning.Pattern Recognition, 171:112209, 2026.
+2
+[32] Zhao Yang, Jiaqi Wang, Yansong Tang, Kai Chen, Heng-
+shuang Zhao, and Philip HS Torr. LA VT: Language-aware
+Vision Transformer for Referring Image Segmentation. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 18155–18165, 2022. 2,
+5
+[33] Zuyao You and Zuxuan Wu. Seg-r1: Segmentation can
+be surprisingly simple with reinforcement learning.arXiv
+preprint arXiv:2506.22624, 2025. 1
+[34] Licheng Yu, Patrick Poirson, Shan Yang, Alexander C Berg,
+and Tamara L Berg. Modeling Context in Referring Expres-
+sions. InEuropean Conference on Computer Vision, pages
+69–85. Springer, 2016. 2, 4
+[35] Qing Zhou, Junyu Gao, Yuan Yuan, and Qi Wang. Single-
+stream extractor network with contrastive pre-training for
+remote-sensing change captioning.IEEE Transactions on
+Geoscience and Remote Sensing, 62:1–14, 2024. 2
+13198

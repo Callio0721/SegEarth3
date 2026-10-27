@@ -1,0 +1,1096 @@
+=== PAGE 1 ===
+Looking Beyond the Window: Global-Local Aligned CLIP
+for Training-free Open-Vocabulary Semantic Segmentation
+ByeongCheol Lee, Hyun Seok Seong, Sangeek Hyun, Gilhan Park, WonJun Moon, Jae-Pil Heo*
+Sungkyunkwan University
+{bc7817, gustjrdl95, hsi1032, a01152a, wjun0830, jaepilheo}@skku.edu
+Abstract
+A sliding-window inference strategy is commonly adopted
+in recent training-free open-vocabulary semantic segmen-
+tation methods to overcome limitation of the CLIP in pro-
+cessing high-resolution images. However, this approach in-
+troduces a new challenge: each window is processed inde-
+pendently, leading to semantic discrepancy across windows.
+To address this issue, we propose Global-Local Aligned
+CLIP (GLA-CLIP), a framework that facilitates compre-
+hensive information exchange across windows. Rather
+than limiting attention to tokens within individual windows,
+GLA-CLIP extends key-value tokens to incorporate contex-
+tual cues from all windows. Nevertheless, we observe a
+window bias: outer-window tokens are less likely to be at-
+tended, since query features are produced through interac-
+tions within the inner window patches, thereby lacking se-
+mantic grounding beyond their local context. To mitigate
+this, we introduce a proxy anchor, constructed by aggre-
+gating tokens highly similar to the given query from all
+windows, which provides a unified semantic reference for
+measuring similarity across both inner- and outer-window
+patches. Furthermore, we propose a dynamic normaliza-
+tion scheme that adjusts attention strength according to ob-
+ject scale by dynamically scaling and thresholding the at-
+tention map to cope with small-object scenarios. Moreover,
+GLA-CLIP can be equipped on existing methods and broad
+their receptive field. Extensive experiments validate the ef-
+fectiveness of GLA-CLIP in enhancing training-free open-
+vocabulary semantic segmentation performance. Codes are
+available at github.com/2btlFe/GLA-CLIP
+1. Introduction
+Open-vocabulary semantic segmentation (OVSS) aims to
+assign pixel-level semantic labels from an open and poten-
+tially unbounded vocabulary, enabling models to general-
+ize beyond a fixed set of training categories. Recent ad-
+*Corresponding author.
+Boundary Error Rate (%)
+(a) Boundary error rate comparison across datasets
+(b) Grid artifacts from contextual discrepancy across windows
+City ADEC-stuffPC59V20C-ObjPC60V21
+■ProxyCLIP   ■Ours
+0
+5
+10
+15
+ProxyCLIP Ours
+GTImage
+Figure 1. Comparison of segmentation consistency near window
+boundaries. (a) We evaluate segmentation inconsistency using the
+Boundary Error Rate (BER). BER is defined as the proportion of
+pixels near adjacent window boundaries where predicted labels
+differ despite identical ground-truth. ProxyCLIP yields high BER
+due to its lack of cross-window interaction, whereas BER is signif-
+icantly reduced in ours by incorporating global context into atten-
+tion process. More details in Appendix A. (b) ProxyCLIP exhibits
+grid artifacts (marked with white circles), caused by the limited
+receptive field within individual windows. In contrast, ours miti-
+gates these artifacts by leveraging contextual information beyond
+local windows.
+vances in vision-language models, such as CLIP [34], have
+made it possible to approach this task without additional
+training, by leveraging the image-text aligned embedding
+space. This has led to a growing interest in Training-Free
+OVSS [3, 18, 23, 24, 28, 38, 42, 50, 53], where segmen-
+tation is performed only with minimal modifications to the
+CLIP architecture or processing pipeline.
+However, a fundamental limitation remains: CLIP is pre-
+trained on low-resolution inputs (e.g., 224×224), which hin-
+ders its applicability to high-resolution segmentation tasks.
+To address this, recent works adopt a sliding-window strat-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+27686
+
+
+=== PAGE 2 ===
+egy [18, 22–24, 42, 53], where high-resolution images
+are divided into overlapping crops and processed indepen-
+dently. By extending precise text-aligned embeddings to
+high-resolution settings without compromising spatial de-
+tails, this simple approach has led to a significant perfor-
+mance boost. However, we argue that this strategy still
+has a critical limitation: each window lacks access to the
+broader scene context, which leads to inconsistent predic-
+tions across windows.
+One clear example of this limitation is illustrated in
+Fig. 1, where independently processed windows produce
+inconsistent predictions near window boundaries and intro-
+duce grid-like artifacts. Specifically, adjacent windows of-
+ten assign different semantic labels to neighboring pixels
+along shared boundaries, even when those pixels belong to
+the same ground-truth class, resulting in visible disconti-
+nuities and structured artifacts. These issues highlight the
+absence of global context integration and motivate the need
+for a mechanism that enforces semantic consistency across
+windows.
+To address this issue, we propose Global-Local Aligned
+CLIP (GLA-CLIP), a novel training-free framework that
+explicitly aligns local and global semantics. We begin by
+introducing a Key-Value Extension mechanism that allows
+each query to attend to an unbounded set of key-value to-
+kens across the entire image. This design enables broader
+context integration, thereby mitigating the semantic dis-
+crepancy across independently processed windows. How-
+ever, we observe that even with globally extended key-value
+tokens, the attention remains locally biased: query tokens
+disproportionately attend to patches within the same win-
+dow while underweighting semantically similar tokens out-
+side the window. This is attributed to the fact that query
+embeddings are constructed solely from inner-window fea-
+tures, limiting their global awareness. To alleviate this is-
+sue, we derive proxy tokens to serve as globally represen-
+tative queries by aggregating the patches highly similar to
+the given query across the entire image. These proxies help
+reduce local bias and encourage semantically aligned atten-
+tion across windows. Finally, we introduce a dynamic at-
+tention normalization strategy that adjusts attention magni-
+tudes based on object scale, estimated from each query’s
+similarity distribution. This adaptation ensures that small
+objects are not overwhelmed by irrelevant global tokens,
+while large objects benefit from richer contextual clues. Our
+results across multiple benchmarks demonstrate the effec-
+tiveness of our proposed approaches in mitigating the se-
+mantic discrepancy between different sliding windows.
+Our contributions are summarized as follows:
+• To our knowledge, this is the first work to identify and ad-
+dress the challenge stemming from the sliding window:
+locally bounded semantics in each window incur incon-
+sistent prediction between windows.
+• We extend the set of key-value tokens to cover the entire
+image, allowing each query to reason over global context
+regardless of its local window.
+• We introduce globally representative proxy queries by ag-
+gregating high confidence tokens, enabling semantically
+consistent attention across windows.
+• We propose a dynamic attention normalization mecha-
+nism that adapts the influence of global tokens based on
+the estimated object scale, improving robustness across
+varying object sizes and domains.
+• Our framework can expand the receptive field of any
+baseline model without additional training.
+2. Related Work
+2.1. Open-Vocabulary Semantic Segmentation
+The emergence of pre-trained vision-language models [19,
+34] enables aligning text and image features for open-
+vocabulary semantic segmentation [29, 35]. Early methods
+follow a two-stage pipeline, where class-agnostic masks are
+first generated and then matched with text embeddings us-
+ing models like CLIP [14, 15, 27, 30, 48]. While these
+methods are effective, they depend on external mask gen-
+erators that are separate from the vision-language model.
+This separation can reduce visual-semantic consistency. To
+address this, single-stage methods [49, 51, 54] have been
+introduced. These methods directly predict segmentation
+masks from CLIP features and often use techniques such as
+attention bias [49] or mask pooling [51]. Other approaches
+include ODISE [47], which uses frozen diffusion features
+with a Mask2Former decoder [9], and CAT-Seg [11], which
+improves alignment by pixel-text similarity and text en-
+coder fine-tuning. More recently, EBSeg [37] enhances
+generalization by adjusting image-text similarity distribu-
+tion during training. Meanwhile, training-free approaches
+have gained attention for utilizing CLIP without requiring
+further training.
+2.2. Training-Free OVSS
+Training-free open-vocabulary semantic segmentation
+makes predictions without any additional training or fine-
+tuning. Instead of introducing learnable parameters, these
+approaches enhance the segmentation ability of CLIP by
+modifying its image encoder [26, 43] and leveraging vision
+foundation models [21, 24]. MaskCLIP [53] enhances
+spatial sensitivity in CLIP by discarding the query and key
+embeddings in the final self-attention block, using only
+the value embeddings. Subsequent methods have modified
+the attention mechanism by replacing query-key attention
+with value-value or self-self attention (e.g., query-query,
+key-key) [3, 26, 38, 42]. In addition, some approaches
+remove the final feed-forward layer and residual connec-
+tions, as these components have been found to introduce
+27687
+
+
+=== PAGE 3 ===
+Sec 3.2 Key-V alue Extension for Contextual Cue
+Sec 3.3 Proxy Anchor for Stable Attention
+Sliding window
+𝐗
+High confidence tokens Anchor Relocation
+×T𝐐(0)
+ 𝐐proxy 𝐒proxy
+𝐊global
+𝐊global
+𝐅vfm
+𝐅visual
+Sec 3.4 Dynamic Normalization across Object Scales
+𝑣𝑎𝑙𝑢𝑒
+𝑞𝑢𝑒𝑟𝑦
+𝑘𝑒𝑦
+Anchor
+Proxy anchor
+Global Patch Embed.
+Proxy Anchor define
+Matrix multiplication
+𝐕
+Proxy Anchor
+Dynamic Norm.
+𝐒proxy
+𝐒proxy
+Positive Positive
+Attention score
+Attention scoreAttention score
+Attention score
+CLIP
+VFM
+Positives
+Proxy Anchor
+Projection
+Figure 2. Overview of our proposed framework. The input image is first divided into overlapping windows and processed using frozen
+backbones: a Vision Foundation Model (VFM, e.g., DINO) and CLIP. We introduce a Key-Value Token Extension, where VFM features
+from the current windowF vfm serve asquerytokens, whilekeytokens are gathered from all windows to provide global context. The
+correspondingvaluetokensVare extracted from the final transformer layer of CLIP. Cross-attention is then applied, followed by a
+projection layer to generate the final visual featuresF visual. To stabilize attention across windows, each query token is replaced with
+a semantically representative proxy anchor. Finally, a dynamic normalization scheme adjusts attention strength based on object size,
+approximated by the number of positive samples associated with each proxy anchor.
+noise in the resulting segmentation masks [18, 23]. Prox-
+yCLIP [24] introduces a proxy attention mechanism that
+enhances spatial and semantic alignment in CLIP. However,
+most methods rely on sliding-window inference due to
+low training resolution, which makes it difficult for the
+model to understand the entire image and often leads to
+inconsistent results across different windows. To address
+these challenges, our method enhances global context
+and consistency by introducing key-value token extension
+and proxy-similarity. In doing so, it effectively mitigates
+attention imbalance and overcomes the inherent limitations
+of sliding-window inference.
+3. Method
+3.1. Preliminary
+3.1.1. Open-Vocabulary Semantic Segmentation (OVSS)
+OVSS leverages the visual-language alignment of CLIP
+[34]. Given an imageX, the CLIP visual encoder converts
+it as visual tokensF visual ∈R N×D , whereNis the num-
+ber of tokens andDis dimension size. Meanwhile, the text
+encoder processes a set of text prompts to project them to a
+text tokensF text. The cosine similarity between visual and
+text tokens determines logits, eventually categorizing each
+visual token to the text corresponding to the highest logits.
+Recently, ProxyCLIP [24] has shown notable advances
+in OVSS by leveraging Vision Foundation Model (VFM)
+features. We adopt ProxyCLIP as our baseline, which re-
+places the attention map in the final transformer block of
+CLIP with a self-similarity map computed from features of
+a VFM. Specifically, the self-similarity mapSis defined as:
+S=F vfm ·F ⊤
+vfm ∈R N×N ,(1)
+where(·)indicate matrix multiplication andF vfm denotes
+the visual features extracted from a VFM (e.g., DINO [6]),
+which serves as thequeryandkeyembeddings in the atten-
+tion mechanism.
+To better integrate the self-similarity map into CLIP for
+open-vocabulary segmentation, they modulate and thresh-
+old the similarity scores to integrate semantically positive
+tokens. This refinement suppresses irrelevant token interac-
+tions and enables the similarity map to function as an effec-
+tive attention map for segmentation tasks:
+A=γ
+
+S− β
+N 2
+X
+i,j
+[S]ij
+
+ ,(2)
+Mij =
+(
+0, A ij ≥0
+−∞, A ij <0, (3)
+Attn= SoftMax(A+M),(4)
+whereβandγare fixed shift and scale hyperparameters.
+The refined attention mapAttnis applied to thevalue
+tokensV∈R N×D from the final transformer block of
+CLIP. The final output is obtained via a projected matrix
+multiplication, following prior findings that skip residual
+and feed-forward layers [23]:
+Fvisual =Proj(Attn·V),(5)
+27688
+
+
+=== PAGE 4 ===
+where Proj denotes the projection layer from the last trans-
+former block of CLIP.
+3.1.2. Sliding-window
+Since CLIP is pre-trained with a fixed input resolution of
+224×224pixels, it cannot directly process high-resolution
+inputs. Conventionally, this limitation is addressed by
+applying an overlapped sliding-window strategy, where
+the input image is divided intoLsub-windows of CLIP-
+compatible size. We follow this approach and perform
+OVSS independently on each sub-window. For overlapping
+regions, the logits are averaged across windows to produce
+the final per-patch predictions.
+3.2. Key-Value Extension for Contextual Cue
+While the sliding-window inference strategy is effective for
+adapting CLIP to high-resolution inputs by preserving its
+pre-trained resolution, it inherently restricts the model’s re-
+ceptive field to local window regions. This constrained
+field of view prevents the model from accessing holistic
+scene-level context, thereby hindering its ability to aggre-
+gate semantically relevant cues across spatially distant re-
+gions. The limitation becomes especially pronounced when
+semantically coherent regions (such as large objects or spa-
+tially continuous stuff categories) are partitioned across
+multiple windows. Such contextual discontinuity often
+leads to inconsistent or erroneous semantic predictions, as
+shown in Fig. 1.
+To enhance contextual awareness in attention computa-
+tion, we propose a key-value token extension, which ex-
+pands the attention scope of each window by allowing it to
+reference visual information from the entire image, not just
+its local region. Specifically, we collect the visual features
+extracted from the VFM to serve as globalkeyembeddings,
+and simultaneously retrieve the correspondingvaluetokens
+from the final transformer layer of CLIP. By aggregating
+these tokens across allLwindows, we construct a unified
+set of globalkeyK global andvaluetokensV global as follows:
+Kglobal = [F (1)
+vfm;F (2)
+vfm;. . .;F (L)
+vfm]∈R (LN)×D ,(6)
+Vglobal = [V (1);V (2);. . .;V (L)]∈R (LN)×D .(7)
+With these global tokens, we perform cross-window at-
+tention by computing similarity between the localqueryto-
+kens from the current window and the aggregated global
+keytokens, followed by weighted aggregation over the cor-
+respondingvaluetokens:
+Aext =Q·K ⊤
+global ∈R N×(LN) ,(8)
+Fvisual =Proj(A ext ·V global)∈R N×D .(9)
+Here,Q∈R N×D denotes the set of query tokens extracted
+from theF vfm of the current sliding window. These serve as
+the local anchors in the attention operation and initiate se-
+mantic integration with globally gathered keys and values.
+3.3. Proxy Anchor for Stable Attention
+After applying the key-value token extension, we observe a
+persistent locality bias: attention is predominantly concen-
+trated on tokens within the same window (inner-window),
+while downweighting semantically similar tokens from
+other windows (outer-window), as shown in Fig. 3(a). No-
+tably, even when outer-window tokens correspond to the
+same spatial location in the original image (i.e., overlapping
+regions), attention remains biased toward inner-window to-
+kens. This behavior limits the model’s capacity to aggregate
+consistent semantics across windows.
+To alleviate this bias, we introduce a proxy-based at-
+tention mechanism that replaces each query token with a
+semantically representative proxy aggregated from tokens
+with high similarity across all windows. This proxy serves
+as a stable anchor that reflects the underlying semantics of
+the region, allowing attention to be allocated based on se-
+mantic coherence rather than window-local bias. Conse-
+quently, our method promotes more globally consistent at-
+tention patterns and enhances cross-window integration.
+Specifically, for a given query token, we follow [36]
+to repeatedly compute the mean vector of high-similarity
+neighbors, gradually converging on a proxy that best rep-
+resents the shared semantics around the anchor. We define
+the initial proxy-queryQ (0)
+i , which stems fromi-th token
+of local query tokensQand construct the index set of high-
+confident tokensP (0)
+i , which indicates a higher cosine sim-
+ilarity compared to a pre-defined thresholdρas below:
+P (0)
+i =
+n
+j
+ Q(0)
+i ·K global,j > ρ, j∈ J
+o
+,(10)
+whereJdenotes the index set comprising all patch features
+of all windows. Also, thet-th proxy is defined as follows:
+Q(t)
+i = 1P (t−1)
+i
+
+X
+j∈P (t−1)
+i
+Kglobal,j.(11)
+By repeatingTsteps of Eq. (10) and (11) for generating
+refined proxy, we obtainQ (T)
+i . This operation is computed
+for allquerytokens. Using the proxyQ proxy = S
+i Q(T)
+i ,
+proxy anchor-based attention map for the current window is
+represented as follows:
+Sproxy =Q proxy ·K ⊤
+global ∈R N×(BN) .(12)
+The proxy is located at the center of the high-similarity
+embedding samples, aggregated from both inner- and outer-
+window regions. As a result, the proxy inherently balances
+the contributions of tokens across windows, allowing atten-
+tion to be allocated more uniformly to semantically relevant
+regions, as shown in Fig. 3(b).
+27689
+
+
+=== PAGE 5 ===
+(a) Key-Value Extension (b) + Proxy-based Attention (c) + Dynamic NormalizationImage
+Anchor query 
+for attention
+Figure 3. Visualization of attention maps for an anchorquerytoken. Proxy-based attention enhances focus on semantically relevant regions
+across both inner- and outer-window areas. The subsequent dynamic normalization further suppresses irrelevant responses, especially from
+noisy tokens, yielding sharper and more semantically consistent attention distributions.
+3.4. Dynamic Normalization across Object Scales
+Our key-value extension allows each query to attend to to-
+kens from global windows. While this enables broader con-
+textual integration, it also increases the risk of attending
+to irrelevant or semantically mismatched tokens (i.e., neg-
+atives). This issue is strongly influenced by object scale:
+when a query corresponds to a small object or fine-grained
+region, the number of relevant positive tokens tends to be
+low. In such cases, attention is more easily dominated by
+irrelevant tokens, leading to inaccurate or noisy predictions.
+To address this, we propose a dynamic normalization
+strategy that modulates and thresholds the similarity map
+in a scale-aware manner. The key idea is that when a query
+is associated with only a few positive tokens, as is often the
+case with small objects, the attention becomes more prone
+to being dominated by irrelevant or negative tokens, lead-
+ing to degraded prediction quality. Our method adaptively
+tightens the normalization in such cases to suppress the ef-
+fect of these irrelevant signals. Conversely, when a query
+corresponds to a large object and is surrounded by many
+positive tokens, the normalization becomes more permis-
+sive to enhance their relative influence in the attention com-
+putation. Additionally, the influence of irrelevant tokens in-
+creases with the number of outer-window tokens, amplify-
+ing noise in the attention computation. To handle this more
+effectively, our normalization strategy adjusts its scaling be-
+havior based on the number of windows, suppressing the
+impact of such noise under larger global contexts.
+Specifically, we introduce two adaptive variables,uand
+w, as adaptive counterparts to the fixed hyperparameters
+in ProxyCLIP [24] to modulate normalization accordingly.
+The attention score for thei-th query anchor is computed
+as:
+Attni =w i
+
+Sproxy − u
+N L
+X
+j=1,...,N L
+[Sproxy]ij
+
+ ,(13)
+whereuis a shifting variable dependent on the number of
+windowsL, controlling the overall influence of extended
+tokens.uis defined as:
+u= 1 +λ 1 log
+ 
+1 +L),(14)
+where is a fixed coefficient. AsLincreases,ugrows, result-
+ing in more conservative normalization to suppress noisy
+token influence. Next, we define the scaling variablew i
+based on the number of high confidence tokens|P i|associ-
+ated with eachquery:
+wi = 1 + λ2
+|Pi| .(15)
+A smaller|P i|, often observed in small objects, leads to
+stronger amplification of the most relevant tokens while
+suppress the irrelevant tokens, encouraging scale-aware at-
+tention allocation. Note that,λ 1 andλ 2 are shared across
+all datasets. Finally, replacingAin Eq. (9) withAttnin
+Eq. (13) yields the final visual tokens for prediction. The
+masking and softmax operations are then applied, as for-
+mulated in Eq. (4).
+A key distinction of our method is a per-query normal-
+ization strategy, compared to the prior approach [24] that
+applies identical normalization across all windows and to-
+kens. By adapting attention modulation at the level of each
+anchor token, our formulation enables fine-grained control
+over the influence of global context. This scale-aware be-
+havior is particularly effective for balancing attention across
+varying object sizes. Furthermore, Dynamic Normaliza-
+tion copes with object scale variations, which differ among
+datasets, and thus removes the necessity of dataset-specific
+hyperparameters unlike recent methods [8, 22, 50].
+4. Experiment
+4.1. Experimental Settings
+Datasets and Evaluation MetricsWe evaluate the pro-
+posed model on eight semantic segmentation benchmarks.
+We note that five datasets (Pascal VOC21 [17], Pascal
+Context60 [32], COCO-Object [4], ADE20K [52], and
+Cityscapes [12]) include an explicit background class, while
+other datasets (Pascal VOC20 [17], Pascal Context59 [32],
+and COCO-Stuff 164K [4]) only contain object classes.
+In the same order, they comprise 21, 60, 81, 150, 19,
+20, 59, and 171 semantic classes, respectively. Follow-
+ing standard practice, we report performance using mean
+Intersection-over-Union (mIoU).
+27690
+
+
+=== PAGE 6 ===
+Model Train External
+Model
+*DS
+Hyperparameter
+With Background Without Background AvgV21 PC60 C-Obj V20 PC59 C-Stf City ADE
+CLIP-DINOiser Setting 448 Image Resize, 448 Crop size, 224 Stride, Without rename trick†
+GroupViT [46] ✓ - ✘ 50.4 18.7 27.5 79.7 23.4 15.3 11.1 9.2 29.4
+ReCo [40] ✓ - ✘ 25.1 19.9 15.7 57.7 22.3 14.8 21.6 11.2 23.5
+CLIP-DIY [44] ✘ - ✘ 59.9 19.7 31.0 79.7 19.8 13.3 11.6 9.9 30.6
+TCL [7] ✓ - ✘ 55.0 30.4 31.683.2 33.9 22.4 24.0 17.1 37.2
+CLIP-DINOiser [45] ✓ DINO ✘ 62.2 32.4 35.0 80.2 35.9 24.6 31.720.0 40.3
+ProxyCLIP + GLA‡ ✘ DINO ✘ 63.4 35.8 37.380.4 39.4 26.3 33.519.1 41.9
+ClearCLIP Setting 448 Image Resize, 448 Crop size, 224 Stride, Without rename trick
+ClearCLIP [23] ✘ - ✘ 51.8 32.6 33.080.9 35.9 23.9 30.0 16.7 38.1
+ClearCLIP + GLA ✘ - ✘ 55.6 33.2 34.679.7 36.5 24.6 32.7 17.4 39.3
+ProxyCLIP Setting 448 Image Resize, 336 Crop size, 112 Stride, With rename trick on Background Classes
+ProxyCLIP [24] ✘ DINO ✘ 61.3 35.3 37.5 80.3 39.1 26.5 38.1 20.2 42.3
+ProxyCLIP + GLA ✘ DINO ✘ 63.2 35.8 37.7 81.5 39.7 26.8 38.5 20.3 42.9
+SCLIP Setting 336 Image Resize, 224 Crop size, 112 Stride, With rename trick
+SCLIP [42] ✘ - ✘ 59.1 30.4 30.5 80.4 34.2 22.4 32.2 16.1 38.2
+SCLIP + GLA ✘ - ✘ 59.8 32.0 32.8 80.5 35.1 24.2 35.1 18.0 39.8
+LaVG [20] ✘ - ✘ 62.1 31.6 34.2 82.5 34.7 23.2 26.2 15.8 38.8
+NACLIP [18] ✘ - ✘ 58.9 32.2 33.2 79.7 35.2 23.3 35.5 17.4 39.4
+ResCLIP [50] ✘ - ✓ 61.1 33.5 35.0 86.0 36.8 24.7 35.9 18.0 41.4
+FreeCP [8] ✘ - ✓ 65.8 35.3 37.2 84.3 38.0 24.9 33.3 18.4 42.2
+DIH-CLIP [16] ✘ - ✘ 64.2 36.0 37.4 84.9 39.7 24.5 40.2 19.6 43.3
+FLOSS [2] ✘ - ✘ - - - 80.2 35.9 23.6 37.0 18.4 -
+CASS [22] ✘ DINO ✓ 65.836.7 37.8 87.8 40.226.7 39.4 20.4 44.4
+ProxyCLIP + GLA (Best§) ✘ DINO ✓ 66.736.3 37.7 84.7 40.2 27.2 41.2 20.5 44.3
+ProxyCLIP + GLA ✘ DINO ✘ 66.3 36.1 37.7 84.2 39.9 26.9 40.8 20.0 44.0
+Table 1. Open-vocabulary semantic segmentation results on 8 datasets using CLIP ViT-B/16. *DS Hyperparameter: dataset-specific
+hyperparameters (not used in Ours). †Rename trick: multiple textual prompts per class. ‡GLA: Adaptation for ClearCLIP [23], SCLIP [42],
+and ProxyCLIP [24]. § Best: optionally uses dataset-specific hyperparameters (u,w), by manual tuning.
+Implementation Details.Our settings follow existing
+training-free open-vocabulary semantic segmentation mod-
+els [23, 24, 42, 45], including text prompt policy, back-
+ground threshold, image resizing, sliding window crop size,
+and stride (details in the Appendix B). We use frozen CLIP
+(ViT-B/16) to extract features and DINO (ViT-B/8) as VFM,
+similar to ProxyCLIP [24]. Meanwhile, the query and
+key tokens from CLIP can also be utilized to form atten-
+tion maps, replacing VFM features. ClearCLIP [23] and
+SCLIP [42] adopt this strategy, and our framework can sim-
+ilarly support it. However, in this case, a separate query
+smoothing step and hyperaprater tuning is necessary, as de-
+tailed in the Appendix C. All experiments are conducted on
+a single NVIDIA Titan RTX GPU. Proxy-anchor hyperpa-
+rameters are set toρ= 0.6with 2 proxy generation steps,
+and Dynamic Normalization usesλ 1 = 0.3andλ 2 = 30.
+4.2. Comparison with State-of-the-Art Methods
+Quantitative Results.As shown in Tab. 1, we compare our
+method with existing open-vocabulary semantic segmenta-
+tion (OVSS) approaches and report its performance under
+each setting for a fair evaluation. Our method achieves
+an average mIoU gain of 1.6% under the CLIP-DINOiser
+setting, demonstrating clear advantages over training-based
+models. When integrated with ClearCLIP [23], Proxy-
+CLIP [24], and SCLIP [42], it further yields improvements
+of 1.2%, 0.6%, and 1.6%, respectively, highlighting its
+adaptability on any baseline model. In contrast to recent
+training-free OVSS methods [8, 10, 22, 50], which de-
+pend on dataset-specific hyperparameters to enhance per-
+formance at the cost of generality, our approach attains
+an average mIoU of 44.0%, outperforming existing models
+without tuning. When dataset-specific hyperparameters are
+optionally applied, our model achieves even higher scores,
+comparable to all baseline methods. These results indicate
+that our approach is both effective and generalizable, mak-
+ing it readily applicable across diverse datasets.
+Qualitative Results.Fig. 4 shows qualitative comparisons
+with recent state-of-the-art methods on Pascal VOC21 [17],
+COCO-Stuff164k [4], and Cityscapes [12]. Our method
+generates cleaner segmentation maps with fewer misclas-
+sified pixels and effectively suppresses the grid-like arti-
+facts commonly seen in ProxyCLIP [24] and CASS [22].
+By leveraging contextual cues from global windows, our
+model produces more consistent predictions and preserves
+clear object boundaries. For example, in the rightmost scene
+in Cityscapes, ProxyCLIP misclassifies the road center as
+a sidewalk, whereas ours accurately distinguishes the road
+and sidewalk regions without noisy or inconsistent outputs.
+27691
+
+
+=== PAGE 7 ===
+ProxyCLIP ImageOurs
+Pascal VOC COCO Cityscapes
+GT
+ CASS
+Figure 4. Qualitative results among ProxyCLIP [24], CASS [22], Ours on Pascal VOC21 [17], COCOstuff [4], and Cityscapes [12].
+KVE Proxy Norm mIoUFixed Best Dyna
+(a) 30.8
+(b) ✓ ✓ 43.1
+(c) ✓ ✓ 43.0
+(d) ✓ ✓ ✓ ✓ 44.3
+(e) ✓ ✓ ✓ ✓ 44.0
+Table 2. Ablation study of each component in our method.
+KVE: Key-Value Extension, Proxy: Proxy Anchor-based Atten-
+tion, Norm: Normalization (Best, Dynamic). Dataset-specific tun-
+ing is applied for ‘Best’ normalization configuration, with detailed
+results in Tab. 1.
+5. Further Analysis
+5.1. Ablation Study
+To validate the effectiveness of each component, we con-
+duct an ablation study based on five experimental config-
+urations, as summarized in Tab. 2. We begin with a base-
+line (a) that computes attention maps using features from
+DINO, restricted to inner-window tokens only, without any
+form of normalization. Comparing (a) and (b), we observe
+a clear performance improvement when applying key-value
+extension along with dynamic normalization. This demon-
+strates the importance of incorporating global context and
+stabilizing the attention computation. Next, comparing (b)
+and (e), the introduction of proxy-based attention in (e)
+leads to an additional performance gain. This improve-
+ment stems from the proxy’s ability to produce more se-
+mantically grounded and stable attention distributions, es-
+pecially in outer-window regions. We also compare (c) and
+(e) to isolate the contribution of the key-value extension.
+The results show that incorporating key-value tokens from
+outer windows yields a performance improvement, confirm-
+ing that these extended tokens provide valuable contextual
+cues for disambiguating local predictions. Finally, experi-
+ment (d) reports results using dataset-specific hyperparam-
+eters, which were searched to maximize performance for
+each dataset. When comparing (d) and our method (e), we
+find that the performance gap is minimal, indicating that
+our adaptive normalization approach effectively generalizes
+across datasets without the need for manual tuning.
+5.2. Effect of Attention Stabilization
+We visualize the effect of each method on attention maps in
+Fig. 3. In Fig. 3(a), the attention maps after applying Key-
+Value Extension show that attention initially concentrates
+on a few tokens within the inner-window region, indicat-
+ing that the model struggles to distribute attention across
+object boundaries and capture object-level semantics be-
+yond individual windows. Over time, the strong attention
+weights originally confined to inner-window positives grad-
+ually spread to outer regions, leading to a holistic, object-
+level attention allocation. In Fig. 3(b), after applying Proxy-
+Attention, attention extends across the entire object regard-
+less of window boundaries, showing that proxy queries ef-
+fectively stabilize attention. Subsequently, in Fig. 3(c), in-
+troducing Dynamic Normalization suppresses irrelevant to-
+kens and focuses attention on meaningful object regions,
+highlighting its role in refining attention distribution.
+5.3. Object Scale via high confidence Tokens
+We conduct experiments to validate the assumption that
+high confidence tokens are correlated with object scale in
+Dynamic Normalization. During proxy construction, we
+use the number of high confidence tokens,|P i|, as an es-
+timate of object scale and incorporate it into the attention
+scaling factor, as defined in Eq. 15. In Fig. 5, we ana-
+lyze whether the number of high confidence tokens aligns
+with the ground-truth object scale on the Cityscapes [12],
+which contains objects of diverse sizes. After key-value
+27692
+
+
+=== PAGE 8 ===
+Road
+Sidewalk
+Wall Fence Pole
+Traffic SignVegetation
+Person Rider Truck
+Motorcycle
+101
+102
+103
+104
+Counts (Log Scale)
+#Pos (Left axis)
+#High confidence (Left axis)
+1/w (Right axis)
+0.00
+0.25
+0.50
+0.75
+1.00
+1/w
+Figure 5. Class-wise object scale and 1/win Cityscapes
+0.4 0.5 0.6 0.7 0.8
+39
+40
+41
+42
+43
+44
+45mIoU (%)
+ ablated model
+Baseline
+1 2 3 4 5 6 7 8 9
+T
+39
+40
+41
+42
+43
+44
+45mIoU (%)
+T ablated model
+Baseline
+0.1 0.2 0.3 0.4 0.5
+1
+39
+40
+41
+42
+43
+44
+45mIoU (%)
+1 ablated model
+Baseline
+10 20 30 40 50
+2
+39
+40
+41
+42
+43
+44
+45mIoU (%)
+2 ablated model
+Baseline
+Figure 6. Hyperparameter sensitivity experiment.
+extension, we measure both the number of patch tokens
+(#Pos) and high confidence tokens (#High confidence) for
+each class per image, and report the class-wise average at-
+tention scaling factorw, which is inversely proportional to
+#High confidence. We observe consistent trends across all
+three metrics: large objects (e.g., Road and Terrain) exhibit
+a greater number of high confidence tokens and correspond-
+ingly lower attention scaling factors, whereas small objects
+(e.g., Person and Rider) contain fewer tokens and thus re-
+ceive higher attention scaling.
+5.4. Hyperparameter Sensitivity
+We leverage four hyperparameters,ρ, T,λ 1, andλ 2, and
+conduct a sensitivity analysis to examine their effect (Fig.
+6). Firstly,ρcontrols the selection of high confidence to-
+kens in the cosine similarity scale. Ifρis too low, negatives
+may be fused with positives, causing semantic collapse in
+proxy anchors and degrading performance, while too highρ
+prevents proxies from aggregating sufficient positives, also
+reducing performance. The repetition step T in proxy an-
+chor construction slightly affects performance, as a higher
+T can lead to semantic collapse. In Dynamic Normaliza-
+tion,λ 1 determines the attention masking threshold. A low
+λ1 lowers the threshold, causing fewer tokens to be masked
+and more dispersed attention, whereas a higherλ1 increases
+masking and helps to focus attention effectively. In contrast,
+λ2 has minimal impact on performance, revealing its robust-
+ness. Overall, all hyperparameters exhibit a broad range to
+consistently outperform the baseline model.
+CLIP Model V21 PC59 C-Stf Avg.
+ViT-B/32
+ProxyCLIP 57.3 35.2 23.6 38.7
+CASS 58.2 36.5 24.4 39.7
+Ours 61.8 37.1 25.2 41.4
+ViT-L/14
+ProxyCLIP 60.7 38.2 26.2 41.7
+CASS 62.1 39.1 26.3 42.5
+Ours 63.5 39.1 26.7 43.1
+Table 3. Segmentation results of different CLIP backbones.
+VFM Model V21 PC59 C-Stf Avg.
+DINOv2 [33] ProxyCLIP 59.6 37.3 25.3 40.7
++GLA 60.8 37.8 25.7 41.4
+DINOv3 [41] ProxyCLIP 62.8 38.8 26.1 42.6
++GLA 63.6 38.9 26.3 42.9
+Table 4. Segmentation results of different VFM backbones.
+5.5. Generalization Across Backbones
+To assess the generalizability of our framework across vary-
+ing CLIP backbone capacities, we evaluate performance us-
+ing ViT-B/32 and ViT-L/14. As shown in Tab. 3, ProxyCLIP
+and CASS exhibits a substantial performance drop of 4.4%,
+4.5% in average mIoU when switching to the lower capac-
+ity ViT-B/32. In contrast, our method incurs only a 3.0%
+decrease, demonstrating improved robustness to represen-
+tational capacity degradation. This indicates that our model
+more effectively leverages the available features across di-
+verse CLIP architectures, and is less susceptible to varia-
+tions in visual encoder strength. Furthermore, in Fig. 4,
+we conduct backbone exchanges in VFM to demonstrate
+the adaptability of our module. Specifically, we replace the
+backbone from DINO ViT-B/16 to DINOv2-reg ViT-L/14
+[13, 33] and DINOv3 ViT-B/16 [41] to verify the general-
+ity of our method. In each case, our approach yields per-
+formance improvements of +0.7% and +0.3%, respectively.
+Additionally, our method is compatible with complemen-
+tary techniques such as multi-layer feature fusion and text-
+prompt modifications, as discussed in the Appendix H, I.
+Owing to its generality, our framework can be readily inte-
+grated with new backbones and future improvements.
+6. Conclusion & Limitation
+In this paper, we propose GLA-CLIP, a training-free method
+for OVSS that resolves inconsistent predictions across slid-
+ing windows. Using Key-Value Extension, each query at-
+tends to globally aggregated tokens, mitigating semantic
+discrepancies. We further address window bias and small
+object neglect by Proxy Anchor and Dynamic Normaliza-
+tion. While the Key–Value Extension utilizes whole to-
+kens from other windows, computational cost may increase.
+More research is needed to efficiently leverage high-quality
+tokens across different windows. While our method can be
+adopted on any backbone features, certain hyperparameters
+may need to be adjusted to achieve optimal performance.
+We hope future research will address both memory effi-
+ciency and hyperparameter generalization.
+27693
+
+
+=== PAGE 9 ===
+Acknowledgements
+This work was supported in part by MSIT/IITP (No. RS-
+2022-II220680, RS-2020-II201821, RS-2019-II190421,
+RS-2024-00459618, RS-2024-00360227, RS-2024-
+00437633, RS-2024-00437102, RS-2025-25442569),
+MSIT/NRF (No. RS-2024-00357729), and KNPA/KIPoT
+(No. RS-2025-25393280).
+References
+[1] Sule Bai, Yong Liu, Yifei Han, Haoji Zhang, and Yansong
+Tang. Self-calibrated clip for training-free open-vocabulary
+segmentation.arXiv preprint arXiv:2411.15869, 2024. 3
+[2] Yasser Benigmim, Mohammad Fahes, Tuan-Hung Vu, An-
+drei Bursuc, and Raoul de Charette. Floss: Free lunch in
+open-vocabulary semantic segmentation.Proceedings of the
+IEEE/CVF International Conference on Computer Vision,
+2025. 6
+[3] Walid Bousselham, Felix Petersen, Vittorio Ferrari, and
+Hilde Kuehne. Grounding everything: Emerging localiza-
+tion properties in vision-language transformers. InProceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 3828–3837, 2024. 1, 2
+[4] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. InProceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 1209–1218, 2018. 5, 6, 7, 1, 2
+[5] Wenxiao Cai, Ke Jin, Jinyan Hou, Cong Guo, Letian Wu,
+and Wankou Yang. Vdd: Varied drone dataset for semantic
+segmentation.Journal of Visual Communication and Image
+Representation, 109:104429, 2025. 4
+[6] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. InPro-
+ceedings of the IEEE/CVF international conference on com-
+puter vision, pages 9650–9660, 2021. 3
+[7] Junbum Cha, Jonghwan Mun, and Byungseok Roh. Learn-
+ing to generate text-grounded mask for open-world semantic
+segmentation from only image-text pairs. InProceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 11165–11174, 2023. 6
+[8] Qi Chen, Lingxiao Yang, Yun Chen, Nailong Zhao, Jian-
+huang Lai, Jie Shao, and Xiaohua Xie. Training-free class
+purification for open-vocabulary semantic segmentation. In
+Proceedings of the IEEE/CVF International Conference on
+Computer Vision, pages 23124–23134, 2025. 5, 6
+[9] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention mask
+transformer for universal image segmentation. InProceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 1290–1299, 2022. 2
+[10] Zhixiang Chi, Yanan Wu, Li Gu, Huan Liu, Ziqiang Wang,
+Yang Zhang, Yang Wang, and Konstantinos Plataniotis.
+Plug-in feedback self-adaptive attention in clip for training-
+free open-vocabulary segmentation. InProceedings of the
+IEEE/CVF International Conference on Computer Vision,
+pages 22815–22825, 2025. 6
+[11] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. InProceedings of the IEEE conference on computer
+vision and pattern recognition, pages 4113–4123, 2024. 2
+[12] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld, Markus Enzweiler, Rodrigo Benenson, Uwe
+Franke, Stefan Roth, and Bernt Schiele. The cityscapes
+dataset for semantic urban scene understanding. InProceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 3213–3223, 2016. 5, 6, 7, 1, 3, 4
+[13] Timoth ´ee Darcet, Maxime Oquab, Julien Mairal, and Pi-
+otr Bojanowski. Vision transformers need registers.arXiv
+preprint arXiv:2309.16588, 2023. 8, 2
+[14] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. InProceedings of
+the IEEE conference on computer vision and pattern recog-
+nition, pages 11583–11592, 2022. 2
+[15] Zheng Ding, Jieke Wang, and Zhuowen Tu. Open-
+vocabulary universal image segmentation with maskclip.
+arXiv preprint arXiv:2208.08984, 2022. 2
+[16] Songsong Duan, Xi Yang, and Nannan Wang. Dih-clip:
+Unleashing the diversity of multi-head self-attention for
+training-free open-vocabulary semantic segmentation. In
+Proceedings of the IEEE/CVF International Conference on
+Computer Vision, pages 22794–22803, 2025. 6
+[17] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes challenge 2012 (voc2012) results (2012), 2011. 5, 6,
+7, 1, 2, 4
+[18] Sina Hajimiri, Ismail Ben Ayed, and Jose Dolz. Pay atten-
+tion to your neighbours: Training-free open-vocabulary se-
+mantic segmentation. InProceedings of the IEEE/CVF Win-
+ter Conference on Applications of Computer Vision, pages
+5061–5071. IEEE, 2025. 1, 2, 3, 6
+[19] Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc Le, Yun-Hsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representa-
+tion learning with noisy text supervision. InInternational
+conference on machine learning, pages 4904–4916. PMLR,
+2021. 2
+[20] Dahyun Kang and Minsu Cho. In defense of lazy visual
+grounding for open-vocabulary semantic segmentation. In
+European Conference on Computer Vision, pages 143–164.
+Springer, 2024. 6
+[21] Laurynas Karazija, Iro Laina, Andrea Vedaldi, and Christian
+Rupprecht. Diffusion models for zero-shot open-vocabulary
+segmentation.arXiv e-prints, pages arXiv–2306, 2023. 2
+[22] Chanyoung Kim, Dayun Ju, Woojung Han, Ming-Hsuan
+Yang, and Seong Jae Hwang. Distilling spectral graph for
+object-context aware open-vocabulary semantic segmenta-
+tion. InProceedings of the Computer Vision and Pattern
+Recognition Conference, pages 15033–15042, 2025. 2, 5, 6,
+7, 1, 4
+[23] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+27694
+
+
+=== PAGE 10 ===
+ence. InEuropean Conference on Computer Vision, pages
+143–160. Springer, 2024. 1, 3, 6, 2
+[24] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Proxyclip: Proxy
+attention improves clip for open-vocabulary segmentation.
+InEuropean Conference on Computer Vision, pages 70–88.
+Springer, 2024. 1, 2, 3, 5, 6, 7, 4
+[25] Kaiyu Li, Ruixun Liu, Xiangyong Cao, Xueru Bai, Feng
+Zhou, Deyu Meng, and Zhi Wang. Segearth-ov: Towards
+training-free open-vocabulary segmentation for remote sens-
+ing images. InProceedings of the IEEE conference on com-
+puter vision and pattern recognition, pages 10545–10556,
+2025. 4
+[26] Yi Li, Hualiang Wang, Yiqun Duan, and Xiaomeng Li. Clip
+surgery for better explainability with enhancement in open-
+vocabulary tasks.arXiv e-prints, pages arXiv–2304, 2023.
+2
+[27] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yinan
+Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and Diana
+Marculescu. Open-vocabulary semantic segmentation with
+mask-adapted clip. InProceedings of the IEEE conference
+on computer vision and pattern recognition, pages 7061–
+7070, 2023. 2
+[28] Yajie Liu, Guodong Wang, Jinjin Zhang, Qingjie Liu, and
+Di Huang. Unveiling the knowledge of clip for training-free
+open-vocabulary semantic segmentation. InProceedings of
+the AAAI Conference on Artificial Intelligence, pages 5649–
+5657, 2025. 1
+[29] Timo L ¨uddecke and Alexander Ecker. Image segmenta-
+tion using text and image prompts. InProceedings of the
+IEEE conference on computer vision and pattern recogni-
+tion, pages 7086–7096, 2022. 2
+[30] Huaishao Luo, Junwei Bao, Youzheng Wu, Xiaodong He,
+and Tianrui Li. Segclip: Patch aggregation with learnable
+centers for open-vocabulary semantic segmentation. InIn-
+ternational conference on machine learning, pages 23033–
+23044. PMLR, 2023. 2
+[31] Ye Lyu, George V osselman, Gui-Song Xia, Alper Yilmaz,
+and Michael Ying Yang. Uavid: A semantic segmentation
+dataset for uav imagery.ISPRS journal of photogrammetry
+and remote sensing, 165:108–119, 2020. 4
+[32] Roozbeh Mottaghi, Xianjie Chen, Xiaobai Liu, Nam-Gyu
+Cho, Seong-Whan Lee, Sanja Fidler, Raquel Urtasun, and
+Alan Yuille. The role of context for object detection and
+semantic segmentation in the wild. InProceedings of the
+IEEE conference on computer vision and pattern recogni-
+tion, pages 891–898, 2014. 5, 1, 2, 3, 4, 6
+[33] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 8
+[34] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. InInternational conference on machine learning, pages
+8748–8763. PmLR, 2021. 1, 2, 3
+[35] Yongming Rao, Wenliang Zhao, Guangyi Chen, Yansong
+Tang, Zheng Zhu, Guan Huang, Jie Zhou, and Jiwen Lu.
+Denseclip: Language-guided dense prediction with context-
+aware prompting. InProceedings of the IEEE conference
+on computer vision and pattern recognition, pages 18082–
+18091, 2022. 2
+[36] Hyun Seok Seong, WonJun Moon, SuBeen Lee, and Jae-Pil
+Heo. Progressive proxy anchor propagation for unsupervised
+semantic segmentation. InEuropean Conference on Com-
+puter Vision, pages 472–490. Springer, 2024. 4
+[37] Xiangheng Shan, Dongyue Wu, Guilin Zhu, Yuanjie Shao,
+Nong Sang, and Changxin Gao. Open-vocabulary semantic
+segmentation with image embedding balancing. InProceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 28412–28421, 2024. 2
+[38] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. InEuropean Conference on Com-
+puter Vision, pages 139–156. Springer, 2024. 1, 2
+[39] Yuheng Shi, Minjing Dong, and Chang Xu. Har-
+nessing vision foundation models for high-performance,
+training-free open vocabulary segmentation.arXiv preprint
+arXiv:2411.09219, 2024. 3
+[40] Gyungin Shin, Weidi Xie, and Samuel Albanie. Reco:
+Retrieve and co-segment for zero-shot transfer.Advances
+in neural information processing systems, 35:33754–33767,
+2022. 6
+[41] Oriane Sim ´eoni, Huy V V o, Maximilian Seitzer, Federico
+Baldassarre, Maxime Oquab, Cijo Jose, Vasil Khalidov,
+Marc Szafraniec, Seungeun Yi, Micha ¨el Ramamonjisoa,
+et al. Dinov3.arXiv preprint arXiv:2508.10104, 2025. 8
+[42] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethink-
+ing self-attention for dense vision-language inference. In
+European Conference on Computer Vision, pages 315–332.
+Springer, 2024. 1, 2, 6, 4
+[43] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethink-
+ing self-attention for dense vision-language inference. In
+European Conference on Computer Vision, pages 315–332.
+Springer, 2024. 2
+[44] Monika Wysocza ´nska, Micha ¨el Ramamonjisoa, Tomasz
+Trzci´nski, and Oriane Sim ´eoni. Clip-diy: Clip dense infer-
+ence yields open-vocabulary semantic segmentation for-free.
+InProceedings of the IEEE/CVF Winter Conference on Ap-
+plications of Computer Vision, pages 1403–1413, 2024. 6
+[45] Monika Wysocza ´nska, Oriane Sim´eoni, Micha¨el Ramamon-
+jisoa, Andrei Bursuc, Tomasz Trzci ´nski, and Patrick P ´erez.
+Clip-dinoiser: Teaching clip a few dino tricks for open-
+vocabulary semantic segmentation. InEuropean Conference
+on Computer Vision, pages 320–337. Springer, 2024. 6, 1, 4
+[46] Jiarui Xu, Shalini De Mello, Sifei Liu, Wonmin Byeon,
+Thomas Breuel, Jan Kautz, and Xiaolong Wang. Groupvit:
+Semantic segmentation emerges from text supervision. In
+Proceedings of the IEEE conference on computer vision and
+pattern recognition, pages 18134–18144, 2022. 6, 1
+[47] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+27695
+
+
+=== PAGE 11 ===
+Proceedings of the IEEE conference on computer vision and
+pattern recognition, pages 2955–2966, 2023. 2
+[48] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. InEuropean Conference on Computer Vi-
+sion, pages 736–753. Springer, 2022. 2
+[49] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. San: side adapter network for open-vocabulary se-
+mantic segmentation.IEEE Transactions on Pattern Analysis
+and Machine Intelligence, 45(12):15546–15561, 2023. 2
+[50] Yuhang Yang, Jinhong Deng, Wen Li, and Lixin Duan.
+Resclip: Residual attention for training-free dense vision-
+language inference. InProceedings of the Computer Vision
+and Pattern Recognition Conference, pages 29968–29978,
+2025. 1, 5, 6
+[51] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip.Advances
+in neural information processing systems, 36:32215–32234,
+2023. 2
+[52] Bolei Zhou, Hang Zhao, Xavier Puig, Tete Xiao, Sanja Fi-
+dler, Adela Barriuso, and Antonio Torralba. Semantic under-
+standing of scenes through the ade20k dataset.International
+Journal of Computer Vision, 127(3):302–321, 2019. 5, 1, 2,
+4
+[53] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. InEuropean Conference on Com-
+puter Vision, pages 696–712. Springer, 2022. 1, 2
+[54] Ziqin Zhou, Yinjie Lei, Bowen Zhang, Lingqiao Liu, and
+Yifan Liu. Zegclip: Towards adapting clip for zero-shot se-
+mantic segmentation. InProceedings of the IEEE conference
+on computer vision and pattern recognition, pages 11175–
+11185, 2023. 2
+27696

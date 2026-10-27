@@ -1,0 +1,366 @@
+
+===== SLIDE 1 =====
+[AUTO_SHAPE (1)] RESEARCH PROGRESS · AUG 2026
+[AUTO_SHAPE (1)] Joint Role–View Grounding
+[AUTO_SHAPE (1)] 01
+[AUTO_SHAPE (1)] RolFun:Role-Functional Prompting and Visual-Field Complementarity | for Training-Free Remote Sensing OVSS
+[AUTO_SHAPE (1)] SAM3-native role-functional text and aligned visual-field grounding
+[AUTO_SHAPE (1)] Peng Junhao · 2026.08
+
+===== SLIDE 2 =====
+[AUTO_SHAPE (1)] RESEARCH BACKGROUND
+[AUTO_SHAPE (1)] 遥感 OVSS 的核心矛盾，不只是“文本、图像不够遥感”
+[AUTO_SHAPE (1)] 02
+[AUTO_SHAPE (1)] 自然图像预训练的开放词汇模型进入遥感后，同时面对 ontology、视觉尺度与计算角色三类错位。
+[AUTO_SHAPE (1)] 01
+[AUTO_SHAPE (1)] Ontology gap
+[AUTO_SHAPE (1)] road / pavement / bareland 的边界由数据集定义；一个通用自然语言模板无法替代 benchmark ontology。
+[AUTO_SHAPE (1)] 02
+[AUTO_SHAPE (1)] Visual-field gap
+[AUTO_SHAPE (1)] 车辆与建筑需要局部细节；道路与农田又依赖大范围连续结构。固定 crop 很难同时满足。
+[AUTO_SHAPE (1)] 03
+[AUTO_SHAPE (1)] Role gap
+[AUTO_SHAPE (1)] Presence 判断存在，Semantic 做密集覆盖，Instance 组织区域/实体；它们未必需要同一种补充信息。
+[AUTO_SHAPE (1)] 我们的切入点：把“类别适配”进一步分解成 Role × View 的信息适配。
+
+===== SLIDE 3 =====
+[AUTO_SHAPE (1)] RELATED WORK LINEAGE
+[AUTO_SHAPE (1)] 相关工作在“校准概念”，但很少继续区分 SAM3 的计算角色
+[AUTO_SHAPE (1)] 03
+[AUTO_SHAPE (1)] ConceptBank
+[AUTO_SHAPE (1)] 数据集/类别级概念库 | 统一影响 SAM3 整体概念
+[AUTO_SHAPE (1)] TMPA
+[AUTO_SHAPE (1)] CLIP 范式测试时多提示适配 | 图像视觉核心更新文本
+[AUTO_SHAPE (1)] ProC-SAM3
+[AUTO_SHAPE (1)] 约束提示池 + 批量推理 | Presence-guided residual fusion
+[AUTO_SHAPE (1)] Our gap
+[AUTO_SHAPE (1)] P
+[AUTO_SHAPE (1)] S
+[AUTO_SHAPE (1)] I
+[AUTO_SHAPE (1)] ×
+[AUTO_SHAPE (1)] Local / Context
+[AUTO_SHAPE (1)] 同一类别内部：P / S / I 对语言与视野的需求是否不同？
+[AUTO_SHAPE (1)] 研究空隙：现有工作多以“类别”为校准单位；我们把校准单位进一步细化到 computational role 与 visual field。
+
+===== SLIDE 4 =====
+[AUTO_SHAPE (1)] SEGEARTH-OV3
+[AUTO_SHAPE (1)] Baseline：SAM3 先共享 grounding，再由三路证据完成像素分类
+[AUTO_SHAPE (1)] 04
+[AUTO_SHAPE (1)] Native evidence
+[AUTO_SHAPE (1)] Presence
+[AUTO_SHAPE (1)] p_c：类别是否存在
+[AUTO_SHAPE (1)] Semantic
+[AUTO_SHAPE (1)] S_c(x)：密集类别响应
+[AUTO_SHAPE (1)] Instance
+[AUTO_SHAPE (1)] I_c(x)：query mask 证据
+[AUTO_SHAPE (1)] F_c(x) = p_c · max(S_c(x), I_c(x))
+[AUTO_SHAPE (1)] 最后跨类别 argmax
+[AUTO_SHAPE (1)] 关键假设：一个文本 concept | 与一个固定视野， | 足以同时服务 P / S / I。
+
+===== SLIDE 5 =====
+[AUTO_SHAPE (1)] SAM3 INTERNALS
+[AUTO_SHAPE (1)] 放大 SAM3：共享 grounding 如何形成 Presence / Semantic / Instance
+[AUTO_SHAPE (1)] 05
+[AUTO_SHAPE (1)] Image X
+[AUTO_SHAPE (1)] Concept: road
+[AUTO_SHAPE (1)] Perception Encoder
+[AUTO_SHAPE (1)] vision tokens V | text tokens T_c
+[AUTO_SHAPE (1)] Fusion Encoder
+[AUTO_SHAPE (1)] T_c cross-attends V | conditioned memory H_c
+[AUTO_SHAPE (1)] Shared conditioned states
+[AUTO_SHAPE (1)] Dense memory H_c
+[AUTO_SHAPE (1)] Presence token | + object queries
+[AUTO_SHAPE (1)] 同一 concept | 先完成一次共享条件化
+[AUTO_SHAPE (1)] Presence  P
+[AUTO_SHAPE (1)] Presence token
+[AUTO_SHAPE (1)] Transformer | decoder
+[AUTO_SHAPE (1)] MLP
+[AUTO_SHAPE (1)] p_c  ·  concept existence
+[AUTO_SHAPE (1)] Semantic  S
+[AUTO_SHAPE (1)] Dense H_c
+[AUTO_SHAPE (1)] SimpleFPN + | shared seg. head
+[AUTO_SHAPE (1)] S_c(x)  ·  dense semantic coverage
+[AUTO_SHAPE (1)] Instance  I
+[AUTO_SHAPE (1)] Object queries Q
+[AUTO_SHAPE (1)] DETR-like | decoder
+[AUTO_SHAPE (1)] Mask | head
+[AUTO_SHAPE (1)] M_cq(x), r_cq  →  I_c(x)
+[AUTO_SHAPE (1)] query-organized regions
+[AUTO_SHAPE (1)] Shared grounding is coupled; the readouts are role-specific: | P judges existence, S covers dense regions, I organizes query masks.
+[NOTES] [Sources] / - SAM 3: Segment Anything with Concepts, arXiv:2511.16719. / - SegEarth-OV3, arXiv:2512.08730v2. / [/Sources]
+
+===== SLIDE 6 =====
+[AUTO_SHAPE (1)] OBSERVATION 1 · ROLE HETEROGENEITY
+[AUTO_SHAPE (1)] 问题一：同一个“road”无法同时表达三种计算职责
+[AUTO_SHAPE (1)] 06
+[AUTO_SHAPE (1)] Ontology Anchor
+[AUTO_SHAPE (1)] road
+[AUTO_SHAPE (1)] 定义“分什么” | 必须保留数据集类别边界
+[AUTO_SHAPE (1)] 共享 anchor 仍承担三路 | grounding 的基本共识
+[AUTO_SHAPE (1)] Presence
+[AUTO_SHAPE (1)] roads / roadway
+[AUTO_SHAPE (1)] 判断概念是否在图像中成立
+[AUTO_SHAPE (1)] Semantic
+[AUTO_SHAPE (1)] continuous paved road surface
+[AUTO_SHAPE (1)] 补充连续、密集、表面覆盖信息
+[AUTO_SHAPE (1)] Instance
+[AUTO_SHAPE (1)] connected road region
+[AUTO_SHAPE (1)] 补充区域连通与 query 组织信息
+[AUTO_SHAPE (1)] 同类候选并非“更长越好”：文本的价值由最终分割功能决定。
+
+===== SLIDE 7 =====
+[AUTO_SHAPE (1)] RESEARCH EVOLUTION · TEXT
+[AUTO_SHAPE (1)] 试错一：Prompt 扩展有效，但“全头共享”和“整体替换”都不安全
+[AUTO_SHAPE (1)] 07
+[AUTO_SHAPE (1)] 36 组 dataset × prompt 路径的结构筛查
+[AUTO_SHAPE (1)] 01
+[AUTO_SHAPE (1)] Shared full grounding
+[AUTO_SHAPE (1)] 0 / 36 正向
+[AUTO_SHAPE (1)] −21.15
+[AUTO_SHAPE (1)] mean ΔmIoU
+[AUTO_SHAPE (1)] 同一描述同时改变 P / S / I， | 角色冲突被放大
+[AUTO_SHAPE (1)] →
+[AUTO_SHAPE (1)] 02
+[AUTO_SHAPE (1)] Semantic replacement
+[AUTO_SHAPE (1)] 3 / 36 正向
+[AUTO_SHAPE (1)] −6.36
+[AUTO_SHAPE (1)] mean ΔmIoU
+[AUTO_SHAPE (1)] 只保留 candidate semantic， | 仍会抹掉稳定类别基座
+[AUTO_SHAPE (1)] →
+[AUTO_SHAPE (1)] 03
+[AUTO_SHAPE (1)] Anchor-preserving residual
+[AUTO_SHAPE (1)] 13 / 36 正向
+[AUTO_SHAPE (1)] −0.50
+[AUTO_SHAPE (1)] mean ΔmIoU
+[AUTO_SHAPE (1)] 保留 anchor；bounded ΔS 在 36 / 36 对照中优于 replacement。
+[AUTO_SHAPE (1)] OpenEarthMap · S1
+[AUTO_SHAPE (1)] +1.88
+[AUTO_SHAPE (1)] Semantic-only
+[AUTO_SHAPE (1)] −1.09
+[AUTO_SHAPE (1)] same text shared
+[AUTO_SHAPE (1)] 由此形成当前结构
+[AUTO_SHAPE (1)] Ontology anchor 保留共享概念边界
+[AUTO_SHAPE (1)] +
+[AUTO_SHAPE (1)] 不同 role 接收不同功能信息
+[AUTO_SHAPE (1)] →
+[AUTO_SHAPE (1)] Role-only：8 / 8 ↑ · macro +2.25
+[AUTO_SHAPE (1)] 结论不是“长文本更好”，而是：补充信息必须按计算职责进入，并受 anchor 约束。
+
+===== SLIDE 8 =====
+[AUTO_SHAPE (1)] OBSERVATION 2 · VIEW HETEROGENEITY
+[AUTO_SHAPE (1)] 问题二：同一角色也可能需要不同空间范围的视觉证据
+[AUTO_SHAPE (1)] 08
+[AUTO_SHAPE (1)] Local / Native
+[AUTO_SHAPE (1)] 高分辨率、小视野
+[AUTO_SHAPE (1)] 更适合：边界、车辆、建筑细节
+[AUTO_SHAPE (1)] 保留像素级局部结构
+[AUTO_SHAPE (1)] Context / Large-FoV
+[AUTO_SHAPE (1)] 低分辨率、大范围布局
+[AUTO_SHAPE (1)] 更适合：道路连续性、农田与场景结构
+[AUTO_SHAPE (1)] 补充单一 crop 看不到的上下文
+[AUTO_SHAPE (1)] 关键不是“global 一定更好”，而是对齐视野中的证据具有互补性。
+
+===== SLIDE 9 =====
+[AUTO_SHAPE (1)] RESEARCH EVOLUTION · VIEW
+[AUTO_SHAPE (1)] 试错二：Context 确有互补信息，但固定融合无法稳定利用
+[AUTO_SHAPE (1)] 09
+[AUTO_SHAPE (1)] Information exists
+[AUTO_SHAPE (1)] Shared Canvas
+[AUTO_SHAPE (1)] +0.92 macro
+[AUTO_SHAPE (1)] 4 / 6 vs matched Fine-only
+[AUTO_SHAPE (1)] Context 提供了真实新信息， | 但改变 token allocation / resolution。
+[AUTO_SHAPE (1)] →
+[AUTO_SHAPE (1)] Interface fails
+[AUTO_SHAPE (1)] Fixed fusion families
+[AUTO_SHAPE (1)] +0.10 macro
+[AUTO_SHAPE (1)] R1–R14 best · 3 / 6
+[AUTO_SHAPE (1)] Residual、surround、low-frequency、 | Q/K/V 与 agreement 均未形成通用规则。
+[AUTO_SHAPE (1)] →
+[AUTO_SHAPE (1)] Conditional use
+[AUTO_SHAPE (1)] Joint Role × View
+[AUTO_SHAPE (1)] +1.67 macro
+[AUTO_SHAPE (1)] 8 / 8 over Role-only
+[AUTO_SHAPE (1)] 联合 role information 与 visual field。
+[AUTO_SHAPE (1)] 6 / 8
+[AUTO_SHAPE (1)] positive | Role × View | interaction
+[AUTO_SHAPE (1)] +0.63
+[AUTO_SHAPE (1)] macro | interaction
+[AUTO_SHAPE (1)] Selected-profile Role × View interaction ΔmIoU
+[AUTO_SHAPE (1)] LoveDA
+[AUTO_SHAPE (1)] +0.66
+[AUTO_SHAPE (1)] OEM
+[AUTO_SHAPE (1)] +1.68
+[AUTO_SHAPE (1)] Potsdam
+[AUTO_SHAPE (1)] +0.11
+[AUTO_SHAPE (1)] UDD5
+[AUTO_SHAPE (1)] −0.28
+[AUTO_SHAPE (1)] Vaihingen
+[AUTO_SHAPE (1)] +2.07
+[AUTO_SHAPE (1)] VDD
+[AUTO_SHAPE (1)] +0.53
+[AUTO_SHAPE (1)] UAVid
+[AUTO_SHAPE (1)] +0.47
+[AUTO_SHAPE (1)] iSAID
+[AUTO_SHAPE (1)] −0.23
+
+===== SLIDE 10 =====
+[AUTO_SHAPE (1)] EXECUTIVE TAKEAWAY
+[AUTO_SHAPE (1)] 一句话：共享概念不等于共享信息需求
+[AUTO_SHAPE (1)] 10
+[AUTO_SHAPE (1)] SAM3 用一个 concept 同时驱动三种输出，但三种输出承担的是不同计算职责。
+[AUTO_SHAPE (1)] 01
+[AUTO_SHAPE (1)] Role-Functional Text
+[AUTO_SHAPE (1)] 类别名保留为 ontology anchor；新增文本按 Presence、Semantic、Instance 的职责分别进入。
+[AUTO_SHAPE (1)] 02
+[AUTO_SHAPE (1)] Joint View Profile
+[AUTO_SHAPE (1)] Native 保留细节，Context 提供大范围布局；每个视野都走完整、冻结的 SAM3 grounding。
+[AUTO_SHAPE (1)] 03
+[AUTO_SHAPE (1)] Joint Role × View
+[AUTO_SHAPE (1)] 联合角色文本与视野证据。
+[AUTO_SHAPE (1)] 53.56
+[AUTO_SHAPE (1)] Baseline
+[AUTO_SHAPE (1)] +2.25
+[AUTO_SHAPE (1)] Role Text Only
+[AUTO_SHAPE (1)] +1.67
+[AUTO_SHAPE (1)] Joint Role–View over Role-only
+[AUTO_SHAPE (1)] 57.49
+[AUTO_SHAPE (1)] Final:Joint Role–View
+[AUTO_SHAPE (1)] 8 / 8 datasets ↑
+
+===== SLIDE 11 =====
+[AUTO_SHAPE (1)] 11
+[NOTES] [Sources] / - Method figure created from the implemented Joint Role–View Grounding pipeline and local experiment evidence. / [/Sources]
+
+===== SLIDE 12 =====
+
+===== SLIDE 13 =====
+
+===== SLIDE 14 =====
+[AUTO_SHAPE (1)] MAIN RESULTS
+[AUTO_SHAPE (1)] 主结果：Joint Role–View 在 8 个数据集上全部超过 baseline
+[AUTO_SHAPE (1)] 14
+[AUTO_SHAPE (1)] 灰色：Official baseline　蓝色：Ours（Joint Role–View）
+[AUTO_SHAPE (1)] LoveDA
+[AUTO_SHAPE (1)] 47.34
+[AUTO_SHAPE (1)] 48.81
+[AUTO_SHAPE (1)] +1.46
+[AUTO_SHAPE (1)] OpenEarthMap
+[AUTO_SHAPE (1)] 44.30
+[AUTO_SHAPE (1)] 53.08
+[AUTO_SHAPE (1)] +8.77
+[AUTO_SHAPE (1)] Potsdam
+[AUTO_SHAPE (1)] 57.87
+[AUTO_SHAPE (1)] 63.18
+[AUTO_SHAPE (1)] +5.31
+[AUTO_SHAPE (1)] UDD5
+[AUTO_SHAPE (1)] 71.80
+[AUTO_SHAPE (1)] 72.94
+[AUTO_SHAPE (1)] +1.14
+[AUTO_SHAPE (1)] Vaihingen
+[AUTO_SHAPE (1)] 60.86
+[AUTO_SHAPE (1)] 66.38
+[AUTO_SHAPE (1)] +5.52
+[AUTO_SHAPE (1)] VDD
+[AUTO_SHAPE (1)] 64.11
+[AUTO_SHAPE (1)] 66.56
+[AUTO_SHAPE (1)] +2.45
+[AUTO_SHAPE (1)] UAVid
+[AUTO_SHAPE (1)] 54.59
+[AUTO_SHAPE (1)] 59.82
+[AUTO_SHAPE (1)] +5.24
+[AUTO_SHAPE (1)] +1.48
+[AUTO_SHAPE (1)] iSAID
+[AUTO_SHAPE (1)] 27.64
+[AUTO_SHAPE (1)] 29.13
+
+===== SLIDE 15 =====
+[AUTO_SHAPE (1)] AGGREGATE EVIDENCE
+[AUTO_SHAPE (1)] Macro 提升可分解为两步：角色文本先建立增益，视野信息继续放大增益
+[AUTO_SHAPE (1)] 15
+[AUTO_SHAPE (1)] 53.56
+[AUTO_SHAPE (1)] Official baseline
+[AUTO_SHAPE (1)] +2.25
+[AUTO_SHAPE (1)] Role-Functional Text
+[AUTO_SHAPE (1)] +1.67
+[AUTO_SHAPE (1)] Joint View Profile
+[AUTO_SHAPE (1)] 57.49
+[AUTO_SHAPE (1)] Joint Role–View
+[AUTO_SHAPE (1)] 8 / 8
+[AUTO_SHAPE (1)] Role-only 正提升
+[AUTO_SHAPE (1)] 8 / 8
+[AUTO_SHAPE (1)] Joint over Role 正提升
+[AUTO_SHAPE (1)] +3.92
+[AUTO_SHAPE (1)] 总 macro 增益
+
+===== SLIDE 16 =====
+[TABLE row 1] Method || Backbone || Potsdam || Vaihingen || LoveDA || iSAID || OEM || UAVid || UDD5 || VDD || Avg.
+[TABLE row 2] VIP* (ICML'26) || DINOv3 + dino.txt || 23.0 || 30.5 || 31.2 || 23.5 || 20.7 || 19.9 || 35.2 || 52.5 || 29.6
+[TABLE row 3] SCLIP (ECCV'24) || CLIP || 39.6 || 35.9 || 30.4 || 16.1 || 29.3 || 31.4 || 38.7 || 37.9 || 32.4
+[TABLE row 4] ClearCLIP (ECCV'24) || CLIP || 42.0 || 36.2 || 32.4 || 18.2 || 31.0 || 36.2 || 41.8 || 39.3 || 34.6
+[TABLE row 5] ProxyCLIP (ECCV'24) || CLIP + DINOv2 || 49.0 || 47.5 || 34.3 || 21.8 || 38.9 || 35.8 || 40.8 || 47.8 || 39.5
+[TABLE row 6] SegEarth-OV (CVPR'25) || CLIP || 48.5 || 29.1 || 36.9 || 21.7 || 40.3 || 42.5 || 50.6 || 45.3 || 39.2
+[TABLE row 7] RSCLIP* (J-STARS'26) || CLIP || 47.4 || 40.3 || 35.5 || 21.2 || 39.8 || 42.5 || 50.4 || 42.5 || 39.9
+[TABLE row 8] CorrCLIP (ICCV'25) || CLIP + DINO + SAM2 || 51.9 || 47.0 || 36.9 || 25.5 || 32.9 || 38.3 || 46.1 || 47.3 || 40.7
+[TABLE row 9] ConInfer  / (CVPR Findings'26) || CLIP + DINOv3 || 50.0 || 31.4 || 39.3 || 20.1 || 42.0 || 46.4 || 46.9 || 50.3 || 40.8
+[TABLE row 10] ReAttnCLIP (CVPR'26) || CLIP || 48.7 || 29.9 || 37.0 || 23.2 || 41.1 || 44.0 || 53.7 || 49.7 || 40.9
+[TABLE row 11] ActiveSAM* (arXiv'26) || SAM 3 || 40.6 || 45.1 || 41.1 || 28.3 || 40.7 || 53.3 || 72.1 || 62.2 || 47.9
+[TABLE row 12] SegEarth-OV3*(arXiv'25) || SAM 3 || 57.8 || 60.8 || 47.4 || 27.6 || 44.3 || 54.7 || 71.7 || 64.1 || 53.5
+[TABLE row 13] ProC-SAM3(GRSL’26) || SAM 3 || 58.8 || 64.5 || 46.1 || 29.5 || 48.9 || 60.0 || 73.4 || 67.5 || 56.1
+[TABLE row 14] Our || SAM 3 || 63.2 || 66.4 || 48.8 || 29.1 || 53.1 || 59.8 || 72.9 || 66.6 || 57.5
+
+===== SLIDE 17 =====
+[AUTO_SHAPE (1)] ABLATION · ROLE TEXT
+[AUTO_SHAPE (1)] Role ablation：文本补充在不同遥感 ontology 上都能形成明显收益
+[AUTO_SHAPE (1)] 16
+[AUTO_SHAPE (1)] 只挑选 Role 增益最清楚的三个数据集展示；完整 8 数据集结果见主表。
+[AUTO_SHAPE (1)] OpenEarthMap
+[AUTO_SHAPE (1)] 44.30
+[AUTO_SHAPE (1)] 50.53
+[AUTO_SHAPE (1)] +6.23
+[AUTO_SHAPE (1)] VDD
+[AUTO_SHAPE (1)] 64.11
+[AUTO_SHAPE (1)] 66.12
+[AUTO_SHAPE (1)] +2.01
+[AUTO_SHAPE (1)] UAVid
+[AUTO_SHAPE (1)] 54.59
+[AUTO_SHAPE (1)] 59.51
+[AUTO_SHAPE (1)] +4.92
+[AUTO_SHAPE (1)] What this supports
+[AUTO_SHAPE (1)] • 一个类别名的信息量不足 | • P / S / I 的补充信息应按职责组织 | • Anchor 仍是稳定 ontology 基座
+[AUTO_SHAPE (1)] Macro +2.25 mIoU
+
+===== SLIDE 18 =====
+[AUTO_SHAPE (1)] ABLATION · VIEW PROFILE
+[AUTO_SHAPE (1)] View ablation：视野信息在 Role 条件下能形成稳定增益
+[AUTO_SHAPE (1)] 17
+[AUTO_SHAPE (1)] 比较：Role-only → Joint；右侧为 selected operator 的交互分解
+[AUTO_SHAPE (1)] UAVid
+[AUTO_SHAPE (1)] 59.51
+[AUTO_SHAPE (1)] 59.82
+[AUTO_SHAPE (1)] +0.31
+[AUTO_SHAPE (1)] LoveDA
+[AUTO_SHAPE (1)] 48.31
+[AUTO_SHAPE (1)] 48.81
+[AUTO_SHAPE (1)] +0.50
+[AUTO_SHAPE (1)] OpenEarthMap
+[AUTO_SHAPE (1)] 50.53
+[AUTO_SHAPE (1)] 53.08
+[AUTO_SHAPE (1)] +2.55
+[AUTO_SHAPE (1)] Interaction evidence
+[AUTO_SHAPE (1)] • UAVid：Anchor 下 View-only +0.00 | selected View main −0.15 | Role×View interaction +0.47 | • LoveDA：−0.16 → +0.66 | • OEM：+0.87 → +1.68
+[AUTO_SHAPE (1)] Joint over Role: 8 / 8 ↑
+
+===== SLIDE 19 =====
+[AUTO_SHAPE (1)] NEXT EXPERIMENTS
+[AUTO_SHAPE (1)] 下一步实验规划
+[AUTO_SHAPE (1)] 18
+[AUTO_SHAPE (1)] 01
+[AUTO_SHAPE (1)] 遥感主实验
+[AUTO_SHAPE (1)] 跑iSAID完整实验结果
+[AUTO_SHAPE (1)] 02
+[AUTO_SHAPE (1)] 自然图像探索
+[AUTO_SHAPE (1)] VOC20 与 Cityscapes：检验 role–view 机制是否超出遥感域并超过匹配 baseline
+[AUTO_SHAPE (1)] 03
+[AUTO_SHAPE (1)] 推理加速优化（Part 3）
+[AUTO_SHAPE (1)] 工程压缩；方法压缩？
+[AUTO_SHAPE (1)] 主线顺序：iSAID Joint → 自然图像 → 推理加速。

@@ -1,0 +1,1039 @@
+=== PAGE 1 ===
+Training-Free Open-Vocabulary Camouflaged Object Segmentation via
+Fine-Grained Object Binding and Adaptive Hybrid Prompt
+Peng Ren1,2 Cheng Jiang1,2 Chuande Yang1,2 Fuming Sun3 Tian Bai1,2*
+1College of Computer Science and Technology, Jilin University
+2Key Laboratory of Symbolic Computation and Knowledge Engineering of Ministry of Education,
+Jilin University
+3 School of Information and Communication Engineering, Dalian Minzu University
+Abstract
+Vision-Language models (e.g., CLIP) facilitate the develop-
+ment of open-vocabulary camouflaged object segmentation
+(OVCOS), but existing methods still rely on mask annota-
+tions for fully-supervised training. In contrast, the training-
+free paradigm can rapidly process unseen data, represent-
+ing a highly promising solution. However, in camouflage
+scenarios, existing training-free methods utilize sparse tex-
+tual prompts and ignore the category similarity between vi-
+sual patches, leading to inadequate object binding capa-
+bility. To alleviate these issues, we propose a fine-grained
+object binding and adaptive hybrid prompt framework for
+training-free OVCOS. The framework first employs multi-
+modal large language models (MLLMs) to explicitly model
+fine-grained textual descriptions of camouflaged objects
+and background. Building on this, we construct a seman-
+tic probe to decouple object and background features and
+explicitly model category similarity between visual patches
+via semantic consistency ranking, thereby achieving accu-
+rate object binding. Subsequently, we propose an entropy-
+guided text embedding adjustment strategy to adjust textual
+embeddings, aiming to further enhance fine-grained object
+binding. Finally, we utilize an adaptive hybrid prompt gen-
+eration strategy to generate hybrid prompts, assisting SAM
+in accurately segmenting camouflaged objects. Experimen-
+tal results on the OVCamo benchmark demonstrate that our
+method achieves excellent performance, significantly sur-
+passing the advanced training-free ResCLIP .
+1. Introduction
+Open-V ocabulary Camouflaged Object Segmentation (OV-
+COS) [20] aims to segment unseen camouflaged object cat-
+*Corresponding authors.
+(a) Previous training-free methods
+(b) Ours
+“a photo of a {stick insect }”
+CLIP
+Visual
+CLIP
+Text
+…
+CLIP
+Visual
+CLIP
+Text
+…
+Semantic Probe
+Images Ours ResCLIPsimilarity calculation patch embedding text embedding 
+(c) Visualization
+OD: The stick insect has a brownish
+color with thin, elongated segments
+that mimic the appearance of a twig.
+BD: The background of the image is a
+lush green environment with large,
+green leaves and stems.
+Figure 1. The motivation of this work. (a) represents existing
+training-free methods that rely on sparse text prompts and directly
+utilize patch-text similarity maps for object segmentation. (b) is
+our approach, which generates detailed camouflaged object de-
+scriptions (OD) and background descriptions (BD) to enrich tex-
+tual semantics, and employs a semantic probe to decouple ob-
+ject and background features, and measure categorical similarity
+among visual patches, thereby achieving object binding. (c) shows
+a visual comparison of patch-text similarity maps. It can be ob-
+served that our method achieves precise binding.
+egories based on given text prompts, which transcends the
+closed-set constraints of traditional COS models [2, 8, 16,
+18, 39, 41, 43] and provides new impetus for the advance-
+ment of COS research. Therefore, several studies [20, 23]
+have proposed fully-supervised OVCOS frameworks to seg-
+ment novel camouflaged categories. However, the fully-
+supervised paradigm may cause models to overfit to seen
+classes [24, 31], thereby constraining their generalization to
+novel camouflaged categories.
+Recently, the open-vocabulary semantic segmenta-
+tion (OVSS) field has proposed several training-free
+paradigms [9, 11–13, 25, 27, 29, 32, 35, 38, 45] to
+alleviate the aforementioned issues. The training-free
+paradigms leverage CLIP [21] and vision foundation mod-
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+24960
+
+
+=== PAGE 2 ===
+els (SAM [10], DINO series [1, 19]) to segment novel ob-
+jects, which effectively generalizes to novel categories and
+enhances model scalability. These methods have demon-
+strated exceptional performance.
+Following the above methods, we design a training-free
+OVCOS framework. Although these training-free meth-
+ods have achieved satisfactory performance in OVSS, they
+lack precise “object binding” capability, which refers
+to establishing accurate mapping between textual prompts
+and specific visual objects as illustrated in Fig. 1 (a) and
+(c). This limitation of existing methods becomes partic-
+ularly pronounced in camouflage scenarios. The funda-
+mental causes of this limitation can be attributed to two
+factors:1) Sparsity of textual semantics.They predomi-
+nantly rely on sparse textual prompts (“a photo of a
+<class>”), which only convey basic objects’ categor-
+ical, lacking fine-grained descriptions of crucial camou-
+flaged object attributes and background semantics, leading
+to models suffering from background semantic interference
+and failing to achieve precise object binding.2) Neglect of
+categorical similarity relationships between visual patches.
+They directly utilize visual patch-text similarity maps for
+object segmentation without explicitly modeling categori-
+cal similarity relationships between visual patches. In cam-
+ouflage scenarios, where local visual features of objects and
+backgrounds are highly similar, the textual similarity of in-
+dividual patches is easily distorted by background interfer-
+ence. Although different patches belonging to the same
+camouflaged object are visually confused with the back-
+ground, their category distributions should exhibit strong
+correlations. This lack of correlation modeling additionally
+hinders accurate object binding.
+To address these limitations, we propose a fine-grained
+object binding and adaptive hybrid prompt framework
+for training-free OVCOS. Specifically, to enrich the fine-
+grained semantic knowledge of textual prompts, we lever-
+age the image-text understanding capability of multimodal
+large language models (MLLMs) to generate detailed cam-
+ouflaged object descriptions and background descriptions
+for each input image, explicitly modeling camouflaged ob-
+ject and background semantics, thereby addressing textual
+semantic sparsity and enhancing semantic guidance accu-
+racy. Building upon this, we construct a semantic probe
+to decouple object and background features and measure
+inter-patch categorical similarity via semantic consistency
+ranking, achieving fine-grained patch-text alignment and ul-
+timately precise object binding. Furthermore, we propose
+an entropy-guided text embedding adjustment (EGTEA)
+strategy to optimize textual embeddings, thereby further
+strengthening object binding. Finally, we design an adap-
+tive hybrid prompt generation (AHPG) strategy to generate
+hybrid prompts that assist SAM in accurately segmenting
+camouflaged objects. Experimental results demonstrate that
+our method achieves significantly superior quantitative per-
+formance on OVCamo compared to the advanced training-
+free method ResCLIP.
+The core contributions of this work can be summarized
+as follows:
+• We propose a semantic probe and EGTEA to achieve pre-
+cise object binding. The semantic probes are responsible
+for decoupling object and background features, and mea-
+suring inter-patch categorical similarity via semantic con-
+sistency ranking, thereby achieving object binding. The
+EGTEA is responsible for adjusting text embeddings to
+further enhance object binding.
+• We propose an AHPG strategy to generate high-quality
+hybrid prompts for guiding SAM in segmenting complete
+camouflaged objects.
+• Experimental results demonstrate that the proposed
+training-free OVCOS framework achieves state-of-the-art
+performance on the OVCamo benchmark.
+2. Related Works
+Camouflaged Object Segmentation.Recently, re-
+searchers have proposed numerous advanced COS
+methods [6, 22, 28, 44, 46]. For instance, Liuet al. [17]
+proposed a novel visual prompt model that utilizes explicit
+visual prompt techniques for COS. Haoet al. [5] introduced
+a joint framework that simultaneously addresses saliency
+detection and COS tasks. Songet al. [26] devised a
+continuous representation learning framework to mine
+discriminative features for enhanced segmentation per-
+formance. To overcome annotation dependency, Yanet
+al. [37] and Huet al[7]. proposed semi-supervised COS
+methods to advance the development of semi-supervised
+COS, respectively. Furthermore, Duet al. [4] and Yanet
+al. [36] introduced unsupervised frameworks to further
+reduce models’ dependence on annotations, respectively.
+Although these methods have achieved excellent perfor-
+mance, they are primarily focused on closed-set scenarios,
+which restricts their adaptability in open scenes. Therefore,
+Panget al. [20] first built a dataset for OVCOS and a
+robust baseline OVCoser. Renet al. [23] proposed the
+SuCLIP framework to address semantic confusion issues
+and further enhance OVCOS performance. However, these
+OVCOS methods reliance on seen class training may lead
+to overfitting and break scalability. Therefore, we propose
+a training-free OVCOS framework to mitigate these issues.
+Training-Free Open-Vocabulary Semantic Segmenta-
+tion.The OVSS aims to segment objects in scenes based
+on user descriptions [3, 14, 33, 34, 40, 42]. Recently,
+training-free OVSS paradigms have garnered significant
+attention due to their direct transferability to new do-
+mains. For instance, ProxyCLIP [12] and CASS [9] lever-
+aged the powerful spatial features of the visual foundation
+24961
+
+
+=== PAGE 3 ===
+Describe the {CLASS} in this image in detail,
+focusing on its appearance, texture, and
+distinctive features.
+Its gray and white plumage, along with its long,
+slender neck and pointed beak, make it difficult
+to spot at first glance…
+Describe the background of this image, focusing 
+on the environment, setting.
+The background of the image is a dense
+thicket of tall grasses and reeds. The grasses
+are a mix of green and brown hues…
+(a) Object Description (b) Background Description
+CLIP Visual 
+Encoder
+Prompt 
+Encoder
+CLIP Text 
+Encoder
+Mask 
+Decoder
+AHPG
+Semantic Probe EGTEA
+SAM 
+Encoder
+𝑺𝒐∗
+𝓕𝒕
+𝒐𝒅
+OD, BD
+Frozen
+Training-Free
+heron
+bittern
+duck
+turtle
+AHPG
+EGTEA
+Adaptive Hybrid Prompt Generation
+Entropy-guided Text Embedding Adjustment
+𝓕𝒕
+𝒃𝒅
+Prompts
+𝓕𝒑𝒂𝒕𝒄𝒉
+𝓕𝒄𝒍𝒔 𝑺𝒃
+∗
+Eq.(3)-(6)
+Eq.(7)-(11)
+Figure 2. Overview of the proposed training-free OVCOS framework. We leverage LLaV A to generate detailed camouflaged object
+descriptions and background descriptions for each image. Subsequently, the semantic probe is used to measure inter-patch categorical
+similarity, thereby achieving precise binding between object and text prompts. Next, we apply EGTEA to optimize text embeddings,
+reducing interference from background semantics and consequently mitigating category prediction bias. Finally, we generate hybrid
+prompts via AHPG to assist SAM in producing high-quality segmentation results.
+model (e.g.,DINO, DINOv2, SAM) to enhance the lo-
+cal spatial representation capability of the latent attention
+map in CLIP’s visual branch. Both ClearCLIP [11] and
+SCLIP [29] introduced a novel self-attention mechanism
+to replace the original self-attention mechanism, enabling
+CLIP to adapt to dense prediction tasks. ResCLIP [38] uti-
+lized intermediate-layer visual features from CLIP’s visual
+branch to refine its final-layer visual features for enhanced
+performance in dense prediction tasks. The aforementioned
+methods have achieved excellent performance in OVSS.
+However, since the above methods directly utilize sparse
+text prompts and patch-text similarity maps for segmenta-
+tion while neglecting inter-patch categorical similarity, they
+fail to achieve fine-grained object binding, consequently be-
+ing inadequate for scenarios where camouflaged objects ex-
+hibit high similarity with the background. Therefore, we
+propose a training-free OVCOS framework to achieve fine-
+grained object binding.
+3. Methods
+3.1. Preliminaries
+CLIPis a VLM trained on large-scale image-text pairs,
+comprising a visual encoder and a text encoder. Existing
+research [13, 30, 32, 38] demonstrates that CLIP primarily
+focuses on global alignment between the[CLS]token and
+text embeddings while lacking local representation capabil-
+ities. Therefore, following recent work [38], we remove the
+residual connections and feed-forward network in the final
+layer of the CLIP ViT encoder, and utilize intermediate at-
+tention features from CLIP’s visual branch to refine the fi-
+nal visual layer for preserving more local details for COS.
+For a given camouflaged imageIand corresponding textual
+promptT, CLIP’s visual encoder and text encoder extract
+visual featureF v ={F patch,F cls}and textual featuresF t
+fromIandTrespectively, whereF patch ∈R N×L×D de-
+notes patch features andF cls ∈R N×D is the[CLS]token,
+Ft ∈R C×D denotes the text embedding (Cis the number
+of categories).F cls andF t are employed for performing
+category predictionP(c), which can be formulated as:
+P(c) = exp(cos(Fcls,F c
+t )·τ)PC
+i=1 exp
+ 
+cos(Fcls,F i
+t )·τ
+ ,(1)
+wherecos(·)is cosine similarity calculation operation,τ
+represents the temperature parameter.
+Dense Inference.We projectF patch to the same dimen-
+sion asF t via CLIP’s final linear projection layer and com-
+pute their cosine similarity to obtain a patch-text similarity
+mapS∈R N×L×C for supporting subsequent segmentation
+tasks, which can be formulated as:
+S=cos(F patch,F t),(2)
+24962
+
+
+=== PAGE 4 ===
+SAMis a promptable segmentation model that can seg-
+ment any object based on user-provided points, boxes, or
+binary masks. SAM comprises three components: an image
+encoder, a prompt encoder, and a mask decoder. The im-
+age encoder is responsible for extracting high-dimensional
+image embeddings. The prompt encoder converts point,
+box, and coarse mask prompts into corresponding embed-
+ding vectors. Finally, the mask decoder integrates the image
+embeddings with prompt embeddings to decode the corre-
+sponding object masks.
+3.2. Semantic Probe
+In camouflage scenarios, objects are typically concealed
+within and indistinguishable from their surrounding envi-
+ronment. Existing training-free methods directly utilize
+patch-text similarity maps for object segmentation while
+neglecting inter-patch category affinity, resulting in noisy
+predictions. Moreover, sparse textual prompts (“a photo
+of a <class>” or CamoPrompts [20]) struggle to es-
+tablish precise binding with camouflaged objects, thereby
+causing irrelevant region activation. Therefore, we propose
+a semantic probe to decouple object and background seman-
+tics and measure the categorical similarity among visual
+patches via semantic consistency ranking, thereby achiev-
+ing fine-grained object binding.
+Specifically, to address the sparsity issue in text prompts,
+we employ LLaV A1.5∗ [15] to generate corresponding Ob-
+ject Description (OD) and Background Description (BD)
+for a given input imageI, providing precise textual pri-
+ors for subsequent semantic probes. The OD focuses on
+the distinctive attributes of camouflaged objects (e.g.,color,
+texture, shape), while the BD emphasizes the scene prop-
+erties of the background (e.g.,environmental texture, spa-
+tial distribution). First, the OD and BD are fed into the
+CLIP text encoder to obtain object description embedding
+F od
+t ∈R C×D and background description embedding
+F bd
+t ∈R C×D, which are then combined to form the se-
+mantic probeSP t = [F od
+t ,F bd
+t ]. Subsequently, following
+Eq. (2), a score matrixScore(n, m)∈R N×L×2C is con-
+structed between each patch inF patch andSP t, yielding
+the single-dimensional object-text similarity mapS o and
+background-text similarity mapS b are obtained, which can
+be formulaic as:
+So = 1
+C
+CX
+m=1
+Score(n, m), Sb = 1
+C
+2CX
+m=C+1
+Score(n, m),
+(3)
+wherendenotes the patch index,mis the semantic probe
+index, and each element inScoreindicates the semantic
+matching degree between then-th patch and them-th se-
+mantic probe.
+* To enhance inference speed and computational efficiency, we adopt an offline
+generation approach, employing LLaV A to generate OD and BD, which are stored in
+Next, for each patch’s score row in matrixScore,
+Score(n,:) = [s 1, s2, . . . , s2C], we sort the values in de-
+scending order, assigning average ranks for tied scores,
+to generate the semantic ranking vectorR(n, m)∈
+RN×L×2C , where it indicates the ranking of them-th se-
+mantic probe for then-th patch. Following this, we employ
+the Spearman correlation coefficient on the ranking vector
+R(n, m)to calculate the categorical similaritySim class ∈
+RN×L×L between any two patches, whereSim class ∈
+[0,1], with higher values indicating greater category simi-
+larity. The above process can be described as:
+Simclass(n1, n2) = 1−
+P2C
+m=1 (R(n1, m)−R(n 2, m))2
+M(M 2 −1) ,
+(4)
+wheren 1 andn 2 are the patch index,Mrepresents the num-
+ber of semantic probes. Finally,Sim class is multiplied with
+So andS b respectively to obtain the object semantic confi-
+dence scoreScore o ∈R N×L×1 =Sim class ·S o and back-
+ground semantic confidence scoreScore b ∈R N×L×1 =
+Simclass ·S b, which are then weighted withF patch to pro-
+duce theF o
+patch ∈R N×L×D andF b
+patch ∈R N×L×D after
+object binding. This process can be formulated as:
+F o
+patch =Score o · Fpatch,(5)
+F b
+patch =Score b · Fpatch,(6)
+Finally, based onF o
+patch andF o
+patch according to Eq.
+(2), the object-text similarity mapS ∗
+o ∈R N×L×C and
+background-text similarity mapS ∗
+b ∈R N×L×C are ob-
+tained.
+3.3. Entropy-Guided Text Embedding Adjustment
+Although the semantic probe in Sec. 3.2 achieves prelimi-
+nary object binding, the high similarity between the camou-
+flaged object and background still leads to category predic-
+tion bias. The existing method CASS [9] proposes a hier-
+archical clustering text embedding adjustment strategy that
+leverages object-specific visual vectors from images to opti-
+mize text embeddings. However, due to the high similarity
+between camouflaged objects and their backgrounds, it is
+challenging to extract reliable object-specific visual vectors,
+resulting in text embeddings that cannot accurately rep-
+resent the discriminative features of camouflaged objects,
+thereby compromising classification performance. There-
+fore, we propose an EGTEA strategy, which builds upon
+Sec. 3.2 to suppress background semantic interference, rec-
+tify category prediction bias, and further strengthen object
+binding.
+Specifically, for the object-text similarity mapS ∗
+o from
+Sec. 3.2, we first apply Softmax normalization along the
+a JSON file, rather than generating corresponding descriptions in real-time for each
+image during inference.
+24963
+
+
+=== PAGE 5 ===
+category dimension to obtain the probability distribution
+P robsi,j for each visual patch across different categories:
+P robsi,j =
+exp(S∗
+o i,j)
+PC
+c=1 exp(S∗o i,c)
+,∀i∈[1, L], j∈[1, C],
+(7)
+Following this, the entropyH∈R L for each visual
+patch is computed accordingly:
+H=−
+CX
+c=1
+P robsi,c logP robs i,c,∀i∈[1, L],(8)
+Based onHranking, the top-Kpatches with the high-
+est entropy are selected as camouflaged object candidates,
+while theKpatches with the lowest entropy are chosen as
+background candidates. On this basis, the visual prototype
+for camouflaged objectsε o ∈R 1×D and the background vi-
+sual prototypeε b ∈R 1×D are computed, respectively. Si-
+multaneously, we compute the text embedding prototypeε t
+as the semantic-level representation of the camouflaged ob-
+ject concept. Subsequently, we integrate the camouflaged
+object visual prototype with the text embedding prototype
+to construct an anchor pointA anchor ∈R D that incorpo-
+rates both visual context and semantic priors:
+Aanchor =α·ε o +ε t,(9)
+whereα= 0.3, which controls theε o fusion weights.
+To mitigate interference from background semantic bias
+on category prediction, we subtract from each category’s
+text embedding its projection onto the background visual
+prototype direction to obtain debiased text embeddings
+˙Ft ∈R C×D, which can be formulated as:
+˙Ft =ε t −
+
+εt · εb
+∥εb∥2
+
+· εb
+∥εb∥2
+,(10)
+where∥ · ∥denotes an L2 norm. Finally, by fusing the ˙Ft
+with theA anchor, we obtain the adjusted text embedding
+F ∗
+t ∈R C×D:
+F ∗
+t =γ·A anchor + (1−γ)· ˙Ft,(11)
+whereγ= 0.3, which governs the intensity of background
+suppression and the degree of alignment, respectively. After
+that, according to Eq. (1),F ∗
+t is employed to predict the
+category logits with[CLS]token.
+3.4. Adaptive Hybrid Prompt Generation
+The OVCOS task requires the production of ultimate seg-
+mentation masks by a decoding process. Considering the
+training-free setting, we introduce SAM to segment camou-
+flaged objects. Although SAM exhibits remarkable generic
+segmentation capabilities, its performance heavily depends
+on the quality and accuracy of the prompts. In camou-
+flaged scenarios, where objects and backgrounds are of-
+ten indistinguishable, SAM tends to segment irrelevant re-
+gions, making it difficult to obtain complete camouflaged
+object masks. To this end, we propose an AHPG strategy to
+achieve precise segmentation.
+Building upon the refined object-text similarity mapS ∗
+o
+and background-text similarity mapS ∗
+b , we further generate
+point prompts and box prompts to achieve precise segmen-
+tation. Specifically, given the similarity mapsS ∗
+o andS ∗
+b ,
+we first calculate the top-K∗ spatial positions with the high-
+est similarity scores inS ∗
+o andS ∗
+b , respectively, as follows:
+Scoreo(C) = 1
+K ∗
+K∗
+X
+i=1
+S∗
+o [pi, C],(12)
+Scoreb(C) = 1
+K ∗
+K∗
+X
+i=1
+S∗
+b [pi, C],(13)
+wherep i denotes the top-K∗ spatial positions with the high-
+est similarity scores,K ∗ = [0.1·L]. Next, the optimal fore-
+ground and background categoriesc ∗
+o andc ∗
+b are selected,
+which can be formulated as:
+c∗
+o = arg max
+c∈C
+Scoreo(c),(14)
+c∗
+b = arg max
+c∈C
+Scoreb(c),(15)
+Subsequently, based onc ∗
+o andc ∗
+b, the corresponding
+single-channel similarity maps ˙S∗
+o and ˙S∗
+b are derived from
+S∗
+o andS ∗
+b respectively. Next, we reshape ˙S∗
+o and ˙S∗
+b into
+4D tensors to facilitate foreground and background candi-
+date pointsP f g andP bg generation:
+Pf g ={(x, y)| ˙S∗
+o (x, y)≥τ m},(16)
+Pbg ={(x, y)| ˙S∗
+b (x, y)≥τ m},(17)
+whereτ m = 0.8. To prevent foreground candidate points
+from being mixed into background candidate points, we
+perform fusion and deduplication on the candidate point set:
+Pall =P f g ∪ Pbg,P= Unique(P all),(18)
+whereUnique(·)is point deduplication, which is detailed
+in the supplementary material. Finally, we map the afore-
+mentioned point set back to the original image coordinates
+to obtain the final point setP. To enhance segmentation sta-
+bility, we further generate bounding box prompts based on
+the foreground point setP f g. Specifically, we first compute
+the minimum bounding rectangle from the foreground point
+set to derive initial bounding box coordinates:
+Bmin = [min(xfg),min(y fg)],(19)
+24964
+
+
+=== PAGE 6 ===
+Table 1. On the OVCamo dataset, we conduct quantitative comparisons with the current state-of-the-art training-free OVSS and OVCOS.
+↑means higher is better, and↓means lower is better. The best two results are marked inboldand underline, respectively.
+Model VLM Fair Training-FreecS m ↑cF ω
+β ↑cM AE↓cF β ↑cE m ↑cIoU↑
+SimSeg [40] CVPR23 CLIP-ViT-B/16 ✗ ✗ 0.053 0.049 0.921 0.056 0.098 0.047
+OVSeg [14]CVPR23CLIP-ViT-L/14✗ ✗0.024 0.046 0.954 0.056 0.130 0.046
+ODISE [33] CVPR23 CLIP-ViT-L/14 ✗ ✗ 0.187 0.119 0.700 0.211 0.298 0.167
+SAN [34]CVPR23CLIP-ViT-L/14✗ ✗0.275 0.202 0.612 0.220 0.318 0.189
+FC-CLIP [42] NIPS23 CLIP-ConvNeXt-L ✗ ✗ 0.080 0.076 0.872 0.090 0.191 0.072
+CAT-Seg [3]CVPR24CLIP-ViT-L/14✗ ✗0.181 0.106 0.719 0.123 0.196 0.094
+OVCoser [20] ECCV24 CLIP-ConvNeXt-L ✗ ✗ 0.579 0.490 0.336 0.520 0.616 0.443
+SuCLIP [23]ICCV25CLIP-ConvNeXt-L✗ ✗0.667 0.594 0.242 0.633 0.722 0.540
+MaskCLIP [45] ECCV22 CLIP-ViT-B/16 ✓ ✓ 0.242 0.091 0.598 0.106 0.259 0.084
+ProxyCLIP [12]ECCV24CLIP-ViT-B/16✓ ✓0.350 0.164 0.413 0.204 0.390 0.123
+ClearCLIP [11] ECCV24 CLIP-ViT-L/14 ✓ ✓ 0.245 0.072 0.566 0.111 0.293 0.097
+SCLIP [29]ECCV24CLIP-ViT-L/14✓ ✓0.283 0.117 0.545 0.136 0.306 0.108
+CASS [9] CVPR25 CLIP-ViT-B/16 ✓ ✓ 0.328 0.128 0.424 0.156 0.407 0.097
+ResCLIP [38]CVPR25CLIP-ViT-L/14✓ ✓0.326 0.156 0.508 0.178 0.346 0.144
+Ours CLIP-ViT-B/16 ✓ ✓ 0.371 0.294 0.399 0.241 0.426 0.243
+Ours CLIP-ViT-L/14 ✓ ✓ 0.502 0.418 0.379 0.450 0.543 0.371
+Bmax = [max(xfg),max(y fg)],(20)
+To prevent the occurrence of zero-area bounding boxes,
+we perform axis-aligned expansion to obtain the extended
+bounding box coordinates:
+Bfinal = [Bmin −δ, B max +δ].(21)
+whereρ= 0.1,δ=ρ·max(w B, hB),w B = max(x f g)−
+min(xf g),h B = max(y f g)−min(y f g). After obtaining
+the final point setPand bounding box promptsB final, they
+are fed into SAM to produce the final segmentation masks.
+4. Experiments
+4.1. Experimental Setup
+Datasets and Metrics.Following established work [20],
+we utilize the OVCamo benchmark to evaluate model per-
+formance. This benchmark consists of base classes and
+novel classes, with the novel classes containing 61 camou-
+flage categories designed to evaluate the model’s general-
+ization capability on unseen categories. To maintain con-
+sistency with the OVCoser [20], we employ six quantitative
+metrics for comprehensive performance evaluation, includ-
+ing cSm, cF ω
+β , cM AE, cFβ, cEm, and cIoU.
+Implementation Details.This framework is imple-
+mented in PyTorch and evaluated on a single NVIDIA
+A40 GPU. In our experiments, CLIP ViT-L/14 [21] is em-
+ployed as the VLM, SAM ViT-H [10] as the segmenter, and
+LLaV A-1.5-7B [15] as the MLLM, with all these models
+remaining frozen. The input image is resized to 336×336.
+4.2. Comparison with state-of-the-art
+Quantitative Evaluation.Tab. 1 presents the comparison
+results with advanced methods, covering both training-free
+OVSS and OVCOS algorithms. It is important to clarify
+that no existing training-free OVCOS methods are avail-
+able, so we reimplemented certain training-free OVSS algo-
+rithms and adapted them to OVCOS. Since these training-
+free OVSS methods rely on sparse textual prompts and do
+not consider categorical semantic relationships among vi-
+sual patches, they struggle to handle the core character-
+istic of high similarity between camouflaged objects and
+backgrounds. Consequently, they demonstrate suboptimal
+performance on the OVCamo. We report experimental re-
+sults based on two CLIP architectures: CLIP-ViT-B/16 and
+CLIP-ViT-L/14. Specifically, compared to the recent CASS
+method based on CLIP-ViT-B/16, our approach surpasses it
+by 7.2% across all six metrics. Similarly, when compared to
+the ResCLIP method based on CLIP-ViT-L/14, our method
+also exceeds it by 16.8% on all six metrics.
+Qualitative Evaluation.Fig. 3 presents qualitative com-
+parison results with advanced training-free OVSS methods.
+Existing methods typically yield either noisy segmentation
+results or incomplete masks. For instance, when segment-
+ing a “butterfly”, both ProxyCLIP and ResCLIP struggle to
+distinguish between the “butterfly” and the “flower”, result-
+ing in noisy masks. Similarly, when segmenting the “stick
+insect”, ClearCLIP and MaskCLIP fail to segment any cam-
+ouflaged objects in the scene. Furthermore, they also mis-
+24965
+
+
+=== PAGE 7 ===
+seal seal seal seal seal seal
+Images GT Ours CASS ProxyCLIP ResCLIP SCLIP ClearCLIP MaskCLIP
+seal
+butterfly
+wolf
+ant
+chameleon
+stick insect stick insect
+chameleon
+ant
+wolf
+butterfly
+seal
+moth moth bee bat cicadabee
+seal wolf wolf seal stick insect seal
+ant ant ant ant ant ant
+chameleon chameleon moth dragonfly egyptian
+nightjar
+cicada
+owlfly larva wormchameleon wormstick insectstick insect
+Figure 3. Qualitative comparison on OVCamo. The yellow font is the true class, the white font indicates the correctly predicted class, and
+the red font denotes the incorrectly predicted class.
+Table 2. Ablation comparison of proposed components.
+No.Model Memory (G)Speed (FPS)cSm↑cFωβ↑cM AE↓cFβ↑cEm↑cIoU↑
+#1 Baseline 4.58 65.1 0.2480.0670.6520.0550.2090.041#2 +SP 4.58 55.3 0.416 0.291 0.459 0.312 0.431 0.270#3 +SP+SAM 8.26 42.8 0.4470.3290.4320.3510.4640.308#4 +SP+SAM+AHPG8.26 36.7 0.493 0.391 0.386 0.437 0.527 0.356#5 +SAM+SP+AHPG+EGTEA8.26 30.2 0.5020.4180.3790.4500.5430.371
+classify the categories of camouflaged objects. Conversely,
+our approach accurately segments camouflaged objects and
+correctly predicts their corresponding category.
+4.3. Ablation Studies
+We do ablation studies using CLIP ViT-L/14 as an example
+to evaluate the effectiveness of the proposed method.
+Component Ablation Analysis.Tab. 2 shows the relative
+contributions of each component. Using CLIP ViT-L/14
+as the baseline (No.#1). Specifically, the semantic probe
+(No.#2) reduces background semantic interference and sig-
+nificantly enhances model performance, achieving an av-
+erage improvement of 15.1% across six evaluation met-
+rics. Further incorporation of SAM (No.#3) to enhance seg-
+mentation capability provides an additional 2.6% average
+performance improvement. Building upon this, employing
+AHPG (No.#4) generates high-quality prompts to optimize
+SAM’s segmentation performance, yielding 3.9% average
+improvement. By employing EGTEA (No.#5) to optimize
+text embeddings for achieving precise binding with cam-
+ouflaged objects, the model attains optimal performance.
+Additionally, Tab. 2 presents the GPU memory usage and
+inference speed of the framework during inference. Specif-
+ically, demonstrating that the proposed framework has an
+Table 3. Ablation analysis of the semantic probe.
+No. Model cSm↑cF ωβ ↑cM AE↓cF β↑cE m↑cIoU↑
+#1 w/o (LLaV A)0.478 0.385 0.391 0.421 0.517 0.333
+#2 SP∗t 0.495 0.400 0.383 0.434 0.538 0.352
+#3 SP∗∗t 0.483 0.395 0.389 0.432 0.523 0.341
+#4 Ours 0.502 0.418 0.379 0.450 0.543 0.371
+CS CFW CMAE CF CE CIoU
+KL 0.487 0.395 0.384 0.425 0.529 0.353
+JS 0.499 0.402 0.382 0.432 0.538 0.360
+Spearman (Ours)0.502 0.418 0.379 0.450 0.543 0.371
+0.25
+0.42
+0.59
+CS CFW CMAE CF CE CIoU
+KL JS Spearman (Ours)
+0.487
+0.499 0.502
+0.395 0.402
+0.418
+0.384 0.382 0.379
+0.425 0.432
+0.450
+0.529 0.538 0.543
+0.353 0.360 0.371
+𝐜𝑺𝒎 𝐜𝑭𝜷
+𝒘 𝐜𝑴𝑨𝑬 𝐜𝑭𝜷 𝐜𝑬𝒎 cIoU
+Figure 4. Quantitative results of different distance metrics.
+Images Ours
+w/o LLaVA 𝑆𝑃𝑡
+∗∗𝑆𝑃𝑡
+∗
+Figure 5. Visualization of patch-text similarity maps under dif-
+ferent semantic probe variants. The regions marked with yellow
+boxes indicate the regions of binding bias under this variant.
+ideal inference speed and computational efficiency.
+24966
+
+
+=== PAGE 8 ===
+Table 4. Ablation analysis of AHPG and EGTEA.
+No. Model cSm↑cF ωβ ↑cM AE↓cF β ↑cE m↑cIoU↑
+#1 w/o (box) 0.498 0.402 0.383 0.440 0.537 0.346
+#2 w/o (points)0.485 0.392 0.388 0.425 0.525 0.321
+#3 AHPG* 0.490 0.397 0.382 0.434 0.534 0.358
+#4 CASS 0.494 0.406 0.386 0.437 0.529 0.349
+#5 EGTEA* 0.500 0.409 0.384 0.439 0.539 0.354
+#6 Ours 0.502 0.418 0.379 0.450 0.543 0.371
+Images Ours GTw/o (box) w/o (points) AHPG*
+Figure 6. Qualitative results under different prompt settings. The
+regions marked by yellow boxes indicate incomplete segmentation
+areas under this prompt.
+Ablation Analysis of Semantic Probe.Tab. 3 presents
+the quantitative ablation results of semantic probes. To
+validate the effectiveness of object and background de-
+scriptions, we first remove LLaV A (No.#1) and employ
+CamoTemplate [20] as the prompt template, resulting in
+a 2.4% decrease in the model’s average performance. We
+also verify the individual effectiveness of either the object
+semantic probe (No.#2) or the background semantic probe
+(No.#3). Compared to using only background semantic val-
+idation, employing solely the object semantic probe leads
+to a significant 7.4% performance decline. Furthermore,
+we visualize the patch-text similarity maps under different
+semantic probe settings. As shown in Fig. 5, sparse text
+prompts induce a background bias in the model, causing it
+to focus excessively on background regions. In contrast, us-
+ing either only the object description or only the background
+description as the semantic probe struggles to achieve pre-
+cise object grounding, consequently generating noisy pre-
+diction results.
+We compared Spearman correlation with KL divergence
+and Jensen-Shannon divergence. Fig. 4 shows that the
+Spearman correlation coefficient achieves the best perfor-
+mance. This is because the Spearman correlation coef-
+ficient directly captures the relationship between the se-
+mantic ranking vectors of two patches. In contrast, both
+KL divergence and JS divergence rely on distributions con-
+structed from absolute response values to compute distance
+metrics. In camouflage scenarios, the absolute response val-
+ues of objects and backgrounds tend to converge due to vi-
+sual ambiguity, causing KL and JS divergences to incor-
+rectly classify them as distributionally similar, ultimately
+leading to misjudgment of category similarity.
+Ablation Analysis of AHPG.To validate the effective-
+ness of the proposed AHPG strategy, we conducted abla-
+Figure 7. Visualization of t-SNE on OVCamo 61 novel classes.
+Please zoom in to view the details: the left image presents the
+feature distribution of the original CLIP, while the right image dis-
+plays the feature distribution optimized by EGTEA.
+tion studies, with quantitative results presented in Tab. 4.
+Specifically, using only box prompts (No.#2) or only point
+prompts (No.#1) to assist SAM in generating segmentation
+results led to performance degradation of 0.6% and 2.4%,
+respectively. Furthermore, generating prompts based solely
+on the object-text similarity map (No.#3) resulted in a 1.4%
+performance drop.
+To more intuitively demonstrate the effectiveness of
+AHPG, we visualize segmentation results under different
+prompt settings. As shown in Fig. 6, using only point
+prompts leads to incomplete segmentation. Although box
+prompts improve segmentation completeness, they still suf-
+fer from omissions in local object regions. Similarly, gen-
+erating box and point prompts using only object-text simi-
+larity maps yields incomplete segmentation results.
+Ablation Analysis of EGTEA.To validate the effec-
+tiveness of the EGTEA, we conduct ablation experiments,
+with quantitative results shown in Tab. 4. Specifically,
+when replacing EGTEA with the hierarchical text embed-
+ding strategy from CASS [9] for text embedding adjust-
+ment, the model performance decreased by 0.7%. Subse-
+quently, removing the background semantic debiasing mod-
+ule from EGTEA led to a 0.2% performance drop. Further-
+more, Fig. 7 visualizes the t-SNE feature distribution after
+EGTEA processing. It can be seen that a more accurate
+binding is achieved between the camouflage object category
+and the visual patch features.
+5. Conclusion
+In this work, we proposed a fine-grained object binding and
+adaptive hybrid prompt framework to achieve precise object
+binding. Specifically, we designed semantic probes to de-
+couple object and background features and utilized seman-
+tic ranking consistency to measure categorical similarity be-
+tween visual patches, achieving precise object binding. Fur-
+thermore, we designed an EGTEA to suppress background
+semantic interference, further enhancing object binding ca-
+pability. Finally, the AHPG is used to help SAM segment
+objects.
+24967
+
+
+=== PAGE 9 ===
+Acknowledgments.This work is supported by the
+National Natural Science Foundation of China un-
+der Grants 62576149 and 62472067, and the Fun-
+damental Research Funds for the Central University,
+JLU.
+References
+[1] Mathilde Caron, Hugo Touvron, Ishan Misra, Herv ´e J´egou,
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-
+ing properties in self-supervised vision transformers. InInt.
+Conf. Comput. Vis., pages 9650–9660, 2021. 2
+[2] Xuehan Chen, Guangyu Ren, Tianhong Dai, Tania Stathaki,
+and Hengyan Liu. Enhancing prompt generation with adap-
+tive refinement for camouflaged object detection. InInt.
+Conf. Comput. Vis., pages 20672–20682, 2025. 1
+[3] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-seg:
+Cost aggregation for open-vocabulary semantic segmenta-
+tion. InIEEE Conf. Comput. Vis. Pattern Recog., pages
+4113–4123, 2024. 2, 6
+[4] Ji Du, Xin Wang, Fangwei Hao, Mingyang Yu, Chunyuan
+Chen, Jiesheng Wu, Bin Wang, Jing Xu, and Ping Li. Be-
+yond single images: Retrieval self-augmented unsupervised
+camouflaged object detection. InInt. Conf. Comput. Vis.,
+pages 22131–22142, 2025. 2
+[5] Chao Hao, Zitong Yu, Xin Liu, Jun Xu, Huanjing Yue, and
+Jingyu Yang. A simple yet effective network based on vi-
+sion transformer for camouflaged object and salient object
+detection.IEEE Trans. Image Process., 34:608–622, 2025.
+2
+[6] Chunming He, Rihan Zhang, Fengyang Xiao, Chengyu
+Fang, Longxiang Tang, Yulun Zhang, Linghe Kong, Deng-
+Ping Fan, Kai Li, and Sina Farsiu. Run: Reversible unfold-
+ing network for concealed object segmentation. InInt. Conf.
+Mach. Learn., pages 1–11, 2025. 2
+[7] Xihang Hu, Fuming Sun, Jiazhe Liu, Feilong Xu, and Xi-
+aoli Zhang. St-sam: Sam-driven self-training framework for
+semi-supervised camouflaged object detection. InACM Int.
+Conf. Multimedia, page 8194–8203, 2025. 2
+[8] Haolin Ji, Fengying Xie, Linpeng Pan, Yushan Zheng, and
+Zhenwei Shi. Huntnet: Homomorphic unified nexus topol-
+ogy for camouflaged object detection.IEEE Trans. Image
+Process., 34:6068–6082, 2025. 1
+[9] Chanyoung Kim, Dayun Ju, Woojung Han, Ming-Hsuan
+Yang, and Seong Jae Hwang. Distilling spectral graph for
+object-context aware open-vocabulary semantic segmenta-
+tion. InIEEE Conf. Comput. Vis. Pattern Recog., pages
+15033–15042, 2025. 1, 2, 4, 6, 8
+[10] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+thing. InInt. Conf. Comput. Vis., pages 4015–4026, 2023. 2,
+6
+[11] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Clearclip: Decom-
+posing clip representations for dense vision-language infer-
+ence. InEur. Conf. Comput. Vis., pages 143–160, 2024. 1, 3,
+6
+[12] Mengcheng Lan, Chaofeng Chen, Yiping Ke, Xinjiang
+Wang, Litong Feng, and Wayne Zhang. Proxyclip: Proxy at-
+tention improves clip for open-vocabulary segmentation. In
+Eur. Conf. Comput. Vis., pages 70–88, 2024. 2, 6
+[13] Yunheng Li, Yuxuan Li, Quan-Sheng Zeng, Wenhai Wang,
+Qibin Hou, and Ming-Ming Cheng. Unbiased region-
+language alignment for open-vocabulary dense prediction. In
+Int. Conf. Comput. Vis., pages 23795–23805, 2025. 1, 3
+[14] Feng Liang, Bichen Wu, Xiaoliang Dai, Kunpeng Li, Yi-
+nan Zhao, Hang Zhang, Peizhao Zhang, Peter Vajda, and
+Diana Marculescu. Open-vocabulary semantic segmentation
+with mask-adapted clip. InIEEE Conf. Comput. Vis. Pattern
+Recog., pages 7061–7070, 2023. 2, 6
+[15] Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee.
+Improved baselines with visual instruction tuning. InIEEE
+Conf. Comput. Vis. Pattern Recog., pages 26296–26306,
+2024. 4, 6
+[16] Jiaming Liu, Linghe Kong, and Guihai Chen. Improving sam
+for camouflaged object detection via dual stream adapters. In
+Int. Conf. Comput. Vis., pages 21906–21916, 2025. 1
+[17] Weihuang Liu, Xi Shen, Chi-Man Pun, and Xiaodong Cun.
+Explicit visual prompting for universal foreground segmen-
+tations.IEEE Trans. Pattern Anal. Mach. Intell., 48(2):1762–
+1777, 2026. 2
+[18] Naisong Luo, Yuan Wang, Yuwen Pan, and Rui Sun. Focus
+on the object: Gradient-based feature modulation for camou-
+flaged object segmentation. InACM Int. Conf. Multimedia,
+pages 470–478, 2025. 1
+[19] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+Trans. Mach. Learn. Res., 2024:1–32, 2024. 2
+[20] Youwei Pang, Xiaoqi Zhao, Jiaming Zuo, Lihe Zhang, and
+Huchuan Lu. Open-vocabulary camouflaged object segmen-
+tation. InEur. Conf. Comput. Vis., pages 476–495, 2024. 1,
+2, 4, 6, 8
+[21] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learn-
+ing transferable visual models from natural language super-
+vision. InInt. Conf. Mach. Learn., pages 8748–8763, 2021.
+1, 6
+[22] Guangyu Ren, Hengyan Liu, Michalis Lazarou, and Tania
+Stathaki. Multi-modal segment anything model for camou-
+flaged scene segmentation. InInt. Conf. Comput. Vis., pages
+19882–19892, 2025. 2
+[23] Peng Ren, Tian Bai, Jing Sun, and Fuming Sun. Seeing
+the unseen: A semantic alignment and context-aware prompt
+framework for open-vocabulary camouflaged object segmen-
+tation. InInt. Conf. Comput. Vis., pages 23657–23666, 2025.
+1, 2, 6
+[24] Xiangheng Shan, Dongyue Wu, Guilin Zhu, Yuanjie Shao,
+Nong Sang, and Changxin Gao. Open-vocabulary seman-
+tic segmentation with image embedding balancing. InIEEE
+24968
+
+
+=== PAGE 10 ===
+Conf. Comput. Vis. Pattern Recog., pages 28412–28421,
+2024. 1
+[25] Tong Shao, Zhuotao Tian, Hang Zhao, and Jingyong Su. Ex-
+plore the potential of clip for training-free open vocabulary
+semantic segmentation. InEur. Conf. Comput. Vis., pages
+139–156, 2024. 1
+[26] Ze Song, Xudong Kang, Xiaohui Wei, Jinyang Liu, Zheng
+Lin, and Shutao Li. Continuous feature representation for
+camouflaged object detection.IEEE Trans. Image Process.,
+34:5672–5685, 2025. 2
+[27] Lin Sun, Jiale Cao, Jin Xie, Xiaoheng Jiang, and Yanwei
+Pang. Cliper: Hierarchically improving spatial representa-
+tion of clip for open-vocabulary semantic segmentation. In
+Int. Conf. Comput. Vis., pages 23199–23209, 2025. 1
+[28] Yanguang Sun, Jiawei Lian, Jian Yang, and Lei Luo.
+Controllable-lpmoe: Adapting to challenging object seg-
+mentation via dynamic local priors from mixture-of-experts.
+InInt. Conf. Comput. Vis., pages 22327–22337, 2025. 2
+[29] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethinking
+self-attention for dense vision-language inference. InEur.
+Conf. Comput. Vis., pages 315–332, 2024. 1, 3, 6
+[30] Junjie Wang, Bin Chen, Yulin Li, Bin Kang, Yichi Chen,
+and Zhuotao Tian. Declip: Decoupled learning for open-
+vocabulary dense perception. InIEEE Conf. Comput. Vis.
+Pattern Recog., pages 14824–14834, 2025. 3
+[31] Jianzong Wu, Xiangtai Li, Shilin Xu, Haobo Yuan, Henghui
+Ding, Yibo Yang, Xia Li, Jiangning Zhang, Yunhai Tong,
+Xudong Jiang, et al. Towards open vocabulary learning: A
+survey.IEEE Trans. Pattern Anal. Mach. Intell., 46(7):5092–
+5113, 2024. 1
+[32] Size Wu, Wenwei Zhang, Lumin Xu, Sheng Jin, Xiangtai Li,
+Wentao Liu, and Chen Change Loy. Clipself: Vision trans-
+former distills itself for open-vocabulary dense prediction. In
+Int. Conf. Learn. Represent., pages 1–13, 2024. 1, 3
+[33] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+IEEE Conf. Comput. Vis. Pattern Recog., pages 2955–2966,
+2023. 2, 6
+[34] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. InIEEE Conf. Comput. Vis. Pattern Recog.,
+pages 2945–2954, 2023. 2, 6
+[35] Xiwei Xuan, Ziquan Deng, and Kwan-Liu Ma. Reme:
+A data-centric framework for training-free open-vocabulary
+segmentation. InInt. Conf. Comput. Vis., pages 20954–
+20965, 2025. 1
+[36] Weiqi Yan, Lvhai Chen, Huaijia Kou, Shengchuan Zhang,
+Yan Zhang, and Liujuan Cao. UCOD-DPL: unsuper-
+vised camouflaged object detection via dynamic pseudo-
+label learning. InIEEE Conf. Comput. Vis. Pattern Recog.,
+pages 30365–30375, 2025. 2
+[37] Weiqi Yan, Lvhai Chen, Shengchuan Zhang, Yan Zhang, and
+Liujuan Cao. Scout: Semi-supervised camouflaged object
+detection by utilizing text and adaptive data selection. In
+IJCAI, pages 2170–2178, 2025. 2
+[38] Yuhang Yang, Jinhong Deng, Wen Li, and Lixin Duan.
+Resclip: Residual attention for training-free dense vision-
+language inference. InIEEE Conf. Comput. Vis. Pattern
+Recog., pages 29968–29978, 2025. 1, 3, 6
+[39] Sheng Ye, Xin Chen, Yan Zhang, Xianming Lin, and Liujuan
+Cao. Escnet:edge-semantic collaborative network for cam-
+ouflaged object detection. InInt. Conf. Comput. Vis., pages
+20053–20063, 2025. 1
+[40] Muyang Yi, Quan Cui, Hao Wu, Cheng Yang, Osamu
+Yoshie, and Hongtao Lu. A simple framework for text-
+supervised semantic segmentation. InIEEE Conf. Comput.
+Vis. Pattern Recog., pages 7071–7080, 2023. 2, 6
+[41] Bowen Yin, Xuying Zhang, Li Liu, Ming-Ming Cheng,
+Yongxiang Liu, and Qibin Hou. Camouflaged object detec-
+tion with adaptive partition and background retrieval.Int. J.
+Comput. Vis., 133(7):4877–4893, 2025. 1
+[42] Qihang Yu, Ju He, Xueqing Deng, Xiaohui Shen, and Liang-
+Chieh Chen. Convolutions die hard: Open-vocabulary seg-
+mentation with single frozen convolutional clip. InAdv. Neu-
+ral Inform. Process. Syst., pages 32215–32234, 2023. 2, 6
+[43] Chenxi Zhang, Qing Zhang, Jiayun Wu, and Youwei Pang.
+Cgcod: Class-guided camouflaged object detection. InACM
+Int. Conf. Multimedia, pages 4369–4377, 2025. 1
+[44] Dingwen Zhang, Liangbo Cheng, Yi Liu, Xinggang Wang,
+and Junwei Han. Mamba capsule routing towards part-whole
+relational camouflaged object detection.Int. J. Comput. Vis.,
+133(10):7201–7221, 2025. 2
+[45] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. InEur. Conf. Comput. Vis., pages
+696–712, 2022. 1, 6
+[46] Zhangjun Zhou, Yiping Li, Chunlin Zhong, Jianuo Huang,
+Jialun Pei, Hua Li, and He Tang. Rethinking detecting salient
+and camouflaged objects in unconstrained scenes. InInt.
+Conf. Comput. Vis., pages 22372–22382, 2025. 2
+24969

@@ -1,0 +1,1089 @@
+=== PAGE 1 ===
+HOPS: Hierarchical Open-vocabulary Part Segmentation with
+Attention-Aware Filtering and Affinity-Guided Enhancement
+Xinlong Li1 Di Lin1* Shaoyiyi Gao1 Yaxuan Liu2 Jixian He2 Jiaxin Li3
+Ruonan Liu2 Qing Guo4 Kairui Yang1 Wei Feng1
+1Tianjin University, China 2Shanghai Jiao Tong University, China
+3Southwest University, China 4VCIP, CS, Nankai University, China
+lxl zs@tju.edu.cn
+Abstract
+Open-vocabulary part segmentation (OVPS) aims to seg-
+ment objects into fine-grained parts while generalizing
+to unseen categories. Existing VLM-based methods face
+two challenges: (1) object over-segmentation, caused by
+overly broad semantic activations, and (2) part under-
+segmentation, resulting from weak fine-grained percep-
+tion. To address these issues, we propose HOPS, a two-
+stage framework for hierarchical open-vocabulary part
+segmentation. HOPS introduces a bidirectional seman-
+tic–structural attention fusion mechanism that integrates
+CLIP’s semantic alignment with DINO’s structural per-
+ception. In the object segmentation stage, the Attention-
+Aware Filtering Module (AFM) refines cross-modal simi-
+larity maps via semantic–structural attention to suppress
+object over-segmentation. In the part segmentation stage,
+the Affinity-Guided Enhancement Module (AEM) iteratively
+propagates part responses to progressively expand activa-
+tion regions, effectively mitigating part under-segmentation.
+Experiments on Pascal-Part-116, ADE20K-Part-234, and
+PartImageNet demonstrate that HOPS achieves state-of-
+the-art performance with superior generalization. Our code
+is available at https://github.com/TJU-IDVLab/HOPS.
+1. Introduction
+Part segmentation aims to decompose an object into fine-
+grained semantic components. Open-vocabulary part seg-
+mentation (OVPS) is an emerging task in computer vision.
+Unlike traditional part segmentation [19, 43, 44], OVPS
+[7, 8, 26, 27, 47] requires models not only to segment part
+categories seen during training, but also to generalize to
+novel categories. OVPS has significant application value
+in fields such as medical image analysis [3, 39, 48], image
+editing [2, 23, 30], and robotic manipulation [20, 56].
+*Corresponding author.
+Ground Truth Object over-segmentation
+Ground Truth Part under-segmentation
+Figure 1. Issues of existing OVPS methods. PartCLIPSeg [7]
+exhibits over-segmentation on “train”, where the predicted mask
+includes irrelevant regions. PartCATSeg [8] suffers from under-
+segmentation on parts like “car front”, “car side”, “car headlight”,
+and “car mirror”, where the predicted masks either fail to fully
+cover the true target regions or are completely missing.
+Most OVPS methods are adapted from open-vocabulary
+semantic segmentation (OVSS) models. Their core idea
+is to leverage the cross-modal semantic alignment of vi-
+sion–language models (VLMs) [24, 25, 36] for fine-grained
+part segmentation. PartCLIPSeg [7], built on CLIPSeg [33],
+introduces attention control and joint object–part training to
+improve part localization. PartCATSeg [8], based on CAT-
+Seg [6], proposes a decoupled cost aggregation strategy and
+employs DINO [34] to enhance the structural understand-
+ing of objects. Other methods (e.g. PartGLEE [26], PBAPS
+[27]) adopt a hierarchical paradigm that first segments ob-
+jects and then parses parts within object regions, thus cap-
+turing the object–part structural dependencies.
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+27719
+
+
+=== PAGE 2 ===
+Although not all OVPS methods explicitly perform ob-
+ject segmentation, accurate object-level perception is cru-
+cial for capturing spatial structure and guiding part rea-
+soning. However, current models often suffer from ob-
+ject over-segmentation (see Fig. 1). This issue stems from
+the training objective of VLMs (e.g. CLIP [36], ALIGN
+[24]), which prioritize global image–text alignment over
+fine-grained, pixel-level correspondence [36, 42, 57]. While
+CLIP’s cross-modal similarity maps capture semantically
+related regions, their weak spatial precision often pro-
+duces overly broad activations, leading to object over-
+segmentation (see Sec. 3.1 for details). To address this,
+we propose the Attention-Aware Filtering Module (AFM),
+which incorporates a bidirectional semantic–structural at-
+tention fusion mechanism between CLIP and DINO to re-
+fine the cost map (i.e. cross-modal similarity map) without
+pixel-level supervision. AFM leverages the complementary
+strengths of both models: CLIP’s attention highlights se-
+mantically related regions but includes structurally irrele-
+vant areas (e.g. when segmenting a cow, CLIP may pro-
+duce high responses on the meadow due to their frequent
+co-occurrence during training), whereas DINO’s attention
+focuses on fine-grained structural cues such as boundaries
+and topology. Through bidirectional fusion, DINO con-
+strains CLIP’s attention to suppress connections that are se-
+mantically related but structurally inconsistent, while CLIP
+guides DINO to focus on semantically meaningful regions.
+This process yields a semantic–structural attention, which
+is used to enhance activations within target object regions
+and suppress false responses in irrelevant areas, thereby al-
+leviating object over-segmentation.
+Existing OVPS methods also suffer from part under-
+segmentation (Fig. 1). This issue arises from the limited
+fine-grained semantic understanding of VLMs, which strug-
+gle to accurately localize small parts within the entire im-
+age [8, 47]. Without explicit spatial constraints, the model
+produces weak activations for small parts (see Fig. 2). Al-
+though hierarchical frameworks such as PBAPS [27] alle-
+viate this issue by performing part segmentation within ob-
+ject regions, they still fail to achieve complete part coverage
+due to weak initial part responses. To address part under-
+segmentation, we propose the Affinity-Guided Enhance-
+ment Module (AEM). AEM builds a semantic–structural
+affinity matrix by fusing CLIP and DINO attentions, and
+employs an adaptive iterative enhancement mechanism to
+propagate salient part responses toward weakly activated
+target regions. This process progressively expands part ac-
+tivation areas while maintaining semantic coherence, thus
+effectively alleviating part under-segmentation. Integrated
+into the Hierarchical Open-V ocabulary Part Segmentation
+(HOPS) framework, AEM significantly improves the com-
+pleteness and accuracy of part segmentation.
+The contributions of this work are threefold: (i) We
+systematically analyze two challenges in OVPS—object
+over-segmentation and part under-segmentation. (ii) By
+leveraging the complementarity between CLIP’s cross-
+modal semantic alignment and DINO’s structural percep-
+tion, we propose AFM and AEM to mitigate object over-
+segmentation and part under-segmentation, respectively.
+(iii) Extensive experiments on multiple benchmark datasets
+demonstrate that HOPS achieves state-of-the-art perfor-
+mance with superior generalization to unseen categories.
+2. Related Work
+Open-Vocabulary Semantic Segmentation.Existing
+OVSS methods primarily follow two paradigms. The two-
+stage paradigm [12, 15, 17, 52] first generates class-agnostic
+masks and then classifies each mask individually using
+VLMs [24, 25, 36]. For instance, ODISE [51] extracts im-
+age features via Stable Diffusion [37] and employs a mask
+generator [5, 28] to produce candidate masks, which are
+classified by CLIP. However, the lack of semantic guid-
+ance during mask generation often yields imprecise masks.
+The one-stage paradigm [6, 53, 55] directly calculates im-
+age–text similarity for pixel-wise classification. TagCLIP
+[29] omits the final self-attention layer of CLIP to re-
+tain spatial detail and employs patch-level classification
+with dual-masking attention refinement and category re-
+identification. CATSeg [6] builds a cost map via cross-
+modal similarity and introduces spatial and class aggrega-
+tion modules to improve semantic consistency and category
+discrimination. Our HOPS builds upon the cost aggregation
+of CATSeg. In addition, some methods [1, 21, 46] synthe-
+size visual prototypes using generative models [13, 14, 37],
+enabling training-free OVSS via prototype matching.
+Open-Vocabulary Part Segmentation.OVPS [9, 10,
+45, 49] requires modeling structural dependencies between
+parts and objects, demanding more powerful feature rep-
+resentations and a deeper understanding of object struc-
+tures. OPS [35] adopts a class-agnostic, object-aware train-
+ing strategy that improves segmentation accuracy on un-
+seen categories. VLPart [40] employs multi-granularity
+joint training and leverages dense semantic correspon-
+dences extracted by DINO [34] for novel part parsing. OV-
+PARTS [47] introduces the Pascal-Part-116 and ADE20K-
+Part-234 benchmarks and establishes baseline models under
+both two-stage and one-stage paradigms. PartCLIPSeg [7]
+parses object-part names to construct universal part embed-
+dings and employs attention mechanisms to strengthen acti-
+vation of small parts. PartCATSeg [8] proposes a decoupled
+cost aggregation strategy, improving part perception with
+DINO structure guidance. In addition, some methods adopt
+a hierarchical paradigm to explicitly model object–part rela-
+tionships. For instance, ViRReq [41] models whole–part re-
+lations via a hierarchical knowledge base, while PartGLEE
+[26] uses Q-Former to decompose objects into constituent
+27720
+
+
+=== PAGE 3 ===
+(a) Original image
+ (b) “cat” (c) “head” (d) “cat head” (e) “head” within the cat
+Figure 2. Image–text similarity maps of the frozen CLIP for objects and parts. (e) shows the similarity map for “head” restricted to the
+ground-truth region of cat. CLIP effectively activates regions corresponding to object-level concepts in the entire image but fails to respond
+to fine-grained part concepts. Even with the object–part prompt (“cat head”), CLIP still focuses on the whole object. However, when
+constrained within the object region, CLIP effectively activates the target part region.
+(a) Ground Truth (b) Predicted mask
+ (c) Cross-modal similarity
+Figure 3. Visualization of object over-segmentation. (b) Pre-
+dicted mask of “cow” from PartCLIPSeg [7], showing object over-
+segmentation. (c) CLIP’s cross-modal similarity map for “cow” ,
+where activations in irrelevant regions cause over-segmentation.
+Table 1. Comparison of object segmentation on PASCAL VOC.
+(I) uses frozen CLIP to compute cross-modal similarity, which is
+then normalized and thresholded to generate object masks.
+Method Seen Unseen All
+mIoU mOSI↓mIoU mOSI↓h-IoU mOSI↓
+(I) CLIP-freeze 54.67 45.53 63.37 32.74 58.69 42.33
+(II) CLIP-train 69.16 25.98 56.94 35.11 62.45 28.26
+(III) (I) + AFM 60.02 33.29 66.48 25.96 63.08 31.45
+(IV) (II) + AFM 72.25 17.81 61.66 29.70 66.53 20.78
+parts. PBAPS [27] models object–part structures via a hier-
+archical part-connected graph.
+3. Problem Analysis
+3.1. Object Over-Segmentation
+As shown in Fig. 3, CLIP produces coarse similarity maps,
+whose activations often spill into neighboring regions be-
+yond the target object, causing object over-segmentation.
+To quantify object over-segmentation, we introduce the
+Over-Segmentation Index (OSI), defined as the proportion
+of the predicted mask exceeding the ground-truth relative
+to the predicted area. A higher OSI indicates more severe
+object over-segmentation. We conduct comparative experi-
+ments on PASCAL VOC [16], where 20 object classes are
+divided into 15 seen classes (available during training) and
+5 unseen classes (absent during training). Evaluation met-
+rics include mIoU, mOSI (mean OSI), and h-IoU (harmonic
+mean of seen/unseen mIoU).
+The results in Tab. 1 show that supervised training in (II)
+notably improves mIoU on seen classes and reduces mOSI
+by 19.55% compared with (I), proving that supervised train-
+ing partially mitigates object over-segmentation. However,
+for unseen classes, (II) yields lower mIoU and higher mOSI,
+indicating that supervised training weakens CLIP’s inherent
+zero-shot generalization and aggravates over-segmentation
+on unseen classes. Thus, relying solely on supervised train-
+ing is inadequate to address object over-segmentation in
+open-vocabulary scenarios. It is worth noting that although
+unseen classes often exhibit under-segmentation, this does
+not conflict with over-segmentation. Under-segmentation
+indicates incomplete coverage of the ground-truth, whereas
+over-segmentation corresponds to false coverage of irrele-
+vant regions, and both can coexist. Incorporating AFM into
+(I) and (II)—yielding (III) and (IV), respectively— reduces
+object over-segmentation and improves segmentation accu-
+racy, regardless of whether supervised training is applied.
+This confirms the effectiveness of AFM in alleviating ob-
+ject over-segmentation in open-vocabulary scenarios.
+3.2. Part Under-Segmentation
+As shown in Fig. 2, CLIP’s part perception strongly depends
+on spatial constraints. Without explicit object masks as pri-
+ors, the model fails to activate small parts, resulting in part
+under-segmentation. To quantify this issue, we introduce
+the Under-Segmentation Index (USI), defined as the pro-
+portion of the ground-truth region that is not covered by the
+predicted mask relative to the ground-truth area. A larger
+USI indicates more severe part under-segmentation.
+We conduct comparative experiments on Pascal-Part-116
+[47] with the results in Tab. 2. Compared with the one-
+stage method (I), the two-stage method (II) incorporates
+object-level spatial constraints, improving mIoU and alle-
+viating part under-segmentation—highlighting the impor-
+tance of object priors for accurate part perception. Integrat-
+ing AFM (III) refines object masks, providing more reli-
+able spatial constraints and thereby increasing mIoU while
+reducing mUSI. With the addition of AEM (IV), part re-
+sponses are iteratively enhanced, achieving the best overall
+performance. These results demonstrate that combining ob-
+27721
+
+
+=== PAGE 4 ===
+Table 2. Comparison of part segmentation on Pascal-Part-116. (I)
+uses frozen CLIP to compute similarities between image features
+and object-part (e.g. “sheep head”) text features, which are then
+normalized and thresholded to generate part masks. (II) also uses
+frozen CLIP but first segments the object, then performs part seg-
+mentation within the corresponding object mask.
+Method mIoU mUSI↓
+(I) One stage 18.06 79.89
+(II) Two stage 23.42 72.15
+(III) (II) + AFM 27.52 67.72
+(IV) (III) + AEM 30.28 61.76
+ject spatial priors with AFM and AEM effectively mitigates
+part under-segmentation in open-vocabulary settings.
+4. Method
+4.1. Preliminary
+Problem Definition.OVPS [7, 8, 26, 27, 47] aims to
+segment part categories unseen during training. Notably,
+part categories are tightly coupled with their parent object
+classes, parts with the same name but from different ob-
+ject classes are distinct categories (e.g. “cat tail” and “dog
+tail”). During training, the model learns from a base set of
+object–part categoriesC seen (e.g. “dog head”, “bird wing”)
+with mask annotations. During inference, the model must
+assign each pixel a label from the open setC=C seen ∪
+Cunseen, whereC unseen denotes part categories that are unseen
+during training. Specifically,C unseen includes both new parts
+of known objects (e.g. “dog belly”) and parts of novel ob-
+jects (e.g. “panda head”).
+Cost Computation and Embedding.We use the image
+and text encoders of CLIP [36] to extract dense visual em-
+beddings and text embeddings of categories, respectively.
+Cosine similarity between these embeddings is computed to
+obtain the initial cost map [6, 8], which measures the corre-
+spondence between each image location and category. The
+cost map is then convolved into cost embeddings, which
+serve as input to subsequent aggregation modules. Further
+details are provided in the supplementary material.
+Cost Aggregation.Leveraging image spatial continuity
+and inter-class semantic correlations, CATSeg [6] performs
+dual aggregation on cost embeddings.Spatial aggregation:
+For each class channel, it independently uses Swin Trans-
+former [31] to model spatial dependencies through local and
+global window attention, enhancing prediction consistency
+within target regions.Class aggregation:Positional infor-
+mation along the class dimension is omitted, and a trans-
+former without positional encoding is employed to capture
+inter-class relationships, effectively suppressing semantic
+ambiguity and noisy activations.
+DINO Structural Guidance.While CLIP excels at cross-
+modal semantic alignment, its attention primarily focuses
+on global semantics, limiting precise part localization. In
+contrast, DINO [34] effectively captures intra-image geo-
+metric structures and semantic context. Building on this,
+PartCATSeg [8] introduces DINO’s self-supervised features
+as structural guidance by concatenating them with cost em-
+beddings, which serve as the query and key in the spatial
+aggregation module (see supplementary material). Our pro-
+posed HOPS further explores the complementarity between
+CLIP and DINO by fusing DINO’s structural attention with
+CLIP’s semantic attention in both AFM and AEM, pre-
+serving semantic alignment while enhancing local structural
+perception for more accurate part segmentation.
+4.2. Overview
+As shown in Fig. 4, HOPS adopts a hierarchical segmenta-
+tion framework. In the first stage, object-level segmentation
+is performed to provide spatial constraints for subsequent
+part segmentation. Specifically, CLIP and DINO extract vi-
+sual features, and the cosine similarity between CLIP im-
+age features and object class features (encoded by CLIP
+text encoder) is computed to obtain the initial object-level
+cost mapS 1 ∈R N×T×C 1, whereN,TandC 1 denote the
+number of image patches, text prompt templates, and object
+classes, respectively. To mitigate object over-segmentation
+caused by broad activations inS 1, the self-attention ma-
+tricesA CLIP ∈R L×N×N andA DINO ∈R L×N×N (Lis
+the number of transformer layers) from CLIP and DINO
+are fed into AFM to refineS 1 and suppress irrelevant re-
+sponses (see Sec. 4.3). The refined cost mapS ref
+1 is con-
+volved into cost embeddings and passed to the aggregation
+module, with DINO features providing structural guidance.
+The aggregated cost embeddings are then decoded through
+upsampling and multi-scale feature fusion, and the predic-
+tion head outputs the final object maskM O. During train-
+ing, the segmentation loss LO between MO and ground-
+truth object mask GO is calculated using the binary cross-
+entropy (BCE) loss:
+LO =
+X
+c∈Cobj
+BCE(M O(c),G O(c)). (1)
+The second stage performs part segmentation based on
+MO. Its overall pipeline follows that of object segmen-
+tation, with two key differences. First,M O is multiplied
+with the input image to retain only the target object, fol-
+lowed by adaptive cropping according to the object’s min-
+imal bounding rectangle. This removes background noise
+and compresses irrelevant regions, enlarging the object area
+and enhancing fine-grained perception. Second, to address
+part under-segmentation, we introduce AEM (see Sec. 4.4),
+which builds an affinity matrix based on CLIP and DINO
+self-attentions and applies adaptive iterative propagation to
+27722
+
+
+=== PAGE 5 ===
+......
+CLIP
+Image Encoder
+CLIP
+Image Encoder
+CLIP Text Encoder
+“A photo of a {dog | car | ... | cow}.”
+Image
+AFM Spatial ċ Class
+Aggregation Decoder
+Aggregated Cost
+DINO
+//
+//
+...
+Aggregated Cost
+CLIP
+CLIP 
+“A photo of a {muzzle | ... | torso}.”
+AEM Spatial ċ Class
+Aggregation Decoder
+DINO
+//
+//
+... ... ...
+Masked Image
+Crop
+Figure 4. The architecture of HOPS. // denotes stop-gradient propagation. Aggregated cost denotes the logits obtained after the aggregation
+and decoder, followed by a softmax to generate predictions. After obtaining the object mask, part segmentation is performed within the
+predicted region of each object class. In this example, since “cow” is the only object class in the image, part segmentation is conducted
+only for “cow”. Both stages share the same CLIP, DINO, and decoder, but adopt distinct aggregation modules.
+progressively expand activation regions. AEM improves
+both completeness and semantic discrimination of part seg-
+mentation. The final part maskM P is compared with the
+ground-truth part maskG P to calculate LP , and the total
+loss L is defined as the weighted sum of LO and LP :
+LP =
+X
+c∈Cpart
+BCE(M P (c),G P (c)), (2)
+L=λ objLO +λ partLP . (3)
+4.3. Attention-Aware Filtering Module
+Inspired by TagCLIP [29], the Attention-Aware Filtering
+Module (AFM) refines the object cost map by select-
+ing reliable patch associations and response regions from
+two perspectives: semantic-structural attention and class
+confidence, thus alleviating object over-segmentation (see
+Fig. 5). CLIP’s self-attention, guided by cross-modal se-
+mantic alignment, often captures patch associations that are
+“semantically related but structurally irrelevant” (e.g. link-
+ing a cow with the meadow due to their co-occurrence
+in training data). In contrast, DINO—trained via self-
+supervised learning without textual supervision—focuses
+more on the structural properties of images (e.g. shapes,
+boundaries, object topology), avoiding spatial deviations
+caused by semantic correlations. To integrate their com-
+plementary strengths, AFM introduces a bidirectional
+semantic-structural attention fusion mechanism. First,
+...
+...
+CLIP attention
+...
+DINO attention
+Bidirectional
+attention fusion
+Cross-layer 
+consistency filtering
+...
+Confidence mask
+generation
+... ...
+Eq. (7)
+Class confidence mask
+Semantic-structural
+attention
+Reliable association
+mask
+Figure 5. Attention-Aware Filtering Module. Under the con-
+straints of class confidence mask and reliable association mask,
+AFM refines the object-level cost map using semantic-structural
+attention, enhancing activations within target regions while sup-
+pressing false responses. The class confidence mask, originally of
+size1×N, is automatically broadcast toN×Nfor Eq. (7).
+DINO constrains CLIP to suppress semantic false activa-
+tions. Specifically, the normalized DINO’s attention matrix
+is element-wise multiplied with CLIP’s attention matrix to
+filter out patch pairs that are “semantically related but struc-
+turally irrelevant” (e.g. “cow” and “meadow”):
+A(l)
+CLIP←DINO =A (l)
+CLIP ⊙Softmax
+
+A(l)
+DINO
+
+, (4)
+where A(l)
+CLIP and A(l)
+DINO denote the self-attention matrices
+of CLIP and DINO at layer l, respectively. Meanwhile, to
+27723
+
+
+=== PAGE 6 ===
+prevent DINO from overemphasizing visual structure at the
+expense of semantic relevance, CLIP’s attention provides
+semantic guidance. We use the mean value of A(l)
+CLIP as the
+threshold to retain patch pairs in DINO’s attention that are
+“both structurally consistent and semantically relevant”:
+A(l)
+DINO←CLIP =A (l)
+DINO ⊙I
+
+A(l)
+CLIP >Mean
+
+A(l)
+CLIP
+
+. (5)
+Finally, the two optimized attention matrixes are fused to
+get the semantic-structural attention A∈R L×N×N :
+A=α·A CLIP←DINO + (1−α)·A DINO←CLIP. (6)
+Since single-layer attention maps are noisy and unstable,
+AFM adopts a cross-layer consistency filtering strategy to
+eliminate spurious high attention and retain robust patch as-
+sociations [29]. For layer l, a patch pair (i, j) is considered
+significantly associated if its attention weight A(l)
+ij exceeds
+the layer-wise mean µ(l). Across all L layers, a patch pair
+(i, j) is regarded as reliably associated if it is significantly
+associated in at least y layers (i.e.PL
+l=1 I
+
+A(l)
+ij > µ (l)
+
+≥
+y). Such pairs are recorded in the reliable association mask
+MA ∈R N×N , where MA(i, j) = 1 . To further sup-
+press interference from weak semantic regions, AFM as-
+sesses the class confidence of each patch for every class.
+A patch is considered high-confidence if its class score ex-
+ceeds the mean score across all patches, and it is marked 1
+in the class confidence maskMconf(c)∈R 1×N . Finally, the
+initial object-level cost map S1 ∈R N×C 1 is refined using
+semantic-structural attention, combined with the reliable as-
+sociation mask and class confidence mask:
+Sref
+1 (c) = 1
+|L|
+X
+l∈L
+
+MA ⊙A (l) ⊙M conf(c)
+
+·S 1(c). (7)
+4.4. Affinity-Guided Enhancement Module
+As illustrated in Fig. 6, the Affinity-Guided Enhancement
+Module (AEM) enhances part responses within the object
+region. First, CLIP and DINO extract image features and
+corresponding self-attention matrices from the object area.
+Following the bidirectional attention fusion in AFM, AEM
+produces the semantic-structural attention A′ ∈R L×N×N ,
+which is then averaged across all layers to obtain the affin-
+ity matrix Aaff ∈R N×N . This affinity matrix serves as the
+guidance for propagating part responses. Given the initial
+part cost map S2 ∈R N×C 2, where C2 denotes the number
+of part categories for the target object (e.g. “head”, “torso”,
+and “legs” for “sheep”), the initial mask for each part cate-
+gory c is defined as:
+˜MP (c) =I[S 2(c)> γ], (8)
+where γ is a hyperparameter. Initial part responses are often
+confined to local regions of the target part. Using˜MP (c) di-
+rectly as the response propagation region may miss weakly
+...
+CLIP attention
+...
+DINO attention
+Bidirectional
+attention fusion
+Multi-layer 
+attention aggregation
+...
+Bounding-box
+extraction Eq. (9)
+Bounding-box
+mask
+Semantic-structural
+attention
+Affinity matrix
+...... ...
+Bounding-box
+...
+Adaptive iteration
+control
+Perform (t+1)-th iteration enhancement
+Figure 6. Affinity-Guided Enhancement Module. Within the
+bounding-box region, AEM uses the affinity matrix to iteratively
+enhance part responses, with the enhancement gain evaluated after
+each iteration to determine whether to continue.
+activated target areas. To expand the propagation cover-
+age, AEM constructs a minimum bounding rectangle for
+each maximum connected component in ˜MP (c) and gen-
+erates a bounding-box mask B(c)∈R 1×N , where patches
+within the rectangles are labeled 1 and others 0. Com-
+pared with ˜MP (c), B(c) includes more potential part re-
+gions. Within B(c), AEM performs iterative propagation
+of part responses under the guidance ofAaff, spreading high
+responses from salient regions toward boundaries and in-
+complete areas to alleviate part under-segmentation. The
+t-th iteration of response propagation is defined as:
+Senh,t
+2 (c) =B t−1(c)⊙A aff ·S enh,t−1
+2 (c). (9)
+To achieve accurate part mask completion while pre-
+venting response blurring caused by excessive propagation,
+AEM adopts an adaptive iterative enhancement strategy. At
+each iteration, it evaluates the enhancement effectiveness
+by computing an iteration gain, and introduces a compen-
+sation mechanism for small parts with weak initial activa-
+tions. The t-th iteration gain is defined as the average re-
+sponse within the part mask of the t-th iteration minus that
+of the (t−1) -th iteration. A positive gain (i.e. Gain(t)>0 )
+indicates that the t-th iteration effectively enhances part ac-
+tivations and thus triggers the next iteration. Conversely,
+Gain(t)≤0 suggests saturated propagation or noise in-
+troduction, AEM then computes the relative size ratio of
+the current part mask to the corresponding object mask,
+denoted as Ratio(t, c). If Ratio(t, c)≤σ , the small-part
+compensation mechanism performs one additional iteration
+(only once per part). This mechanism prevents premature
+termination for small parts that, due to their limited initial
+mask regions or weak responses, may exhibit Gain(t)≤0
+in early iterations even though their masks have not yet been
+sufficiently expanded. If Gain(t)≤0 and Ratio(t, c)> σ ,
+the iteration process terminates, and Senh,t−1
+2 (c) is taken as
+the final enhanced result.
+27724
+
+
+=== PAGE 7 ===
+5. Experiments
+5.1. Experimental Setup
+Datasets.We evaluate HOPS on three part segmentation
+datasets: (1) Pascal-Part-116 [47], an optimized version of
+Pascal-Part [4], with 8,431 training and 850 test images,
+covering 116 part categories across 17 object classes. (2)
+ADE20K-Part-234 [47], derived from ADE20K [54], con-
+taining 7,347 training and 1,016 validation images, with
+234 part categories under 44 object classes. (3) PartIma-
+geNet [18] divides 158 object classes from ImageNet [11]
+into 11 superclasses with consistent part structures, includ-
+ing roughly 16k training and 2.9k validation images.
+Evaluation Tasks & Metrics.Following prior works
+[7, 8, 47], we evaluate HOPS on two tasks: (1)Zero-shot
+part segmentation, assessing generalization to unseen part
+categories. Pascal-Part-116 contains 74 seen and 42 unseen
+part categories, ADE20K-Part-234 includes 176 seen and
+58 unseen part categories, and PartImageNet follows prior
+splits [7, 8, 47] with 25 seen and 15 unseen classes among
+40 selected object classes. (2)Cross-dataset part segmenta-
+tion, evaluating cross-domain generalization. PartImageNet
+(OOD) [18] is an out-of-distribution variant of PartIma-
+geNet, where the training, validation, and test categories
+are disjoint. We also assess the transfer performance from
+PartImageNet to Pascal-Part-116. We compute mIoU for
+seen/unseen categories separately, and use h-IoU to mea-
+sure overall generalization. We also calculate mOSI and
+mUSI to quantify object over-segmentation and part under-
+segmentation, as defined in Secs. 3.1 and 3.2.
+Implementation Details.HOPS is built on CAT-Seg [6]
+and follows its training strategy, fine-tuning both CLIP and
+DINO. Additional hyperparameter and training details are
+provided in the supplementary material.
+5.2. Results in Zero-Shot Part Segmentation
+As shown in Tab. 3, HOPS achieves the best overall per-
+formance on Pascal-Part-116. Compared with the baseline
+model CAT-Seg, HOPS significantly improves mIoU on
+both seen and unseen categories, demonstrating its superior
+capability in fine-grained part segmentation and generaliza-
+tion. Compared with the current state-of-the-art method
+PartCATSeg, HOPS improves mIoU by 2.15% and 4.30%
+on seen and unseen categories, respectively, with the h-
+IoU reaching 49.29%. Moreover, mOSI and mUSI are re-
+duced by 6.11% and 6.17%, respectively, indicating that
+HOPS effectively suppresses object over-segmentation and
+part under-segmentation. The qualitative comparison is
+shown in Fig. 7. As shown in Tab. 4, HOPS also main-
+tains a clear advantage on the more challenging ADE20K-
+Part-234, which contains finer-grained semantics and more
+complex scenes. HOPS consistently outperforms PartCAT-
+Seg on both seen and unseen categories, improving h-IoU
+Table 3. Zero-shot performance on Pascal-Part-116. Bold and
+underline indicate the best and second-best results, respectively.
+Method Seen Unseen h-IoU mOSI↓mUSI↓
+ZSSeg+ [47, 52] 38.05 3.38 6.20 74.24 76.84
+VLPart [8, 40] 35.21 9.04 14.39 - -
+CLIPSeg [33, 47] 27.79 13.27 17.96 39.17 71.55
+CAT-Seg [6, 47] 36.80 23.39 28.60 31.38 60.58
+PartCLIPSeg [7] 43.91 23.56 30.67 31.51 53.75
+PBAPS [27] 45.32 42.72 43.98 33.10 42.18
+PartCATSeg [8] 52.62 40.51 45.77 29.57 37.79
+HOPS (Ours)54.77 44.81 49.29 23.46 31.62
+Table 4. Zero-shot performance on ADE20K-Part-234.
+Method Seen Unseen h-IoU mOSI↓mUSI↓
+ZSSeg+ [47, 52] 32.20 0.89 1.74 87.58 89.39
+CLIPSeg [33, 47] 3.14 0.55 0.93 89.12 87.65
+CAT-Seg [6, 47] 7.02 2.36 3.53 82.45 85.60
+PartCLIPSeg [7] 14.15 9.52 11.38 58.36 85.08
+PBAPS [27] 24.0322.8323.41 37.62 65.34
+PartCATSeg [8] 38.87 17.56 24.19 36.85 60.38
+HOPS (Ours)40.1120.84 27.42 33.92 54.74
+Table 5. Zero-shot performance on PartImageNet.
+Method Seen Unseen h-IoU mOSI↓mUSI↓
+CLIPSeg [33, 47] 32.39 12.27 17.80 38.86 63.97
+CAT-Seg [6, 47] 33.58 23.04 27.33 38.13 58.01
+PartCLIPSeg [7] 38.82 19.47 25.94 31.04 58.83
+PBAPS [27] 44.87 41.40 43.06 26.57 44.81
+PartCATSeg [8] 57.33 53.07 55.12 23.07 35.08
+HOPS (Ours)60.81 57.46 59.08 19.08 30.90
+by 3.23%, and reducing mOSI and mUSI by 2.93% and
+5.64%, respectively, confirming its robustness in complex
+scenarios. As shown in Tab. 5, HOPS achieves optimal
+performance again on PartImageNet, which focuses on the
+generalization scenario of “cross-object same parts”. HOPS
+attains mIoU scores of 60.81% and 57.46% on seen and
+unseen categories, respectively, with mOSI and mUSI of
+19.08% and 30.90%. Overall, these results demonstrate that
+under our hierarchical framework, HOPS effectively inte-
+grates the semantic-structural constraints of AFM and the
+response propagation of AEM, achieving more accurate part
+segmentation in open-vocabulary scenarios.
+5.3. Results in Cross-Dataset Part Segmentation
+As shown in Tab. 6, HOPS demonstrates strong cross-
+dataset generalization capability. On PartImageNet (OOD),
+HOPS achieves 45.08% mIoU on unseen categories, sub-
+stantially surpassing CAT-Seg (19.83%) and PartCATSeg
+(40.17%), while obtaining the lowest mOSI and mUSI
+of 27.92% and 41.58%, respectively. This indicates that
+27725
+
+
+=== PAGE 8 ===
+Ground Truth PartCATSeg
+ HOPS (Ours)
+Figure 7. Visualizations of segmentation results.
+Table 6. Comparison of cross-dataset performance with existing
+methods on PartImageNet (OOD) and PartImageNet→Pascal-
+Part-116. All test categories are unseen.
+Method PartImageNet (OOD) PartImageNet→
+Pascal-Part-116
+Unseen mOSI↓mUSI↓Unseen mOSI↓mUSI↓
+CLIPSeg [33, 47] 6.69 66.84 83.12 11.72 52.94 74.76
+CAT-Seg [6, 47] 19.83 49.27 72.15 11.55 44.51 76.63
+PartCLIPSeg [7] 10.33 57.18 78.24 14.74 46.48 69.12
+PartCATSeg [8] 40.1732.61 49.83 18.21 40.84 61.56
+HOPS (Ours)45.08 27.92 41.58 21.17 35.80 54.78
+Table 7. Impact of AFM on PartImageNet. The first row denotes
+HOPS without AFM.
+Sem. Str. Attn. Rel. Assoc. Cls. Conf. Seen Unseen h-IoU mOSI↓mUSI↓
+58.37 54.51 56.37 24.92 32.76✓59.12 55.08 57.02 22.85 32.18✓ ✓59.84 56.02 57.86 21.74 31.52✓ ✓60.03 56.17 58.03 20.91 31.33✓ ✓ ✓60.81 57.46 59.08 19.08 30.90
+even under out-of-distribution conditions, HOPS effec-
+tively mitigates object over-segmentation and part under-
+segmentation. In the cross-dataset transfer from PartIma-
+geNet to Pascal-Part-116, where these datasets differ in data
+distribution, category coverage, and part granularity, HOPS
+still achieves the best overall performance. It attains an un-
+seen category mIoU of 21.17%, with mOSI and mUSI of
+35.80% and 54.78%, respectively. These results confirm
+that HOPS learns generalizable part semantics and struc-
+tural representations, enabling robust cross-domain transfer
+without overfitting to the source dataset.
+5.4. Ablation Study
+We conduct ablation studies on PartImageNet to evaluate
+the contribution of each component in AFM and AEM. No-
+tably, neither AFM nor AEM introduces additional trainable
+parameters. As a part segmentation module, AEM does not
+affect object segmentation results, so its impact on mOSI is
+negligible. Additional ablation studies are provided in the
+supplementary material.
+Effect of AFM.As shown in Tab. 7, incorporating seman-
+Table 8. Impact of AEM on PartImageNet. The 2nd row performs
+response propagation constrained within the initial part mask.
+Sem. Str. Attn. BBox Adap. Iter. Seen Unseen h-IoU mUSI↓
+58.53 54.82 56.61 34.24
+✓59.12 55.31 57.15 33.18
+✓ ✓59.67 56.02 57.78 31.76
+✓ ✓59.38 55.87 57.57 32.41
+✓ ✓ ✓60.81 57.46 59.08 30.90
+tic–structural attention (row 2) improves h-IoU while re-
+ducing mOSI and mUSI. This demonstrates that seman-
+tic–structural attention suppresses false activations, allevi-
+ates object over-segmentation, and provides precise object
+priors for subsequent part segmentation—thus indirectly
+mitigating part under-segmentation. Adding the reliable as-
+sociation mask (row 3) enhances intra-object pixel correla-
+tions, further boosting h-IoU by 0.84% and reducing mUSI.
+Compared with row 3, introducing only the class confidence
+mask (row 4) leads to a greater reduction in mOSI, val-
+idating its ability to filter out interference from irrelevant
+regions and focus on target regions. The full AFM (row
+5) performs best across all metrics, confirming the comple-
+mentarity and synergy of its components.
+Effect of AEM.As shown in Tab. 8, constructing the
+affinity matrix with semantic–structural attention (row 2)
+enhances local structural perception and provides reliable
+guidance for response propagation, increasing h-IoU by
+0.54% and reducing mUSI by 1.06%. Adding the bound-
+ing box mask constraint (row 3) further improves h-IoU
+and lowers mUSI, indicating that the bounding box effec-
+tively constrains the propagation range—ensuring part com-
+pleteness while preventing response spillover into irrelevant
+regions. When adaptive iterative enhancement is applied
+without the bounding box (row 4), the reduction in mUSI is
+smaller than that achieved with the bounding box constraint
+(row 3). This suggests that directly using the initial part
+mask as the propagation region misses target regions. The
+full AEM (row 5) achieves optimal performance, effectively
+mitigating part under-segmentation without extra training.
+6. Conclusion
+HOPS proposes a bidirectional semantic-structural atten-
+tion fusion mechanism that harnesses the complementary
+strengths of CLIP and DINO. Specifically, the proposed
+AFM refines cost maps through semantic-structural atten-
+tion to mitigate object over-segmentation, while AEM iter-
+atively enhances part activations under the guidance of the
+affinity matrix to alleviate part under-segmentation. By in-
+corporating semantic-structural attention in both modules,
+HOPS achieves precise and structure-aware part segmenta-
+tion in open-vocabulary scenarios.
+27726
+
+
+=== PAGE 9 ===
+7. Acknowledgement
+This research was supported by the National Natural Sci-
+ence Foundation of China (No.62476192) and the Natural
+Science Foundation of Tianjin (No.23JCQNJC02010).
+We gratefully acknowledge the financial support from
+these funding programs, which has provided essential
+resources for our experimental setup and theoretical in-
+vestigation throughout this work. Their generous support
+has been instrumental in promoting the progress of this
+study, and we would like to extend our sincere gratitude.
+References
+[1] Luca Barsellotti, Roberto Amoroso, Lorenzo Baraldi, and
+Rita Cucchiara. Fossil: Free open-vocabulary semantic seg-
+mentation through synthetic references retrieval. InProceed-
+ings of the IEEE/CVF Winter Conference on Applications of
+Computer Vision, pages 1464–1473, 2024. 2
+[2] Tim Brooks, Aleksander Holynski, and Alexei A Efros. In-
+structpix2pix: Learning to follow image editing instructions.
+InProceedings of the IEEE/CVF conference on computer vi-
+sion and pattern recognition, pages 18392–18402, 2023. 1
+[3] Junyu Chen, Eric C Frey, Yufan He, William P Segars, Ye
+Li, and Yong Du. Transmorph: Transformer for unsuper-
+vised medical image registration.Medical image analysis,
+82:102615, 2022. 1
+[4] Xianjie Chen, Roozbeh Mottaghi, Xiaobai Liu, Sanja Fi-
+dler, Raquel Urtasun, and Alan Yuille. Detect what you
+can: Detecting and representing objects using holistic mod-
+els and body parts. InProceedings of the IEEE conference on
+computer vision and pattern recognition, pages 1971–1978,
+2014. 7, 3
+[5] Bowen Cheng, Ishan Misra, Alexander G Schwing, Alexan-
+der Kirillov, and Rohit Girdhar. Masked-attention mask
+transformer for universal image segmentation. InProceed-
+ings of the IEEE/CVF conference on computer vision and
+pattern recognition, pages 1290–1299, 2022. 2
+[6] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-
+seg: Cost aggregation for open-vocabulary semantic seg-
+mentation. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 4113–
+4123, 2024. 1, 2, 4, 7, 8
+[7] Jiho Choi, Seonho Lee, Seungho Lee, Minhyun Lee, and
+Hyunjung Shim. Understanding multi-granularity for open-
+vocabulary part segmentation.Advances in Neural Informa-
+tion Processing Systems, 37:137161–137189, 2024. 1, 2, 3,
+4, 7, 8
+[8] Jiho Choi, Seonho Lee, Minhyun Lee, Seungho Lee, and
+Hyunjung Shim. Fine-grained image-text correspondence
+with cost aggregation for open-vocabulary part segmenta-
+tion. InProceedings of the Computer Vision and Pattern
+Recognition Conference, pages 9782–9793, 2025. 1, 2, 4, 7,
+8, 3
+[9] Zhenqi Dai, Ting Liu, Xingxing Zhang, Yunchao Wei, and
+Yanning Zhang. One-shot in-context part segmentation. In
+ACM Multimedia, 2024. 2
+[10] Daan De Geus and Gijs Dubbelman. Task-aligned part-
+aware panoptic segmentation through joint object-part rep-
+resentations. InProceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 3174–
+3183, 2024. 2
+[11] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li,
+and Li Fei-Fei. Imagenet: A large-scale hierarchical image
+database. In2009 IEEE conference on computer vision and
+pattern recognition, pages 248–255. Ieee, 2009. 7, 3
+[12] Jian Ding, Nan Xue, Gui-Song Xia, and Dengxin Dai. De-
+coupling zero-shot semantic segmentation. InProceedings
+of the IEEE/CVF conference on computer vision and pattern
+recognition, pages 11583–11592, 2022. 2
+[13] Haotian Dong, Wenjing Wang, Chen Li, and Di Lin. Wan-
+alpha: High-quality text-to-video generation with alpha
+channel.arXiv e-prints, pages arXiv–2509, 2025. 2
+[14] Haotian Dong, Xin Wang, Di Lin, Yipeng Wu, Qin Chen,
+Ruonan Liu, Kairui Yang, Ping Li, and Qing Guo. Noisec-
+ontroller: Towards consistent multi-view video generation
+via noise decomposition and collaboration. InProceedings
+of the IEEE/CVF International Conference on Computer Vi-
+sion, pages 14443–14452, 2025. 2
+[15] Xiaoyi Dong, Jianmin Bao, Yinglin Zheng, Ting Zhang,
+Dongdong Chen, Hao Yang, Ming Zeng, Weiming Zhang,
+Lu Yuan, Dong Chen, et al. Maskclip: Masked self-
+distillation advances contrastive language-image pretraining.
+InProceedings of the IEEE/CVF conference on computer vi-
+sion and pattern recognition, pages 10995–11005, 2023. 2
+[16] Mark Everingham, SM Ali Eslami, Luc Van Gool, Christo-
+pher KI Williams, John Winn, and Andrew Zisserman. The
+pascal visual object classes challenge: A retrospective.Inter-
+national journal of computer vision, 111(1):98–136, 2015. 3
+[17] Golnaz Ghiasi, Xiuye Gu, Yin Cui, and Tsung-Yi Lin. Scal-
+ing open-vocabulary image segmentation with image-level
+labels. InEuropean conference on computer vision, pages
+540–557. Springer, 2022. 2
+[18] Ju He, Shuo Yang, Shaokang Yang, Adam Kortylewski, Xi-
+aoding Yuan, Jie-Neng Chen, Shuai Liu, Cheng Yang, Qi-
+hang Yu, and Alan Yuille. Partimagenet: A large, high-
+quality dataset of parts. InEuropean Conference on Com-
+puter Vision, pages 128–145. Springer, 2022. 7, 2, 3
+[19] Wei-Chih Hung, Varun Jampani, Sifei Liu, Pavlo
+Molchanov, Ming-Hsuan Yang, and Jan Kautz. Scops:
+Self-supervised co-part segmentation. InProceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 869–878, 2019. 1
+[20] Yunfan Jiang, Agrim Gupta, Zichen Zhang, Guanzhi Wang,
+Yongqiang Dou, Yanjun Chen, Li Fei-Fei, Anima Anand-
+kumar, Yuke Zhu, and Linxi Fan. Vima: General robot
+manipulation with multimodal prompts.arXiv preprint
+arXiv:2210.03094, 2(3):6, 2022. 1
+[21] Laurynas Karazija, Iro Laina, Andrea Vedaldi, and Christian
+Rupprecht. Diffusion models for zero-shot open-vocabulary
+segmentation.arXiv e-prints, pages arXiv–2306, 2023. 2
+[22] Angelos Katharopoulos, Apoorv Vyas, Nikolaos Pappas, and
+Franc ¸ois Fleuret. Transformers are rnns: Fast autoregressive
+transformers with linear attention. InInternational confer-
+27727
+
+
+=== PAGE 10 ===
+ence on machine learning, pages 5156–5165. PMLR, 2020.
+1
+[23] Bahjat Kawar, Shiran Zada, Oran Lang, Omer Tov, Huiwen
+Chang, Tali Dekel, Inbar Mosseri, and Michal Irani. Imagic:
+Text-based real image editing with diffusion models. InPro-
+ceedings of the IEEE/CVF conference on computer vision
+and pattern recognition, pages 6007–6017, 2023. 1
+[24] Junnan Li, Ramprasaath Selvaraju, Akhilesh Gotmare,
+Shafiq Joty, Caiming Xiong, and Steven Chu Hong Hoi.
+Align before fuse: Vision and language representation learn-
+ing with momentum distillation.Advances in neural infor-
+mation processing systems, 34:9694–9705, 2021. 1, 2
+[25] Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi.
+Blip: Bootstrapping language-image pre-training for unified
+vision-language understanding and generation. InInterna-
+tional conference on machine learning, pages 12888–12900.
+PMLR, 2022. 1, 2
+[26] Junyi Li, Junfeng Wu, Weizhi Zhao, Song Bai, and Xiang
+Bai. Partglee: A foundation model for recognizing and pars-
+ing any objects. InEuropean Conference on Computer Vi-
+sion, pages 475–494. Springer, 2024. 1, 2, 4
+[27] Xinlong Li, Di Lin, Shaoyiyi Gao, Jiaxin Li, Ruonan Liu,
+and Qing Guo. Open-vocabulary part segmentation via pro-
+gressive and boundary-aware strategy. InThe Thirty-ninth
+Annual Conference on Neural Information Processing Sys-
+tems. 1, 2, 3, 4, 7
+[28] Di Lin and Hui Huang. Zig-zag network for semantic seg-
+mentation of rgb-d images.IEEE Transactions on Pat-
+tern Analysis and Machine Intelligence, 42(10):2642–2655,
+2019. 2
+[29] Yuqi Lin, Minghao Chen, Kaipeng Zhang, Hengjia Li, Ming-
+ming Li, Zheng Yang, Dongqin Lv, Binbin Lin, Haifeng
+Liu, and Deng Cai. Tagclip: A local-to-global framework
+to enhance open-vocabulary multi-label classification of clip
+without training. InProceedings of the AAAI Conference on
+Artificial Intelligence, pages 3513–3521, 2024. 2, 5, 6
+[30] Huan Ling, Karsten Kreis, Daiqing Li, Seung Wook Kim,
+Antonio Torralba, and Sanja Fidler. Editgan: High-precision
+semantic image editing.Advances in Neural Information
+Processing Systems, 34:16331–16345, 2021. 1
+[31] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng
+Zhang, Stephen Lin, and Baining Guo. Swin transformer:
+Hierarchical vision transformer using shifted windows. In
+Proceedings of the IEEE/CVF international conference on
+computer vision, pages 10012–10022, 2021. 4, 1
+[32] Ilya Loshchilov and Frank Hutter. Decoupled weight decay
+regularization.arXiv preprint arXiv:1711.05101, 2017. 2
+[33] Timo L ¨uddecke and Alexander Ecker. Image segmenta-
+tion using text and image prompts. InProceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 7086–7096, 2022. 1, 7, 8
+[34] Maxime Oquab, Timoth ´ee Darcet, Th ´eo Moutakanni, Huy
+V o, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez,
+Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al.
+Dinov2: Learning robust visual features without supervision.
+arXiv preprint arXiv:2304.07193, 2023. 1, 2, 4
+[35] Tai-Yu Pan, Qing Liu, Wei-Lun Chao, and Brian Price. To-
+wards open-world segmentation of parts. InProceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 15392–15401, 2023. 2
+[36] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning
+transferable visual models from natural language supervi-
+sion. InInternational conference on machine learning, pages
+8748–8763. PmLR, 2021. 1, 2, 4
+[37] Robin Rombach, Andreas Blattmann, Dominik Lorenz,
+Patrick Esser, and Bj ¨orn Ommer. High-resolution image
+synthesis with latent diffusion models. InProceedings of
+the IEEE/CVF conference on computer vision and pattern
+recognition, pages 10684–10695, 2022. 2
+[38] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-
+net: Convolutional networks for biomedical image segmen-
+tation. InInternational Conference on Medical image com-
+puting and computer-assisted intervention, pages 234–241.
+Springer, 2015. 2
+[39] Dinggang Shen, Guorong Wu, and Heung-Il Suk. Deep
+learning in medical image analysis.Annual review of
+biomedical engineering, 19(1):221–248, 2017. 1
+[40] Peize Sun, Shoufa Chen, Chenchen Zhu, Fanyi Xiao, Ping
+Luo, Saining Xie, and Zhicheng Yan. Going denser with
+open-vocabulary part segmentation. InProceedings of the
+IEEE/CVF International Conference on Computer Vision,
+pages 15453–15465, 2023. 2, 7
+[41] Chufeng Tang, Lingxi Xie, Xiaopeng Zhang, Xiaolin Hu,
+and Qi Tian. Visual recognition by request. InProceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 15265–15274, 2023. 2
+[42] Feng Wang, Jieru Mei, and Alan Yuille. Sclip: Rethink-
+ing self-attention for dense vision-language inference. In
+European Conference on Computer Vision, pages 315–332.
+Springer, 2024. 2
+[43] Jianyu Wang and Alan L Yuille. Semantic part segmentation
+using compositional model combining shape and appear-
+ance. InProceedings of the IEEE conference on computer
+vision and pattern recognition, pages 1788–1797, 2015. 1
+[44] Peng Wang, Xiaohui Shen, Zhe Lin, Scott Cohen, Brian
+Price, and Alan L Yuille. Joint object and part segmentation
+using deep learned potentials. InProceedings of the IEEE
+international conference on computer vision, pages 1573–
+1581, 2015. 1
+[45] Xudong Wang, Shufan Li, Konstantinos Kallidromitis,
+Yusuke Kato, Kazuki Kozuka, and Trevor Darrell. Hi-
+erarchical open-vocabulary universal image segmentation.
+Advances in Neural Information Processing Systems, 36:
+21429–21453, 2023. 2
+[46] Yuan Wang, Rui Sun, Naisong Luo, Yuwen Pan, and Tianzhu
+Zhang. Image-to-image matching via foundation models: A
+new perspective for open-vocabulary semantic segmentation.
+InProceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 3952–3963, 2024. 2
+[47] Meng Wei, Xiaoyu Yue, Wenwei Zhang, Shu Kong, Xi-
+hui Liu, and Jiangmiao Pang. Ov-parts: Towards open-
+vocabulary part segmentation.Advances in Neural Informa-
+tion Processing Systems, 36:70094–70114, 2023. 1, 2, 3, 4,
+7, 8
+27728
+
+
+=== PAGE 11 ===
+[48] Junde Wu, Ziyue Wang, Mingxuan Hong, Wei Ji, Huazhu
+Fu, Yanwu Xu, Min Xu, and Yueming Jin. Medical sam
+adapter: Adapting segment anything model for medical im-
+age segmentation.Medical image analysis, 102:103547,
+2025. 1
+[49] Xin-Jian Wu, Ruisong Zhang, Jie Qin, Shijie Ma, and
+Cheng-Lin Liu. Wps-sam: Towards weakly-supervised part
+segmentation with foundation models. InEuropean Confer-
+ence on Computer Vision, pages 314–333. Springer, 2024.
+2
+[50] Yuxin Wu and Kaiming He. Group normalization. InPro-
+ceedings of the European conference on computer vision
+(ECCV), pages 3–19, 2018. 2
+[51] Jiarui Xu, Sifei Liu, Arash Vahdat, Wonmin Byeon, Xiao-
+long Wang, and Shalini De Mello. Open-vocabulary panop-
+tic segmentation with text-to-image diffusion models. In
+Proceedings of the IEEE/CVF conference on computer vi-
+sion and pattern recognition, pages 2955–2966, 2023. 2
+[52] Mengde Xu, Zheng Zhang, Fangyun Wei, Yutong Lin, Yue
+Cao, Han Hu, and Xiang Bai. A simple baseline for open-
+vocabulary semantic segmentation with pre-trained vision-
+language model. InEuropean Conference on Computer Vi-
+sion, pages 736–753. Springer, 2022. 2, 7
+[53] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. San: side adapter network for open-vocabulary se-
+mantic segmentation.IEEE Transactions on Pattern Analysis
+and Machine Intelligence, 45(12):15546–15561, 2023. 2
+[54] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ade20k dataset. InProceedings of the IEEE conference on
+computer vision and pattern recognition, pages 633–641,
+2017. 7, 3
+[55] Ziqin Zhou, Yinjie Lei, Bowen Zhang, Lingqiao Liu, and
+Yifan Liu. Zegclip: Towards adapting clip for zero-shot se-
+mantic segmentation. InProceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+11175–11185, 2023. 2
+[56] Brianna Zitkovich, Tianhe Yu, Sichun Xu, Peng Xu, Ted
+Xiao, Fei Xia, Jialin Wu, Paul Wohlhart, Stefan Welker,
+Ayzaan Wahid, et al. Rt-2: Vision-language-action models
+transfer web knowledge to robotic control. InConference on
+Robot Learning, pages 2165–2183. PMLR, 2023. 1
+[57] Yongshuo Zong, Qin Zhang, Dongsheng An, Zhihua Li, Xi-
+ang Xu, Linghan Xu, Zhuowen Tu, Yifan Xing, and Onkar
+Dabeer. Ground-v: Teaching vlms to ground complex in-
+structions in pixels. InProceedings of the Computer Vision
+and Pattern Recognition Conference, pages 24635–24645,
+2025. 2
+27729

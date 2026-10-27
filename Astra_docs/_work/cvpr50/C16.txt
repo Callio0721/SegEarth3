@@ -1,0 +1,1375 @@
+=== PAGE 1 ===
+SkySense-O: Towards Open-World Remote Sensing Interpretation
+with Vision-Centric Visual-Language Modeling
+Qi Zhu1∗, Jiangwei Lao2*, Deyi Ji1, Junwei Luo3, Kang Wu3, Yingying Zhang4, Lixiang Ru3,
+Jian Wang4, Jingdong Chen5, Ming Yang6, Dong Liu1, Feng Zhao1†
+1MoE Key Laboratory of Brain-inspired Intelligent Perception and Cognition, USTC
+2Shanghai Jiaotong University 3Wuhan University 4UCAS 5HUST 6Northwestern University
+zqcrafts@mail.ustc.edu.cn, fzhao956@ustc.edu.cn
+...
+Ours
+SkySense-O
+SegEarth-OVØ  Open Vocabulary Support 
+Ø  Accurate Image-Text AlignmentØ   Fine-Grained Dataset
+Ø  Applicable Interaction Agent
+🙋
+🛰
+🛰 “impervioussurface”Segment all ___ in the image.
+🙋
+Open Text List
+... Our Sky-SA Dataset
+car / boat/ pier / others
+Retrieval
+CLIP
+…
+Correspondence
+Correspondencetreebuildingcroplandway
+Our Foundation
+treebuildingcroplandwayplaneriver
+RSDatasets 
+“concretefloor”
+Q: How well will this street be illuminated at night?
+ +Agent with SkySense-O
+Answer: It is unknown how well the street will be illuminated at night. It can be both very well and not very well illuminated.Answer: The street will likely be well-illuminated at night. The presence of multiple streetlights indicates that the area will provide adequate lighting for visibility and safety during nighttime.
+Qwen2-VL
+Qwen2-VL
+Existing Datasets
+riverplane
+Road / grass / building / tree / others
+ concrete floor / ditch/ roundabout / fence/ bus / road / truck / car  / grass / manhole cover / traffic sign / sidewalk/ street light / building/ height limit pole / tree 
+golf field / waterway/ tree clusters / grass/ putting green / bridge / sand bunker / pond 
+iSAID 
+Potsdam 
+1
+0
+a. b.
+c. d.
+CAT-SEGSegEarth-OVGeoRSCLIPVHMPrevious SOTAsSkysense-O
+Land-coverSegmentation(Vaihingen)
+RS ObjectSegmentation(FloodNet)
+Land-coverSegmentation(OEM)
+Land-coverSegmentation(LoveDA)RS SceneClassification(AID)RS SceneClassification(RESISC-45)
+RS ObjectSegmentation(SAMRS-SOTA)
+RS ObjectSegmentation(SIOR)
+RS ObjectSegmentation(FAST)Land-coverSegmentation(Potsdam)
+RS Visual Question-Answer(RSVQA-HR)
+RS Visual Question-Answer(AID-VQA)
+RS Visual Question-Answer(SIRI-WHU-VQA)
+RS ObjectSegmentation(iSAID)
+38.343.942.08.3
+54.1
+30.9
+51.6
+23.140.874.8
+78.1
+94.1
+83.3
+82.9
+73.976.3
+37.1
+91.773.770.9
+40.3
+13.749.6
+19.6
+50.83.12
+41.321.7
+Figure 1. SkySense-O offers 4 key advantages from the foundation model to the agent application (Left), leading to state-of-the-art zero-
+shot performances across 14 downstream datasets over 4 distinct RS interpretation tasks (Right)
+Abstract
+Open-world interpretation aims to accurately localize and
+recognize all objects within images by vision-language
+models (VLMs). While substantial progress has been made
+in this task for natural images, the advancements for re-
+mote sensing (RS) images still remain limited, primarily
+due to these two challenges. 1) Existing RS semantic cat-
+egories are limited, particularly for pixel-level interpreta-
+tion datasets. 2) Distinguishing among diverse RS spa-
+tial regions solely by language space is challenging due to
+the dense and intricate spatial distribution in open-world
+RS imagery. To address the first issue, we develop a fine-
+grained RS interpretation dataset, Sky-SA, which contains
+183,375 high-quality local image-text pairs with full-pixel
+manual annotations, covering 1,763 category labels, ex-
+hibiting richer semantics and higher density than previ-
+ous datasets. Afterwards, to solve the second issue, we
+introduce the vision-centric principle for vision-language
+modeling. Specifically, in the pre-training stage, the vi-
+sual self-supervised paradigm is incorporated into image-
+*Equal contribution. †Corresponding author.
+text alignment, reducing the degradation of general visual
+representation capabilities of existing paradigms. Then, we
+construct a visual-relevance knowledge graph across open-
+category texts and further develop a novel vision-centric
+image-text contrastive loss for fine-tuning with text prompts.
+This new model, denoted as SkySense-O, demonstrates im-
+pressive zero-shot capabilities on a thorough evaluation
+encompassing 14 datasets over 4 tasks, from recognizing
+to reasoning and classification to localization. Specifi-
+cally, it outperforms the latest models such as SegEarth-
+OV , GeoRSCLIP , and VHM by a large margin, i.e., 11.95%,
+8.04% and 3.55% on average respectively. The code is
+publicly available to facilitate further research at https:
+//github.com/zqcrafts/SkySense-O.
+1. Introduction
+Remote sensing interpretation (RSI) is a critical and prac-
+tical task in Earth observation, aiming to identify the se-
+mantic types of specific ground objects in remote sensing
+(RS) images (such as segmentation [1–4], detection [5–10],
+change detection [11, 12], and visual question answering
+This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+14733
+
+
+=== PAGE 2 ===
+(VQA) [13–15]). Early works typically involved annotating
+RS images with fixed categories and exploring RSI through
+supervised learning methods. These approaches do not gen-
+eralize well to unseen new categories in open-world sce-
+narios, thus limiting their practical applicability. Moreover,
+as RS images becoming more accessible than ever before,
+there is an increasing demand for open-world interpreta-
+tions with a broad category scope. Hence, there is a soar-
+ing interest in exploring a comprehensive open-world re-
+mote sensing interpretation model for many scenarios and
+tasks [16, 17].
+Challenges. In the domain of natural image scenes, signif-
+icant progress has been achieved in open-world interpreta-
+tion tasks through large-scale localization and recognition
+datasets like AS-1B [18] and COCO-Stuff [19], combined
+with contrastive language-image pretrained model (CLIP)
+shown in Fig. 1a. However, the open-world RS interpreta-
+tion model is still out of reach due to following two reasons:
+1) From the dataset perspective, the existing annotations ei-
+ther exhibit sparse mask labels or lack diversity in category
+descriptions (see Fig.1b). 2) From the modeling perspec-
+tive, the language model inherently encompasses strong
+contextual dependence [20], making it challenging to di-
+rectly use as prompts for decoupling common RS objects
+and intertwined land-cover categories in open-world.
+Sky-SA Dataset. For Struggle (1), inspired by SAM [21]
+and ASM [18] in the natural image domain, we propose
+the Sky-SA dataset with the largest number of category la-
+bels for open-world RS interpretation, including 1,763 cat-
+egory texts from 183,375 mask-text pairs. The Sky-SA is
+mainly characterized by its text openness and fine granu-
+larity (Fig. 1b). Specifically, different from general seman-
+tic segmentation datasets, the categories of Sky-SA are an-
+notated by short semantic tags in a completely open man-
+ner. In other words, the annotators are doing fill-in-the-
+blank rather than multiple-choice. This enables the model
+to learn pixel-level open-world interpretation akin to human
+cognition [18] (Fig. 1c). Furthermore, similar to COCO-
+Stuff [19], all recognizable pixels of Sky-SA are densely
+annotated, which further enhances the semantic openness
+and the contextual relationships from wide semantic cate-
+gories.
+Vision-Centric Modeling. For Struggle (2), motivated
+by [22], we introduce the vision-centric principle to correct
+the potential alignment ambiguity arising from language
+guidance. Firstly, we initialize the visual encoder from Sky-
+Sense [23], an advanced RS visual foundation model, and
+then collect large-scale RS image-caption datasets for pre-
+training, which mainly include SkyScript [23], RS5M [24]
+and OSM [25]. Motivated by DetailCLIP [26], to miti-
+gate the degradation of general visual representation ca-
+pabilities originating from SkySense, we maintain the vi-
+sual contrastive loss and masked modeling loss during
+OpenStreetMapOpen-Image Collection
+Open-TextAnnotation(Sec.3) 
+Open-Model Training(Sec.4) 
+RS5MSkyScript
+Sky-SADataset&DataEngine
+GPT-4VSAM
+GroundingDINOSkySense
+OpenImages 
+Annotators➢RegionText➢ImageCaption
+➢All-PixelsMask➢DatasetGraph
+SkySenseModel
+GPT-4VOpenRSImageQualityAccess
+Anelegantresidentialenvironment, combining comfortable living spaces with convenient parking facilities.Villa\Car\TreePrivate Parkinglot
+VisualEncoder
+TextEncoder
+LLMDecoder➢Pre-training➢Region/Pixel/InstructFT.Dataset...Sky-SA(Ours)SkyScript[12]RS5M[11]
+SkySense-OModel
+13M+183KDataPairs VisualDecoderVision-CentricModeling
+Zero-ShotRSInterpretationTasks
+VQA...ObjectSeg.Land-coverSeg.
+Classification
+Figure 2. The flowchart of the overall SkySense-O development.
+the pre-training process of image-text alignment. Sec-
+ondly, for fine-tuning region-level alignment, we lever-
+age GPT-4V [27] to construct a visual-centric knowledge
+graph across all categories of the Sky-SA dataset, where the
+node of the graph represents each category, and the edge
+weight indicates the visual similarity scores between each
+pair of categories. Using the graph, we derive a vision-
+centric regularization that focuses on distinguishing cate-
+gories exhibiting low visual similarity but strong text-level
+contextual relationships in RS images. Finally, we ex-
+plore the impacts of Skysense-O as agent on MLLM models
+(Fig. 1d). In summary, to achieve open-world RS interpre-
+tation model, SkySense-O is meticulously developed from
+dataset to modeling and from pre-training to fine-tuning
+(Fig. 2), contributions of this paper include:
+• We develop Sky-SA dataset with large-scale and high-
+quality annotated texts for open-world RS interpretation.
+• The vision-centric principle is first introduced into RS
+visual-language modeling, primarily instantiated into
+training paradigm, vision-centric graph, and vision-
+centric regularization from pre-training to fine-tuning.
+• We propose SkySense-O, a remarkable open-world RS in-
+terpretation model, which achieves SOTA across 14 zero-
+shot downstream datasets as shown in Fig. 1.
+2. Related work
+2.1. Remote Sensing Interpretation
+Remote Sensing (RS) interpretation aims to accurately
+identify and analyze ground objects from RS data, with
+applications in environmental monitoring, urban planning,
+and agricultural surveillance [35–42]. Early deep learning
+approaches focused on closed-set supervised models, in-
+14734
+
+
+=== PAGE 3 ===
+Dataset Spatial Granularity Open Dense
+Image Region Pixel Text Annotation
+Natural Image
+SA-1B [21] ✓ ✓ ✓
+COCO-Stuff [19] ✓ ✓ ✓
+Remote Sensing Image
+AID [28], RESISC [29] ✓
+OpenStreetMap [30] ✓ ✓
+RS5M [24], SkyScript [31]✓ ✓
+Potsdam, LoveDA [32] ✓ ✓ ✓
+Valiggan, OEM [30] ✓ ✓ ✓
+iSAID [33], SIOR [34] ✓ ✓
+FAST [34], SOTA [34] ✓ ✓
+Sky-SA (ours) ✓ ✓ ✓ ✓ ✓
+Table 1. Property comparisons with popular vision-language
+datasets. The proposed Sky-SA dataset is characterized by its se-
+mantic openness, high-density and fine-granularity.
+multiple lanesbuilding
+(a)Florence-2 (c) GroundingDINO-1.6(b)SAM (d)Sky-SADataset
+Figure 3. Visual comparisons between the predictions of existing
+open-world models and the annotations of our Sky-SA dataset.
+cluding image classification [43, 44], object detection [45–
+49], change detection [11, 12], and semantic segmenta-
+tion [28, 50–56]. Recently, CLIP [57] and Vision Language
+Models (VLMs) have enabled the transition from closed-
+set to open-set interpretation, allowing models to recognize
+broader categories [17, 58]. Additionally, models like GPT-
+4 [59] and LLaV A [60] have facilitated the development of
+instruction-tuning datasets [61], enhancing the flexibility of
+RS models in human-machine interactions.
+2.2. Vision Foundation Models for Remote Sensing
+Vision foundation models are instrumental in advanc-
+ing RS interpretation toward open-set capabilities through
+two primary pre-training paradigms, vision-only self-
+supervised and vision-language self-supervised [22, 43, 62–
+67] paradigms. Vision-only self-supervised models uti-
+lize large-scale unannotated RS images to develop ro-
+bust visual representations for various tasks [23, 68–71].
+For example, SkySense [23] integrates multiple modali-
+ties and geo-contextual information within a contrastive
+framework, while Masked Image Modeling (MIM) meth-
+ods like RingMo [72] and Scale-MAE [73] are proposed
+for further enhancing visual feature learning. Vision-
+language self-supervised models originate from CLIP. Re-
+cently some efforts such as RemoteCLIP [74], RS5M [24],
+and SkyScript [23] have customized for the RS domain us-
+ing extensive RS image-caption pairs.
+Sky-SA(Ours)
+ISPRS PotsdamUAVid
+ iSAID
+FloodNetLoveDA
+OpenEarthMap
+183K
+SOTAFAST
+35KRSImages183KSemanticSegments1763CategoryTexts
+Number of Category Texts
+100050050510
+NumberofSemanticMask
+NumberofAnnotatedImage
+ 150K
+10K1K
+10010100100010K 100K
+SIOR
+Figure 4. Scale comparisons with existing RS semantic segmen-
+tation datasets. We see that the proposed Sky-SA dataset has a sig-
+nificantly larger category scale and diversity than prior datasets.
+3. Sky-SA Dataset
+3.1. Motivation
+Recently, image-text alignment models based on natural
+images, such as the open-vocabulary methods [75] and
+MLLMs like LLaV A [60], have achieved remarkable suc-
+cess. This is primarily due to well-constructed datasets
+in the natural image domain compared to the RS image
+domain. There have been numerous high-quality datasets
+with rich categories in the natural image community, such
+as COCO-Stuff [19] and ADE [76]. However, as shown
+in Tab.1 and Fig.4, such resources remain scarce in the
+RS community, which significantly limits the development
+of open-world RS interpretation tasks. Moreover, existing
+open-world models, such as SAM [21], Florence-2 [77],
+and Grounding-DINO [78], are also unable to achieve dense
+and fine-grained interpretation on remote sensing images as
+shown in Fig. 3. To relieve this issue, we design a data en-
+gine to help annotators more efficiently and accurately per-
+form full-pixel annotation on unlabeled RS images, leading
+to the creation of the Sky-SA dataset as following section.
+3.2. Data Engine
+Open-Images Collection. In the standard collection pro-
+cess of a closed-set dataset, a category list is predefined,
+and images that do not contain any items from this list will
+be filtered out. This manner might lead to dataset bias [79]
+in remote sensing images. Unlike the close-set methods, we
+compile a comprehensive collection of images from various
+available RS datasets. To minimize redundancy in manual
+annotation, we leverage the SkySense model [23], which
+possesses image-level visual discrimination capabilities for
+RS images, to filter visually redundant images.
+Open-Text Fine-Grained Annotation. In the annota-
+tion process, drawing inspiration from the popular COCO-
+Stuff [19] dataset, we prioritize fine-grained semantics and
+14735
+
+
+=== PAGE 4 ===
+TextEncoder
+Student
+Random Mask
+EMA
+Aug
+Teacher
+Image-Image Contrastive Loss
+ MaskDecoder  VisualEncoder  VisualEncoder MLPMLP
+Image-Text Contrastive Loss
+MLP
+Pre-training  (For image-level RS interpretation task)Supervised Finetuning (For pixel-level RS interpretation task)
+Øconcrete floorØtarmacØparking lotØ…
+Concrete floor
+tarmachighroad
+treecar
+airstrip
+0.70.90.20.20.8
+Region-Level CE LossVision-Centric Regularization Loss
+TextEncoder
+VisualDecoder
+ VisualEncoder 
+Mask Reconstruction Loss
+𝐸!"#$%𝐸&%'&
+𝑇!𝐼!
+𝑥!𝑅!(
+𝐼!(
+𝐼!
+𝐶)
+𝑀!_)
+𝑋!
+𝑥!(
+𝐼!
+𝑦!
+𝑧!_#
+𝑦+
+Mask PoolingVisual-TextCorrespondence
+Pixel-Level CE Loss
+TextSampler
+Visual-Centric Agent
+GPT-4V
+𝑂!_)𝐷!"#$%
+Vision-Centric Knowledge GraphAn aerial view of two dome-shaped structures surrounded by dense green vegetation, with some paths nearby.
+ℒ$%ℒ&'(!)#
+ℒ*!+',
+path
+treestructure
+Figure 5. The framework of SkySense-O, where training strategy includes pre-training and fine-tuning stage for open-world interpretation.
+full-pixel annotation as core labeling principles. Specif-
+ically, there are two key points: 1) the dataset encom-
+passes a rich variety of semantic categories; 2) almost
+all pixels in each image need to be annotated. The for-
+mer aids in activating the broad semantic awareness of the
+vision-language pretrained model, while the latter helps es-
+tablish comprehensive connections among local semantics
+throughout each image. Furthermore, to capture a broader
+semantic range, we employ a short-caption labeling man-
+ner for each region, which does not constrain the annota-
+tion labels. Additionally, to improve annotation efficiency,
+we first utilize GPT-4V [27] to generate the image content,
+and then employ Grounding-DINO [78] and SAM [21] for
+pre-annotation, allowing annotators to make careful correc-
+tions based on these preliminary labels.
+Dataset Statistics. Finally, we develop a high-quality pixel-
+level remote sensing interpretation dataset, named Sky-SA.
+As shown in Fig. 4, the Sky-SA dataset consists of 35,000
+RS images, mainly including 1,763 category texts from
+183,375 segment-text pairs (encompassing approximately
+500 distinct categories of land-covering and RS objects af-
+ter synonym filtering), which far surpasses existing remote
+sensing segmentation datasets. Moreover, Sky-SA is also
+the first pixel-level open-text annotated dataset in the field
+of remote sensing (see Fig. 1), laying a solid data founda-
+tion for the development of open-world RS interpretation.
+4. SkySense-O Model
+4.1. Pretraining for Foundation Model
+The training of SkySense-O is primarily divided into pre-
+training and fine-tuning stages as shown in Fig. 5. During
+pre-training, given the input image Ii and its corresponding
+text Ti, for i = 1 , ..., B, where B denotes mini-batch size,
+the model mainly consists of an image encoder Eimg and
+a text encoder Etext. To maintain the model’s visual per-
+ception capabilities [26], especially for densely distributed
+objects during the image-text alignment process, the vi-
+sion encoder is initialized by SkySense [23] and its visual
+self-supervised paradigms are still maintained, i.e. masked
+image modeling and image contrastive learning. Given
+x = Eimg(I), y = Etext(T ), mask decoder output R′,
+the overall pretraining loss is computed as Eq. 1:
+Lpretrain = CE (x, y) + CE (x, x′) + MR (I ′, R′) , (1)
+where I ′ and x′ are the augmented version of I and x re-
+spectively, M R is mask reconstruction loss following [71]
+and CE denotes cross-entropy loss computing as:
+CE(x, y) = − 1
+B
+BX
+i=1
+log exp(sim(xi, yi)/τ )PB
+j=1 exp(sim(xi, yj)/τ )
+, (2)
+where τ is logit temperature and sim is cosine similarity.
+4.2. Finetuning for Interpretation Model
+Region-level Finetuning. During the region-level fine-
+tuning stage, based on the proposed Sky-SA dataset, given
+a set of candidate category textsCn and masks Mn for each
+image, where n = 1 , ..., N, we apply mask pooling to ex-
+tract local features for each category from the images, and
+then compute the region-level cross-entropy loss with the
+corresponding category, which can be expressed as:
+Lregion =
+NX
+n=1
+CE
+ 
+P ooling (xn, Mn) , Etext(Cn)
+
+. (3)
+Pixel-level Finetuning. To achieve pixel-level interpreta-
+tion, referring to the existing open-vocabulary semantic seg-
+mentation model [80], we first compute the similarity be-
+tween the image encoder and the text encoder at the token
+level to obtain coarse location features. Subsequently, a vi-
+sual decoder Dimg is employed to up-sample these features
+to the fine-grained segmentation results, constrained by a
+pixel-wise cross-entropy loss as Eq. 4:
+Lpixel =
+NX
+n=1
+CE
+
+Dimg
+ 
+xn, Etext(Cn)
+
+, Mn
+
+. (4)
+More details can be found in the supplementary and code.
+14736
+
+
+=== PAGE 5 ===
+PositiveTargetSampleNegativeTarget Sample
+❌
+✅
+Correspondence0.390.800.710.90
+SourceSample
+ ❌
+✅
+❌
+❌
+Correspondence0.580.800.530.10
+(a)
+CLIP-L   ( Vision-Language Modeling )Visual-CentricAgent  ( Ours )FT.CLIP-L   ( Local Vision-Language Modeling )MiniLM-L6( Language Modeling )
+Car Road
+Airport Service Vehicle
+✅
+✅
+❌
+✅
+Correspondence0.570.860.840.90
+❌
+✅
+❌
+❌
+Correspondence0.820.80.910.30
+(b)River RiverBankLake
+✅
+✅
+Figure 6. Positive and negative sampling mechanism according to
+the correspondence score between source sample and target sam-
+ple. (a): Due to the contextual dependence in language modeling
+or vision-language modeling [20], “road” is mistakenly assigned
+as the positive sample of “car”, while our agent employs the cor-
+rect sampler. (b): Another case to further valid this point.
+Open Text List
+Visual Attribute ExtractionStep 1
+CorrespondenceScorerStep 2
+FormatControllingStep 3
+In-contextExampleStep 4
+carparking0.1
+Correspondence:0.1Reason:The 'car' is essentially small and rectangle traffic tool, while the 'parking' is usually large areas of ground. Therefore, they are distinctly different in remote sensing images.Source: CarTarget: Parking
+Add node and edge into graph
+TraversingAll Text PairsChain of Thought (CoT)+ GPT-4Vision-CentricAgent OutputBuilding Graph
+(See supplementaryfor details)Vision-centricKnowledge Graph
+Ifno,select next pair
+TraversingFinished?Ifyes,work flowends
+Node and edge visualization:
+Figure 7. Constructing illustrations of the vision-centric knowl-
+edge graph by an elaborate vision-centric agent flow.
+4.3. Vision-Centric Modeling
+Challenge. Different from the previous close-set seman-
+tic segmentation dataset, the Sky-SA dataset is annotated
+in open-world texts. Although this manner provides more
+open vocabulary support, the ambiguous sampling chal-
+lenge often leads to training collapse in discriminative mod-
+els. As illustrated in Fig. 6, “car” is mistakenly regarded as
+the positive sample of “road” by computing the similarity
+between their text-embeddings due to their strong text-level
+or image-level contextual relationships.
+Visual-Centric Knowledge Graph. To overcome the chal-
+lenge, inspired by the in-depth exploration of visual repre-
+sentation by Xie et al. [22] and GraphRAG [81], we build
+a visual-centric agent using GPT-4 to obtain the visual rel-
+evance score for each text pair of the Sky-SA dataset. As
+shown in Fig. 7, the score is measured by the meticulously
+chain of thought about visual attributes, including appear-
+ance, color, and shape etc.. When all text pairs in Sky-
+SA are fully traversed, we can construct an offline vision-
+centric knowledge graph, which mainly consists of three el-
+ements: source node, target node, and edge. The edge in-
+dicates the visual-relevance score and reasons from source
+node to target node. Based on the graph, we perform flexi-
+ble sampling for positive and negative samples by setting a
+sampling threshold illustrated in Algorithm 1.
+Algorithm 1 Finetuning Stage for SkySense-O.
+# Input(Given B=1):Image-I ∈ R3×H×W ,Mask-M ∈ RL×H×W ,
+# OpenTextList- O ∈ SM ,TextBeforeSample-T ∈ SL,
+# TextAfterSample- C ∈ SN ,Graph-G,Threshold-β(Default=0.5).
+def TextSampler ( T , G, O, C, β ):
+for source node in Ot:
+for target node in Ot:
+if G(source node, target node) < β :
+neg[source node] = target node
+neg sample = RandomSelect( T , neg, len(C) - len(T ))
+text batch = Concat( T , neg sample) # [N,1]
+def VisionCentricRegularization ( T ):
+St = sim
+ 
+Traverse(Text Embed(T ))
+
+# [N,N]
+Sv = G(Traverse(T ))) # [N,N]
+Lvc = (1 − Sv) ∗ St ∗ Lregion
+def forward ( I, T ):
+If eat = ImgEncoder( I)
+text batch = TextSampler (T, G, O, C, β )
+Pred = VisualDecoder
+ 
+If eat,TextEncoder(text batch)
+
+(a) TextCorrespondence Map 𝑆!(b) Inversed VisualCorrespondence Map (1−𝑆")(c)HardSampleMap 1−𝑆"∗𝑆!
+vehicletruckparkingroadbuilding0.00.20.40.60.81.0
+Total 𝑁Text Samples…
+……
+…………
+……
+………
+…....
+Total 𝑁Text Samples
+Total 𝑁Text Samples…
+……
+…………
+……
+………
+…....
+Total 𝑁Text Samples…
+……
+…………
+……
+………
+…....
+Figure 8. Sample similarity matrices in computing vision-centric
+regularization. Hard samples, such as vehicle and road, are ex-
+ploited by multiplying St and inversed Sv.
+Vision-Centric Regularization Loss. In RS imagery, the
+objects and land-cover are often densely packed and in-
+tricately intertwined, posing challenges for fine-grained
+visual-language modeling. To relieve this issue, we further
+exploit the potential of the vision-centric graph and design
+a vision-centric regularization loss, Lvc. The regularization
+is built on the observation that the samples with strong con-
+textual relationships but weak visual relevance scores are
+hard to distinguish as shown in Fig. 6. Specifically, given
+selected M negative samples Cm for class Ci, their textual
+similarities St are computed by their embedding similar-
+ities. Then, given text pairs, the visual relevance Si,m
+v can
+be retrieved by the visual-centric graph. Finally,Lvc is com-
+puted as Eq. 5 and details are in Algorithm 1 and Fig. 8.
+Lvc = 1
+BN
+BX
+i=1
+NX
+n=1
+
+ 
+1 − Si,m
+v
+
+∗ Si,m
+t ∗ Lregion
+
+2
+. (5)
+Total Loss. In summary, the total loss for the finetuning
+stage of SkySense-O is defined as follows:
+Lf inetune = Lpixel + λ1Lregion + λ2Lvc, (6)
+where λ1 and λ2 are two hyperparameters and set as0.4 and
+0.4 respectively for optimal ratio via performing ablations.
+14737
+
+
+=== PAGE 6 ===
+Model Publication Object Semantic Segmentation Land-Cover Semantic Segmentation
+iSAID [33] SOTA [34]FAST [34] SIOR [34] Potsdam [82]OEM [30] LoveDA [32]Vaihingen FloodNet [83]
+Few-Shot Semantic Segmentation
+SegGPT [84] ICCV 2023 29.17 31.41 19.55 37.47 30.12 25.19 31.40 47.27 33.81
+DINOv [85] CVPR 2024 25.35 18.24 7.92 25.04 37.65 23.05 25.17 35.10 44.55
+Zero-Shot Semantic Segmentation
+SAN [80] CVPR 2023 11.77 10.73 3.16 15.22 51.45 24.87 27.83 46.23 39.26
+CAT-SEG [75] CVPR 2024 20.58 13.71 3.13 19.64 50.81 30.26 37.15 49.62 41.36
+SegEarth-OV [58]Arxiv 2024 21.70 11.99 2.84 13.92 47.10 40.30 36.90 29.10 34.00
+SkySense-O - 43.92 32.12 8.33 30.89 54.10 40.83 38.30 51.64 42.04
+- (+22.22) (+18.41) (+5.2) (+11.25) (+2.65) (+0.53) (+1.15) (+2.02) (+0.68)
+Table 2. Zero-shot remote sensing object and land-cover semantic segmentation performances. Bold indicates the highest performance,
+and underline indicates the second highest performance in mIoU (%).
+Model Publication SIRI-WHU [86]AID-VQA [28]RSVQA-HR [14]
+Acc. Acc. Avg. Acc.
+GeoChat [35] CVPR 2024 66.63 72.03 70.82
+LHRS-Bot [87]ECCV 2024 62.66 91.26 -
+EarthGPT [88] TGRS 2024 - - 71.15
+VHM [89] Arxiv 2024 70.88 91.70 73.75
+SkySense-O† - 72.45(+1.57) 92.95(+1.25) 75.39(+1.64)
+SkySense-O - 74.79(+3.91) 94.10(+2.40) 78.09(+4.34)
+Table 3. Zero-Shot visual question-answering performances, compared with
+existing MLLMs. † indicates wo/ pixel-level fine-tuning by Sky-SA.
+Model Publication RESISC [29] AID [28]
+CLIP [57] PMLR 2021 69.25 66.70
+RemoteCLIP [74] TGRS 2024 70.85 74.3
+CLIP-laion-RS [31] - 71.70 71.21
+SkyScript [31] AAA1 2024 71.70 70.94
+GeoRSCLIP [24] TGRS 2023 73.90 76.27
+SkySense-O† - 83.28 82.93
+- (+9.38) (+6.66)
+Table 4. Zero-shot remote sensing scene classification
+performances in Top-1 accuracy (%).
+5. Experiment
+5.1. Evaluation Benchmarks
+We evaluate SkySense-O on four representative RS inter-
+pretation tasks. To ensure fair zero-shot comparisons, all
+experiments are conducted without extra fine-tuning and la-
+bels from the evaluation datasets are not used during train-
+ing. The supplementary materials provide further details on
+the implementation and visualization results.
+Zero-shot object segmentation. We adopt iSAID [33],
+FAST [34], SIOR [34], SOTA [34] for the object segmen-
+tation experiment. They are chosen considering diverse
+scenes and categories. We report mIoU results on official
+validation sets. As depicted in Tab. 2, SkySense-O has
+achieved the SOTA performance on all object segmentation
+datasets. On average, it outperforms the previous SOTAs
+by an average margin of 14.27%. Furthermore, it even sur-
+passes few-shot SOTAs on most datasets.
+Zero-shot land-cover segmentation. We assess SkySense-
+O’s land-cover segmentation performance on ISPRS Pots-
+dam [82], Vaihingen and LoveDA [32] datasets. SkySense-
+O excels on all three datasets (Tab. 2). Notably, we surpass
+the second best CAT-SEG [75] by 1.41% mIoU and have
+achieved the best performance on the Vaihingen leader-
+board. More importantly, our results demonstrate the poten-
+tial to achieve more accurate interpretations than the ground
+truth (the second row in Fig. 9).
+Zero-shot classification. We utilize two scene classifica-
+tion datasets: AID [28] and RESISC-45 [29]. The valida-
+tion setting follows GeoRSCLIP [24] and Top-1 Accuracy
+is reported. SkySense-O overally outperforms competitive
+(a) Input(b) GT(c) SegEarth-OV(d) CAT-SEG(e) Ours
+For iSAID dataset,
+ForPotsdamdataset,
+treegrassroadcarbuilding
+boatcarpier
+Figure 9. Visualization of object segmentation results on iSAID
+dataset and land-cover segmentation results on Potsdam dataset.
+baselines, achieving 9.38% and 6.66% higher performance
+than state-of-the-art methods on the two datasets (Tab. 4).
+Zero-shot RS VQA. To further validate the versatility of
+SkySense-O, we employ it in MLLM as a vision encoder
+for experimentation. Specifically, we maintain the same ar-
+chitecture as LLaV A-1.5 [90], except that we replace the
+original CLIP-L-14 [57] with our SkySense-O, and set the
+image resolution to 512 ×512 pixels. Regarding the setup
+of the instruction tuning data, during the pretraining stage,
+we utilize CC-558K dataset [60] and 121k image–text pairs
+converted from ChatearthNet [91] dataset. In the fine-
+tuning stage, based on instruction-tuning datasets collected
+by SkySenseGPT [61] from different sources, we select a
+subset of 593k data as our downstream instruction fine-
+tuning dataset, where details are in the supplementary. We
+evaluate zero-shot VQA performances on several public RS
+benchmarks as shown in Tab. 3.
+14738
+
+
+=== PAGE 7 ===
+(a) (b) (c)
+wayhighroad
+CLIP ofSkysense-O
+CLIP ofSegEarth-OV
+CLIP ofCAT-SEG
+buildingvehicleindustrial parkparking lot
+Image and Text Input
+...Open Text List
+Qualitative Evaluation of CLIP Alignment
+TextEncoder
+ VisualEncoder 
+CosineSimilarityLN LN
+❄
+❄Image
+Texts
+Response MaximumResponse MaximumResponse Maximum
+Text Index
+Text Index
+Text Index
+Heterogeneous distribution
+Figure 10. Visualization of text-image alignment in CLIP. (a) Computing the similarity between each text token and all image tokens to
+obtain text-image relevance (TIR) maps for different categories. (b) Visualizing TIR maps for some high-response texts. (c) Histogram of
+the maximum response values of TIR maps across the text list. The details of input texts can be referred to the supplementary materials.
+Foundation Vision Vision-Enc. Num. of RESISC
+Model Encoder Parameter Image-text (Acc)
+RemoteCLIP ViT-L-14 304M 0.83M 70.85
+SkyScript ViT-L-14 304M 2.6M 71.70
+GeoRSCLIP ViT-H-14 630M 5M 73.90
+Ours SwinV2-H-8 654M 10M 83.28
+Table 5. Comparison with existing RS vision-language foundation
+models. SkySense-O achieves consistent performance gains due
+to scaling laws in terms of model-size and data-size.
++Sky-SA +Graph +Pretrain-ing + Lvc mIoU
+18.40
+✓ 27.76 (+9.36)
+✓ ✓ 36.28 (+8.52)
+✓ ✓ ✓ 41.69 (+5.41)
+✓ ✓ ✓ ✓ 43.92 (+2.24)
+Table 6. Ablation study on the proposed dataset and designs.
+5.2. Implementation Details.
+In the pre-training stage, we use 80 A100-80GB GPUs and
+primarily adopt two large-scale remote sensing image-text
+datasets, SkyScript [31] and RS5M [24], and further ex-
+pand their captions using Qwen-VL [92] and InternVL [93],
+comprising 10 million image-text pairs. In the fine-tuning
+stage, we employ OSM [25] for local image-text fine-tuning
+and Sky-SA for fine-grained interpretation capabilities on 8
+A100-80GB GPUs as shown in Tab. 5. More details are
+included in the supplementary materials.
+5.3. Discussions & Ablation Studies
+Effectiveness of Image-Language Alignment. In Fig. 10,
+we follow MaskCLIP [94] and adopt the image-text correla-
+Zero-Shot  RS InputPrediction of SkySense-O
+iSAIDPotsdamFASTSIOR
+Figure 11. Visualizations of open-world interpretation results by
+SkySense-O on iSAID, Potsdam, FAST, and SIOR datasets.
+tion in the representation space to evaluate the effectiveness
+of vision-language foundation models. We select the CLIP
+models from SegEarth-OV [58] and CAT-Seg [75] for com-
+parison. The former is a standard CLIP model, while the lat-
+ter is a locally fine-tuned CLIP model by COCO-Stuff [19].
+We randomly selected 131 category texts from Sky-SA as
+inputs. As shown in Figure 10(c), SkySense-O exhibits
+larger response variance across different categories, indi-
+cating stronger discriminative capabilities among different
+texts. In Fig. 10(b), we present several image-text correla-
+tion maps to further validate the effectiveness of SkySense-
+O in image-text alignment in open-world scenes.
+• vehicle vs. parking lot. (small object) Because our mod-
+eling is vision-centric, small targets are effectively decou-
+pled from the contextual background.
+• building vs. industrial park. (hypernym) SkySense-O
+demonstrates proper alignment capabilities across differ-
+ent levels of semantic hierarchy due to large-scale remote
+sensing knowledge are learned in training.
+14739
+
+
+=== PAGE 8 ===
+Land-relatedWater-related
+Building-related
+Vegetation-related
+Road-related
+Figure 12. The visualization of vision-centric graph of the Sky-SA
+dataset. Node layout is performed via Force Atlas [95] and graph
+communities are detected by the Leiden algorithm [96]. Circles
+represent entity nodes with size proportional to their degree. Node
+colors represent entity communities. Five main communities are
+detected by an unsupervised manner and they just correspond to
+the major land-cover categories in the remote sensing imagery.
+small vehicle
+ large vehicle
+container
+meadow
+structuretree
+road
+small vehicle
+concrete floor
+structure
+meadowroad
+ containerclearing
+treelarge vehicle
+concrete floor
+(a)Image(b)Wo/vision-centric(c)W/vision-centric
+Figure 13. Comparisons of the results without and with vision-
+centric regularization loss. Compared to (b), the vehicles in (c) are
+clearly distinguished from the contextual floor.
+Design of Vision-Centric Strategy. Tab. 6 presents the
+ablation study to assess our Sky-SA dataset and vision-
+centric designs, namely vision-centric graph sampler, pre-
+training foundation model, and vision-centric regularization
+loss. We utilize the iSAID dataset as evaluation benchmark
+and report mIoU metric on the official test set. Initially,
+we use the standard CLIP model [57] and fine-tune it on
+the COCO-Stuff dataset [19]. Compared with the base-
+line, the Sky-SA dataset leads to a notable improvement
+compared to COCO-Stuff dataset. Nonetheless, we believe
+that the Sky-SA dataset holds considerable untapped po-
+tential, which might be constrained by the intricate entan-
+glement of open-world text labels as demonstrated in Sec.
+4.1. To relieve this problem, we construct a vision-centric
+graph for all text labels of the Sky-SA dataset as shown in
+Fig. 12. It is intriguing that the nodes in the graph natu-
+rally exhibit proper unsupervised clustering results by com-
+munity detection [96], without using any text labels. This
+further validates the rationale for vision-centric modeling
+and the introducing of vision-centric graph leads to 8.52%
+mIoU improvement. Then, we replace the standard CLIP
+with our pre-trained model incorporating extensive remote
+sensing knowledge. This effectively improves the perfor-
+iSAIDPotsdam
+SOTA
+FAST
+Sky-SA(Ours)
+SIOR
+iSAIDPotsdamFASTSIORSOTAOEMLoveDAFloodNetV aihingenAverageTestTrain
+Figure 14. Zero-shot semantic segmentation results of Sky-SA
+and existing datasets. The vertical axis represents the training set,
+while the horizontal axis represents the test set. The yellow box
+denotes the result is fine-tuned by its own training set ( i.e. super-
+vised learning) and red box denotes the average performance.
+mance to 41.69% mIoU, validating the necessity of remote
+sensing pre-training model. Finally, we introduce vision-
+centric regularization loss, which uncovers and prioritizes
+hard samples in visual-language modeling. The results
+show that the constraint pushes the performance to a very
+strong 43.92% mIoU. Furthermore, as shown in Fig. 13,
+this design enhances the discrimination ability, especially
+between high-context categories.
+Significance of Sky-SA for Open-World Interpretation.
+In Fig. 14, we replace Sky-SA with existing datasets and
+conduct experiments under the same settings as in Tab. 2.
+It can be observed that existing datasets exhibit poor gen-
+eralization to other datasets, except on their own test sets.
+In contrast, the Sky-SA dataset achieves superior zero-shot
+segmentation performance across all datasets, outperform-
+ing the second best dataset by an average of over 13.43%
+mIoU, which demonstrates the significant potential of Sky-
+SA for open-world interpretation.
+6. Conclusion
+In this paper, we present Skysense-O, a large-scale and
+general remote sensing interpretation model for open re-
+mote sensing images. Skysense-O is mainly driven by the
+proposed semantically-rich and fine-grained dataset Sky-
+SA and the vision-centric visual-language modeling, con-
+sistently outperforming other models on a variety of tasks,
+showcasing its exceptional generalization ability and strong
+performance. We hope this work will constructively push
+the RS open-world interpretation on constructing large-
+scale vision-language datasets and models for further re-
+searches. Our future work aims to explore fine-grained re-
+mote sensing interpretation, such as analyzing object states
+and relationships, further enhancing the flexibility of open-
+world applications.
+14740
+
+
+=== PAGE 9 ===
+Acknowledgments
+This work was supported by the Anhui Provincial Natu-
+ral Science Foundation under Grant 2108085UD12 and the
+National Natural Science Key Foundation of China under
+Grant 62036005. We acknowledge the support of GPU clus-
+ter built by MCC Lab of Information Science and Technol-
+ogy Institution, USTC.
+References
+[1] Xianping Ma, Xiaokang Zhang, Man-On Pun, and
+Bo Huang. Manet: Fine-tuning segment anything model for
+multimodal remote sensing semantic segmentation, 2024. 1
+[2] Aysim Toker, Marvin Eisenberger, Daniel Cremers, and
+Laura Leal-Taix´e. Satsynth: Augmenting image-mask pairs
+through diffusion models for aerial semantic segmentation,
+CVPR 2024.
+[3] Deyi Ji, Feng Zhao, Hongtao Lu, Feng Wu, and Jieping Ye.
+Structural and statistical texture knowledge distillation and
+learning for segmentation. IEEE Transactions on Pattern
+Analysis and Machine Intelligence, pages 1–18, 2025.
+[4] Deyi Ji, Feng Zhao, Hongtao Lu, Mingyuan Tao, and Jieping
+Ye. Ultra-high resolution segmentation with ultra-rich con-
+text: A novel benchmark. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition ,
+pages 23621–23630, 2023. 1
+[5] Deyi Ji, Feng Zhao, Lanyun Zhu, Wenwei Jin, Hongtao Lu,
+and Jieping Ye. Discrete latent perspective learning for seg-
+mentation and detection. In Forty-first International Confer-
+ence on Machine Learning, pages 21719–21730, 2024. 1
+[6] Botao Ren, Xue Yang, Yi Yu, Junwei Luo, and Zhidong
+Deng. Pointobb-v2: Towards simpler, faster, and stronger
+single point supervised oriented object detection. arXiv
+preprint arXiv:2410.08210, 2024.
+[7] Kang Wu, Zunxiao Xu, Xinrong Lyu, and Peng Ren. Cloud
+detection with boundary nets. ISPRS Journal of Photogram-
+metry and Remote Sensing, 186:218–231, 2022.
+[8] Peiyuan Zhang, Junwei Luo, Xue Yang, Yi Yu, Qingyun Li,
+Yue Zhou, Xiaosong Jia, Xudong Lu, Jingdong Chen, Xiang
+Li, et al. Pointobb-v3: Expanding performance boundaries
+of single point-supervised oriented object detection. arXiv
+preprint arXiv:2501.13898, 2025.
+[9] Yi Yu, Xue Yang, Qingyun Li, Yue Zhou, Feipeng Da, and
+Junchi Yan. H2rbox-v2: Incorporating symmetry for boost-
+ing horizontal box supervised oriented object detection. Ad-
+vances in Neural Information Processing Systems, 36, 2024.
+[10] Kang Wu, Zunxiao Xu, Xinrong Lyu, and Peng Ren. Cross-
+supervised learning for cloud detection.GIScience & Remote
+Sensing, 60(1):2147298, 2023. 1
+[11] Zhuo Zheng, Ailong Ma, Liangpei Zhang, and Yanfei Zhong.
+Change is everywhere: Single-temporal supervised object
+change detection in remote sensing imagery. In Proceed-
+ings of the IEEE/CVF international conference on computer
+vision, pages 15193–15202, 2021. 1, 3
+[12] Deyi Ji, Siqi Gao, Mingyuan Tao, Hongtao Lu, and Feng
+Zhao. Changenet: Multi-temporal asymmetric change detec-
+tion dataset. In ICASSP 2024-2024 IEEE International Con-
+ference on Acoustics, Speech and Signal Processing , pages
+2725–2729. IEEE, 2024. 1, 3
+[13] Junwei Luo, Yingying Zhang, Xue Yang, Kang Wu, Qi Zhu,
+Lei Liang, Jingdong Chen, and Yansheng Li. When large
+vision-language model meets large remote sensing imagery:
+Coarse-to-fine text-guided token pruning. arXiv preprint
+arXiv:2503.07588, 2025. 2
+[14] Sylvain Lobry, Diego Marcos, Jesse Murray, and Devis
+Tuia. Rsvqa: Visual question answering for remote sensing
+data. IEEE Transactions on Geoscience and Remote Sensing,
+58(12):8555–8566, 2020. 6
+[15] Junjue Wang, Zhuo Zheng, Zihang Chen, Ailong Ma, and
+Yanfei Zhong. Earthvqa: Towards queryable earth via re-
+lational reasoning-based remote sensing visual question an-
+swering. In Proceedings of the AAAI Conference on Artificial
+Intelligence, volume 38, pages 5481–5489, 2024. 2
+[16] Yan Li, Weiwei Guo, Xue Yang, Ning Liao, Dunyun He,
+Jiaqi Zhou, and Wenxian Yu. Toward open vocabulary aerial
+object detection with clip-activated student-teacher learning.
+In European Conference on Computer Vision , pages 431–
+448. Springer, 2024. 2
+[17] Jiancheng Pan, Yanxing Liu, Yuqian Fu, Muyuan Ma,
+Jiaohao Li, Danda Pani Paudel, Luc Van Gool, and Xi-
+aomeng Huang. Locate anything on earth: Advancing open-
+vocabulary object detection for remote sensing community.
+arXiv preprint arXiv:2408.09110, 2024. 2, 3
+[18] Weiyun Wang, Min Shi, Qingyun Li, Wenhai Wang, Zhen-
+hang Huang, Linjie Xing, Zhe Chen, Hao Li, Xizhou Zhu,
+Zhiguo Cao, et al. The all-seeing project: Towards panop-
+tic visual recognition and understanding of the open world.
+arXiv preprint arXiv:2308.01907, 2023. 2
+[19] Holger Caesar, Jasper Uijlings, and Vittorio Ferrari. Coco-
+stuff: Thing and stuff classes in context. In Proceedings
+of the IEEE Conference on Computer Vision and Pattern
+Recognition, pages 1209–1218, 2018. 2, 3, 7, 8
+[20] Shuyang Gu. Several questions of visual generation in 2024.
+arXiv preprint arXiv:2407.18290, 2024. 2, 5
+[21] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+head, Alexander C. Berg, Wan-Yen Lo, Piotr Dollar, and
+Ross Girshick. Segment anything. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision ,
+pages 4015–4026, October 2023. 2, 3, 4
+[22] Shengbang Tong, Zhuang Liu, Yuexiang Zhai, Yi Ma, Yann
+LeCun, and Saining Xie. Eyes wide shut? exploring the
+visual shortcomings of multimodal llms. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 9568–9578, 2024. 2, 3, 5
+[23] Xin Guo, Jiangwei Lao, Bo Dang, Yingying Zhang, Lei
+Yu, Lixiang Ru, Liheng Zhong, Ziyuan Huang, Kang Wu,
+Dingxiang Hu, et al. Skysense: A multi-modal remote sens-
+ing foundation model towards universal interpretation for
+earth observation imagery. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition ,
+pages 27672–27683, 2024. 2, 3, 4
+[24] Zilun Zhang, Tiancheng Zhao, Yulong Guo, and Jianwei Yin.
+Rs5m and georsclip: A large scale vision-language dataset
+14741
+
+
+=== PAGE 10 ===
+and a large vision-language model for remote sensing. IEEE
+Transactions on Geoscience and Remote Sensing, pages 1–1,
+2024. 2, 3, 6, 7
+[25] Haozhe Xie, Zhaoxi Chen, Fangzhou Hong, and Ziwei
+Liu. CityDreamer: Compositional generative model of un-
+bounded 3D cities. In Proceedings of the IEEE/CVF Confer-
+ence on Computer Vision and Pattern Recognition, 2024. 2,
+7
+[26] Amin Karimi Monsefi, Kishore Prakash Sailaja, Ali
+Alilooee, Ser-Nam Lim, and Rajiv Ramnath. Detailclip:
+Detail-oriented clip for fine-grained tasks. arXiv preprint
+arXiv:2409.06809, 2024. 2, 4
+[27] OpenAI. Gpt-4v(ision) system card. 2023. 2, 4
+[28] Gui-Song Xia, Jingwen Hu, Fan Hu, Baoguang Shi, Xiang
+Bai, Yanfei Zhong, Liangpei Zhang, and Xiaoqiang Lu. Aid:
+A benchmark data set for performance evaluation of aerial
+scene classification. IEEE Transactions on Geoscience and
+Remote Sensing, 55(7):3965–3981, 2017. 3, 6
+[29] Gong Cheng, Junwei Han, and Xiaoqiang Lu. Remote sens-
+ing image scene classification: Benchmark and state of the
+art. Proceedings of the IEEE, 105(10):1865–1883, 2017. 3,
+6
+[30] Junshi Xia, Naoto Yokoya, Bruno Adriano, and Clifford
+Broni-Bediako. Openearthmap: A benchmark dataset for
+global high-resolution land cover mapping. In Proceed-
+ings of the IEEE/CVF Winter Conference on Applications of
+Computer Vision, pages 6254–6264, 2023. 3, 6
+[31] Zhecheng Wang, Rajanie Prabha, Tianyuan Huang, Jiajun
+Wu, and Ram Rajagopal. Skyscript: A large and seman-
+tically diverse vision-language dataset for remote sensing.
+In Proceedings of the AAAI Conference on Artificial Intel-
+ligence, volume 38, pages 5805–5813, 2024. 3, 6, 7
+[32] Junjue Wang, Zhuo Zheng, Ailong Ma, Xiaoyan Lu, and
+Yanfei Zhong. LoveDA: A remote sensing land-cover dataset
+for domain adaptive semantic segmentation, October 2021.
+3, 6
+[33] Syed Waqas Zamir, Aditya Arora, Akshita Gupta, Salman
+Khan, Guolei Sun, Fahad Shahbaz Khan, Fan Zhu, Ling
+Shao, Gui-Song Xia, and Xiang Bai. isaid: A large-scale
+dataset for instance segmentation in aerial images. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition Workshops, pages 28–37, 2019. 3,
+6
+[34] Di Wang, Jing Zhang, Bo Du, Minqiang Xu, Lin Liu,
+Dacheng Tao, and Liangpei Zhang. Samrs: Scaling-up re-
+mote sensing segmentation dataset with segment anything
+model, NeurIPS 2023. 3, 6
+[35] Kartik Kuckreja, Muhammad Sohail Danish, Muzammal
+Naseer, Abhijit Das, Salman Khan, and Fahad Shahbaz
+Khan. Geochat: Grounded large vision-language model for
+remote sensing. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 27831–
+27840, 2024. 2, 6
+[36] Tianrun Chen, Chaotao Ding, Lanyun Zhu, Tao Xu, Deyi
+Ji, Ying Zang, and Zejian Li. xlstm-unet can be an effective
+2d\& 3d medical image segmentation backbone with vision-
+lstm (vil) better than its mamba counterpart. arXiv preprint
+arXiv:2407.01530, 2024.
+[37] Deyi Ji, Siqi Gao, Lanyun Zhu, Qi Zhu, Yiru Zhao, Peng Xu,
+Hongtao Lu, Feng Zhao, and Jieping Ye. View-centric multi-
+object tracking with homographic matching in moving uav.
+arXiv preprint arXiv:2403.10830, 2024.
+[38] Ying Zang, Runlong Cao, Jianqi Zhang, Yidong Han, Ziyue
+Cao, Wenjun Hu, Didi Zhu, Lanyun Zhu, Zejian Li, Deyi
+Ji, et al. Let human sketches help: Empowering challeng-
+ing image segmentation task with freehand sketches. arXiv
+preprint arXiv:2501.19329, 2025.
+[39] Lanyun Zhu, Tianrun Chen, Deyi Ji, Jieping Ye, and Jun
+Liu. Not every patch is needed: Towards a more efficient and
+effective backbone for video-based person re-identification.
+IEEE Transactions on Image Processing, 2025.
+[40] Deyi Ji, Hongtao Lu, and Tongzhen Zhang. End to end multi-
+scale convolutional neural network for crowd counting. In
+Eleventh international conference on machine vision , vol-
+ume 11041, pages 761–766. SPIE, 2019.
+[41] Zunxiao Xu, Kang Wu, Lei Huang, Qimao Wang, and Peng
+Ren. Cloudy image arithmetic: A cloudy scene synthesis
+paradigm with an application to deep-learning-based thin
+cloud removal. IEEE Transactions on Geoscience and Re-
+mote Sensing, 60:1–16, 2021.
+[42] Ying Zang, Yuncan Gao, Jiangi Zhang, Yuangi Hu, Run-
+long Cao, Lanyun Zhu, Qi Zhu, Deyi Ji, Renjun Xu, and
+Tianrun Chen. Breaking the box: Enhancing remote sensing
+image segmentation with freehand sketches. arXiv preprint
+arXiv:2503.12191, 2025. 2
+[43] Zhihao Li, Biao Hou, Siteng Ma, Zitong Wu, Xianpeng Guo,
+Bo Ren, and Licheng Jiao. Masked angle-aware autoencoder
+for remote sensing images, European Conference on Com-
+puter Vision 2024. 3
+[44] Aaron E Maxwell, Timothy A Warner, and Fang Fang. Im-
+plementation of machine-learning classification in remote
+sensing: An applied review. International journal of remote
+sensing, 39(9):2784–2817, 2018. 3
+[45] Xue Yang, Gefan Zhang, Wentong Li, Yue Zhou, Xuehui
+Wang, and Junchi Yan. H2rbox: Horizontal box annotation is
+all you need for oriented object detection. InThe Eleventh In-
+ternational Conference on Learning Representations , 2023.
+3
+[46] Yansheng Li, Junwei Luo, Yongjun Zhang, Yihua Tan, Jin-
+Gang Yu, and Song Bai. Learning to holistically detect
+bridges from large-size vhr remote sensing imagery. IEEE
+Transactions on Pattern Analysis and Machine Intelligence,
+2024.
+[47] Haoran Wang, Licheng Jiao, Fang Liu, Lingling Li, Xu Liu,
+Deyi Ji, and Weihao Gan. Ipgn: Interactiveness proposal
+graph network for human-object interaction detection. IEEE
+Transactions on Image Processing, 30:6583–6593, 2021.
+[48] Junwei Luo, Xue Yang, Yi Yu, Qingyun Li, Junchi Yan,
+and Yansheng Li. Pointobb: Learning oriented object de-
+tection via single point supervision. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 16730–16740, 2024.
+[49] Yi Yu, Xue Yang, Qingyun Li, Feipeng Da, Jifeng Dai,
+Yu Qiao, and Junchi Yan. Point2rbox: Combine knowledge
+from synthetic visual patterns for end-to-end oriented object
+14742
+
+
+=== PAGE 11 ===
+detection with single point supervision. InProceedings of the
+IEEE Conference on Computer Vision and Pattern Recogni-
+tion, pages 16783–16793, 2024. 3
+[50] Lanyun Zhu, Deyi Ji, Shiping Zhu, Weihao Gan, Wei Wu,
+and Junjie Yan. Learning statistical texture for semantic
+segmentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 12537–
+12546, 2021. 3
+[51] Tianrun Chen, Ankang Lu, Lanyun Zhu, Chaotao Ding, Chu-
+nan Yu, Deyi Ji, Zejian Li, Lingyun Sun, Papa Mao, and
+Ying Zang. Sam2-adapter: Evaluating & adapting seg-
+ment anything 2 in downstream tasks: Camouflage, shadow,
+medical image segmentation, and more. arXiv preprint
+arXiv:2408.04579, 2024.
+[52] Gui-Song Xia, Xiang Bai, Jian Ding, Zhen Zhu, Serge Be-
+longie, Jiebo Luo, Mihai Datcu, Marcello Pelillo, and Liang-
+pei Zhang. Dota: A large-scale dataset for object detection
+in aerial images. In Proceedings of the IEEE Conference
+on Computer Vision and Pattern Recognition , pages 3974–
+3983, 2018.
+[53] Deyi Ji, Haoran Wang, Mingyuan Tao, Jianqiang Huang,
+Xian-Sheng Hua, and Hongtao Lu. Structural and statistical
+texture knowledge distillation for semantic segmentation. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, pages 16876–16885, 2022.
+[54] Deyi Ji, Feng Zhao, and Hongtao Lu. Guided patch-grouping
+wavelet transformer with spatial congruence for ultra-high
+resolution segmentation. International Joint Conference on
+Artificial Intelligence, pages 920–928, 2023.
+[55] Deyi Ji, Wenwei Jin, Hongtao Lu, and Feng Zhao. Ppt-
+former: Pseudo multi-perspective transformer for uav seg-
+mentation. International Joint Conference on Artificial In-
+telligence, pages 893–901, 2024.
+[56] Hanzhe Hu, Deyi Ji, Weihao Gan, Shuai Bai, Wei Wu, and
+Junjie Yan. Class-wise dynamic graph convolution for se-
+mantic segmentation. In European Conference on Computer
+Vision, pages 1–17. Springer, 2020. 3
+[57] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learn-
+ing transferable visual models from natural language super-
+vision. In International Conference on Machine Learning ,
+pages 8748–8763, 2021. 3, 6, 8
+[58] Kaiyu Li, Ruixun Liu, Xiangyong Cao, Deyu Meng, and Zhi
+Wang. Segearth-ov: Towards traning-free open-vocabulary
+segmentation for remote sensing images. arXiv preprint
+arXiv:2410.01768, 2024. 3, 6, 7
+[59] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ah-
+mad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida,
+Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al.
+Gpt-4 technical report. arXiv preprint arXiv:2303.08774 ,
+2023. 3
+[60] Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee.
+Visual instruction tuning. In A. Oh, T. Naumann, A. Glober-
+son, K. Saenko, M. Hardt, and S. Levine, editors, Advances
+in Neural Information Processing Systems, volume 36, pages
+34892–34916, 2023. 3, 6
+[61] Junwei Luo, Zhen Pang, Yongjun Zhang, Tingzhu Wang,
+Linlin Wang, Bo Dang, Jiangwei Lao, Jian Wang, Jingdong
+Chen, Yihua Tan, et al. Skysensegpt: A fine-grained in-
+struction tuning dataset and model for remote sensing vision-
+language understanding. arXiv preprint arXiv:2406.10100,
+2024. 3, 6
+[62] Tianrun Chen, Chunan Yu, Jing Li, Jianqi Zhang, Lanyun
+Zhu, Deyi Ji, Yong Zhang, Ying Zang, Zejian Li, and
+Lingyun Sun. Reasoning3d–grounding and reasoning in
+3d: Fine-grained zero-shot open-vocabulary 3d reasoning
+part segmentation via large vision-language models. arXiv
+preprint arXiv:2405.19326, 2024. 3
+[63] Ziyue Huang, Yongchao Feng, Qingjie Liu, and Yunhong
+Wang. Mutdet: Mutually optimizing pre-training for remote
+sensing object detection, European Conference on Computer
+Vision 2024.
+[64] Zhuo Zheng, Yanfei Zhong, Ailong Ma, and Liangpei Zhang.
+Single-temporal supervised learning for universal remote
+sensing change detection. International Journal of Computer
+Vision, 2024.
+[65] Deyi Ji, Lanyun Zhu, Siqi Gao, Peng Xu, Hongtao Lu,
+Jieping Ye, and Feng Zhao. Tree-of-table: Unleashing the
+power of llms for enhanced large-scale table understanding.
+arXiv preprint arXiv:2411.08516, 2024.
+[66] Lanyun Zhu, Tianrun Chen, Deyi Ji, Jieping Ye, and Jun
+Liu. Llafs: When large language models meet few-shot
+segmentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 3065–
+3075, 2024.
+[67] Lanyun Zhu, Deyi Ji, Tianrun Chen, Peng Xu, Jieping Ye,
+and Jun Liu. Ibd: Alleviating hallucinations in large vision-
+language models via image-biased decoding. arXiv preprint
+arXiv:2402.18476, 2024. 3
+[68] Shizhen Chang and Pedram Ghamisi. Changes to captions:
+An attentive network for remote sensing change captioning.
+IEEE Transactions on Image Processing , 32:6047–6060,
+2023. 3
+[69] Deyi Ji, Haoran Wang, Hanzhe Hu, Weihao Gan, Wei Wu,
+and Junjie Yan. Context-aware graph convolution network
+for target re-identification. In Proceedings of the AAAI Con-
+ference on Artificial Intelligence , volume 35, pages 1646–
+1654, 2021.
+[70] Haoran Wang, Licheng Jiao, Fang Liu, Lingling Li, Xu Liu,
+Deyi Ji, and Weihao Gan. Learning social spatio-temporal
+relation graph in the wild and a video benchmark. IEEE
+Transactions on Neural Networks and Learning Systems ,
+34(6):2951–2964, 2021.
+[71] Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr
+Doll´ar, and Ross Girshick. Masked autoencoders are scalable
+vision learners. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 16000–
+16009, 2022. 3, 4
+[72] Xian Sun, Peijin Wang, Wanxuan Lu, Zicong Zhu, Xiao-
+nan Lu, Qibin He, Junxi Li, Xuee Rong, Zhujun Yang, Hao
+Chang, et al. Ringmo: A remote sensing foundation model
+with masked image modeling. IEEE Transactions on Geo-
+science and Remote Sensing, 61:1–22, 2022. 3
+14743
+
+
+=== PAGE 12 ===
+[73] Colorado J Reed, Ritwik Gupta, Shufan Li, Sarah Brock-
+man, Christopher Funk, Brian Clipp, Kurt Keutzer, Salvatore
+Candido, Matt Uyttendaele, and Trevor Darrell. Scale-mae:
+A scale-aware masked autoencoder for multiscale geospatial
+representation learning. In Proceedings of the IEEE/CVF
+International Conference on Computer Vision, pages 4088–
+4099, 2023. 3
+[74] Fan Liu, Delong Chen, Zhangqingyun Guan, Xiaocong
+Zhou, Jiale Zhu, Qiaolin Ye, Liyong Fu, and Jun Zhou. Re-
+moteclip: A vision language foundation model for remote
+sensing. IEEE Transactions on Geoscience and Remote
+Sensing, 2024. 3, 6
+[75] Seokju Cho, Heeseong Shin, Sunghwan Hong, Anurag
+Arnab, Paul Hongsuck Seo, and Seungryong Kim. Cat-
+seg: Cost aggregation for open-vocabulary semantic seg-
+mentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 4113–
+4123, 2024. 3, 6, 7
+[76] Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela
+Barriuso, and Antonio Torralba. Scene parsing through
+ade20k dataset. In Proceedings of the IEEE Conference on
+Computer Vision and Pattern Recognition , pages 633–641,
+2017. 3
+[77] Bin Xiao, Haiping Wu, Weijian Xu, Xiyang Dai, Houdong
+Hu, Yumao Lu, Michael Zeng, Ce Liu, and Lu Yuan.
+Florence-2: Advancing a unified representation for a variety
+of vision tasks, 2023. 3
+[78] Shilong Liu, Zhaoyang Zeng, Tianhe Ren, Feng Li, Hao
+Zhang, Jie Yang, Qing Jiang, Chunyuan Li, Jianwei Yang,
+Hang Su, et al. Grounding dino: Marrying dino with
+grounded pre-training for open-set object detection. arXiv
+preprint arXiv:2303.05499, 2023. 3, 4
+[79] Zhuang Liu and Kaiming He. A decade’s battle on dataset
+bias: Are we there yet? arXiv preprint arXiv:2403.08632,
+2024. 3
+[80] Mengde Xu, Zheng Zhang, Fangyun Wei, Han Hu, and Xi-
+ang Bai. Side adapter network for open-vocabulary semantic
+segmentation. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition , pages 2945–
+2954, 2023. 4, 6
+[81] Boci Peng, Yun Zhu, Yongchao Liu, Xiaohe Bo, Haizhou
+Shi, Chuntao Hong, Yan Zhang, and Siliang Tang. Graph
+retrieval-augmented generation: A survey. arXiv preprint
+arXiv:2408.08921, 2024. 5
+[82] Jamie Sherrah. Fully convolutional networks for dense se-
+mantic labelling of high-resolution aerial imagery. arXiv
+preprint arXiv:1606.02585, 2016. 6
+[83] Maryam Rahnemoonfar, Tashnim Chowdhury, Argho
+Sarkar, Debvrat Varshney, Masoud Yari, and RobinR. Mur-
+phy. Floodnet: A high resolution aerial imagery dataset for
+post flood scene understanding. IEEE Access, Dec 2020. 6
+[84] Xinlong Wang, Xiaosong Zhang, Yue Cao, Wen Wang,
+Chunhua Shen, and Tiejun Huang. Seggpt: Segmenting ev-
+erything in context. arXiv preprint arXiv:2304.03284, 2023.
+6
+[85] Feng Li, Qing Jiang, Hao Zhang, Tianhe Ren, Shilong Liu,
+Xueyan Zou, Huaizhe Xu, Hongyang Li, Chunyuan Li, Jian-
+wei Yang, et al. Visual in-context prompting. arXiv preprint
+arXiv:2311.13601, 2023. 6
+[86] Qiqi Zhu, Yanfei Zhong, Bei Zhao, Gui-Song Xia, and
+Liangpei Zhang. Bag-of-visual-words scene classifier with
+local and global features for high spatial resolution remote
+sensing imagery. IEEE Geoscience and Remote Sensing Let-
+ters, 13(6):747–751, 2016. 6
+[87] Dilxat Muhtar, Zhenshi Li, Feng Gu, Xueliang Zhang, and
+Pengfeng Xiao. Lhrs-bot: Empowering remote sensing
+with vgi-enhanced large multimodal language model. arXiv
+preprint arXiv:2402.02544, 2024. 6
+[88] Wei Zhang, Miaoxin Cai, Tong Zhang, Yin Zhuang, and
+Xuerui Mao. Earthgpt: A universal multi-modal large lan-
+guage model for multi-sensor image comprehension in re-
+mote sensing domain. IEEE Transactions on Geoscience and
+Remote Sensing, 2024. 6
+[89] Chao Pang, Xingxing Weng, Jiang Wu, Jiayu Li, Yi Liu, Ji-
+axing Sun, Weijia Li, Shuai Wang, Litong Feng, Gui-Song
+Xia, and Conghui He. Vhm: Versatile and honest vision lan-
+guage model for remote sensing image analysis, 2024. 6
+[90] Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee.
+Improved baselines with visual instruction tuning. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 26296–26306, 2024. 6
+[91] Zhenghang Yuan, Zhitong Xiong, Lichao Mou, and Xiao Xi-
+ang Zhu. Chatearthnet: a global-scale image-text dataset
+empowering vision-language geo-foundation models. Earth
+System Science Data Discussions, 2024:1–24, 2024. 6
+[92] Jinze Bai, Shuai Bai, Shusheng Yang, Shijie Wang, Sinan
+Tan, Peng Wang, Junyang Lin, Chang Zhou, and Jingren
+Zhou. Qwen-vl: A frontier large vision-language model with
+versatile abilities. arXiv preprint arXiv:2308.12966, 2023. 7
+[93] Zhe Chen, Jiannan Wu, Wenhai Wang, Weijie Su, Guo Chen,
+Sen Xing, Muyan Zhong, Qinglong Zhang, Xizhou Zhu,
+Lewei Lu, et al. Internvl: Scaling up vision foundation mod-
+els and aligning for generic visual-linguistic tasks. In Pro-
+ceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 24185–24198, 2024. 7
+[94] Xiaoyi Dong, Jianmin Bao, Yinglin Zheng, Ting Zhang,
+Dongdong Chen, Hao Yang, Ming Zeng, Weiming Zhang,
+Lu Yuan, Dong Chen, et al. Maskclip: Masked self-
+distillation advances contrastive language-image pretraining.
+In Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, pages 10995–11005, 2023.
+7
+[95] Mathieu Jacomy, Tommaso Venturini, Sebastien Heymann,
+and Mathieu Bastian. Forceatlas2, a continuous graph layout
+algorithm for handy network visualization designed for the
+gephi software. PLoS ONE, page e98679, Jun 2014. 8
+[96] V . A. Traag, L. Waltman, and N. J. van Eck. From louvain to
+leiden: guaranteeing well-connected communities. Scientific
+Reports, Mar 2019. 8
+14744
